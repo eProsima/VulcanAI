@@ -17,21 +17,17 @@ import numpy as np
 import sys
 from importlib.metadata import entry_points
 from pathlib import Path
+from types import ModuleType
 from typing import Dict, Tuple, Type
 
 from vulcanai.tools import ToolInterface
 from vulcanai.embedder import SBERTEmbedder
 
 
-# Registry of all tool specifications
-REGISTERED_TOOLS: list[Type[ToolInterface]] = []
-
-
 def vulcanai_tool(cls: Type[ToolInterface]):
-    """Decorator to mark ToolInterface subclasses for auto-registration."""
     if not issubclass(cls, ToolInterface):
         raise TypeError(f"{cls.__name__} must inherit from ToolInterface")
-    REGISTERED_TOOLS.append(cls)
+    setattr(cls, "__is_vulcanai_tool__", True)
     return cls
 
 
@@ -44,6 +40,8 @@ class ToolRegistry:
         self.embedder = embedder or SBERTEmbedder()
         # Simple in-memory index of (name, embedding)
         self._index: list[Tuple[str, np.ndarray]] = []
+        # List of modules where tools can be loaded from
+        self._loaded_modules: list[ModuleType] = []
 
     def register_tool(self, tool: ToolInterface):
         """Register a single tool instance."""
@@ -53,25 +51,32 @@ class ToolRegistry:
         self.tools[tool.name] = tool
         emb = self.embedder.embed(self._doc(tool))
         self._index.append((tool.name, emb))
-        print(f"Registered tool: {tool.name} with emb: {self._doc(tool)}")
+        print(f"Registered tool: {tool.name}")
 
     def register(self):
-        """Register all tools in REGISTERED_TOOLS (tools marked with the decorator @vulcanai_tool)."""
-        for tool in REGISTERED_TOOLS:
-            if issubclass(tool, ToolInterface):
-                self.register_tool(tool())
+        """Register all loaded classes marked with @vulcanai_tool."""
+        for module in self._loaded_modules:
+            for name in dir(module):
+                tool = getattr(module, name, None)
+                if isinstance(tool, type) and issubclass(tool, ToolInterface):
+                    if getattr(tool, "__is_vulcanai_tool__", False):
+                        self.register_tool(tool())
 
     def load_tools_from_file(self, path: str):
         """Dynamically load a Python file with @vulcanai_tool classes."""
-        path = Path(path)
-        module_name = path.stem
+        try:
+            path = Path(path)
+            module_name = path.stem
 
-        spec = importlib.util.spec_from_file_location(module_name, str(path))
-        if spec is None:
-            raise ImportError(f"Cannot import {path}")
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[module_name] = module
-        spec.loader.exec_module(module)
+            spec = importlib.util.spec_from_file_location(module_name, str(path))
+            if spec is None:
+                raise ImportError(f"Cannot import {path}")
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[module_name] = module
+            spec.loader.exec_module(module)
+            self._loaded_modules.append(module)
+        except Exception as e:
+            print(f"Error loading tools from {path}: {e}")
 
     def discover_tools_from_file(self, path: str):
         """Load tools from a Python file and register them."""
@@ -81,7 +86,8 @@ class ToolRegistry:
     def discover_tools_from_entry_points(self, group: str = "custom_tools"):
         """Load tools from Python entry points."""
         for ep in entry_points(group=group):
-            importlib.import_module(ep.module)
+            module = importlib.import_module(ep.module)
+            self._loaded_modules.append(module)
         self.register()
 
     def discover_ros(self):
