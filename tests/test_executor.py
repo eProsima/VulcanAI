@@ -1,10 +1,11 @@
-import unittest
+import hashlib
+import importlib
+import numpy as np
 import os
 import sys
-import hashlib
-import numpy as np
+import time
 import types
-import importlib
+import unittest
 
 
 # Stub sentence_transformers to avoid heavy dependency during tests
@@ -88,10 +89,21 @@ class TestPlanExecutor(unittest.TestCase):
             version = "0.1"
             def run(self, **kwargs):
                 return {"spoken": True}
+        class SleepTool(self.AtomicTool):
+            name = "sleep"
+            description = "Sleep for a specified duration"
+            tags = ["sleep"]
+            input_schema = {"duration": "int"}
+            output_schema = {"slept": "bool"}
+            version = "0.1"
+            def run(self, **kwargs):
+                time.sleep(kwargs.get("duration", 1))
+                return {"slept": True}
 
         self.registry.register_tool(NavTool())
         self.registry.register_tool(DetectTool())
         self.registry.register_tool(SpeakTool())
+        self.registry.register_tool(SleepTool())
 
         self.exec = self.PlanExecutor(self.registry)
 
@@ -108,10 +120,10 @@ class TestPlanExecutor(unittest.TestCase):
                 self.PlanNode(
                     kind="SEQUENCE",
                     steps=[
-                        self.Step(tool="go_to_pose", args={"pose": {"x": 1.0, "y": 2.0, "z": 0.0}}, timeout_ms=5000),
-                        self.Step(tool="detect_object", args={"label": "mug"}, timeout_ms=3000),
-                        self.Step(tool="go_to_pose", args={"pose": "{{bb.detect_object.pose}}"}, timeout_ms=5000),
-                        self.Step(tool="speak", args={"text": "I have arrived and detected a mug."}, timeout_ms=2000),
+                        self.Step(tool="go_to_pose", args={"pose": {"x": 1.0, "y": 2.0, "z": 0.0}}),
+                        self.Step(tool="detect_object", args={"label": "mug"}),
+                        self.Step(tool="go_to_pose", args={"pose": "{{bb.detect_object.pose}}"}),
+                        self.Step(tool="speak", args={"text": "I have arrived and detected a mug."}),
                     ],
                 )
             ],
@@ -233,36 +245,21 @@ class TestPlanExecutor(unittest.TestCase):
 
     def test_parallel_node_execution(self):
         """Test that a parallel PlanNode executes all steps and collects their results."""
-        import time
-        class SleepTool(self.AtomicTool):
-            name = "sleep"
-            description = "Sleep for a specified duration"
-            tags = ["sleep"]
-            input_schema = {"duration": "int"}
-            output_schema = {"slept": "bool"}
-            version = "0.1"
-            def run(self, **kwargs):
-                time.sleep(kwargs.get("duration", 1))
-                return {"slept": True}
         plan = self.GlobalPlan(
             plan=[
                 self.PlanNode(
                     kind="PARALLEL",
                     steps=[
-                        self.Step(tool="sleep", args={"duration": 1}, timeout_ms=5000),
-                        self.Step(tool="sleep", args={"duration": 2}, timeout_ms=5000),
-                        self.Step(tool="sleep", args={"duration": 3}, timeout_ms=5000),
+                        self.Step(tool="sleep", args={"duration": 1}),
+                        self.Step(tool="sleep", args={"duration": 2}),
+                        self.Step(tool="sleep", args={"duration": 3}),
                     ],
                 )
             ],
         )
 
-        r = self.ToolRegistry(embedder=self.Embedder)
-        r.register_tool(SleepTool())
-        sleep_exec = self.PlanExecutor(r)
-
         start = time.time()
-        result = sleep_exec.run(plan)
+        result = self.exec.run(plan)
         end = time.time()
         elapsed = end - start
         # Check that total time is just over the longest sleep (3s) not the sum (6s)
@@ -271,6 +268,127 @@ class TestPlanExecutor(unittest.TestCase):
         bb = result["blackboard"]
         self.assertIn("sleep", bb)
         self.assertTrue(bb["sleep"]["slept"])
+
+    def test_step_with_retries(self):
+        """Test that a step with retries is attempted the specified number of times upon failure."""
+        class FlakyTool(self.AtomicTool):
+            name = "flaky"
+            description = "A tool that fails a few times before succeeding"
+            tags = ["flaky"]
+            input_schema = {}
+            output_schema = {"succeeded": "bool"}
+            version = "0.1"
+            def __init__(self):
+                super().__init__()
+                self.attempts = 0
+            def run(self, **kwargs):
+                self.attempts += 1
+                if self.attempts < 3:
+                    raise RuntimeError("Simulated failure")
+                return {"succeeded": True}
+        plan = self.GlobalPlan(
+            plan=[
+                self.PlanNode(
+                    kind="SEQUENCE",
+                    steps=[
+                        self.Step(tool="flaky", args={}, retry=1),
+                    ],
+                )
+            ],
+        )
+
+        r = self.ToolRegistry(embedder=self.Embedder)
+        flaky_tool = FlakyTool()
+        r.register_tool(flaky_tool)
+        flaky_exec = self.PlanExecutor(r)
+
+        # Fail after 1 retry (2 attempts total)
+        result = flaky_exec.run(plan)
+        self.assertFalse(result["success"])
+        bb = result["blackboard"]
+        self.assertIn("flaky", bb)
+        self.assertFalse(bb["flaky"])
+        # Check that the step was retried
+        self.assertEqual(flaky_tool.attempts, 2)
+
+        # Success after 2 retries (3 attempts total)
+        flaky_tool.attempts = 0  # Reset attempts
+        plan.plan[0].steps[0].retry = 2
+        result = flaky_exec.run(plan)
+        self.assertTrue(result["success"])
+        bb = result["blackboard"]
+        self.assertIn("flaky", bb)
+        self.assertTrue(bb["flaky"]["succeeded"])
+        # Check that the step was retried
+        self.assertEqual(flaky_tool.attempts, 3)
+
+    def test_step_with_criteria(self):
+        """Test that a step with success criteria evaluates output correctly."""
+        class CriteriaTool(self.AtomicTool):
+            name = "criteria_tool"
+            description = "A tool that returns a numeric value"
+            tags = ["criteria"]
+            input_schema = {}
+            output_schema = {"value": "int"}
+            version = "0.1"
+            def __init__(self, return_value):
+                super().__init__()
+                self.return_value = return_value
+            def run(self, **kwargs):
+                return {"value": self.return_value}
+        plan = self.GlobalPlan(
+            plan=[
+                self.PlanNode(
+                    kind="SEQUENCE",
+                    steps=[
+                        self.Step(tool="criteria_tool", args={}, success_criteria="{{bb.criteria_tool.value}} >= 10"),
+                    ],
+                )
+            ],
+        )
+
+        r = self.ToolRegistry(embedder=self.Embedder)
+        # First test with a value that does not meet criteria
+        r.register_tool(CriteriaTool(return_value=5))
+        criteria_exec = self.PlanExecutor(r)
+
+        result = criteria_exec.run(plan)
+        self.assertFalse(result["success"])
+        bb = result["blackboard"]
+        self.assertIn("criteria_tool", bb)
+        self.assertEqual(bb["criteria_tool"]["value"], 5)
+
+        # Now test with a value that meets criteria
+        r = self.ToolRegistry(embedder=self.Embedder)
+        r.register_tool(CriteriaTool(return_value=15))
+        criteria_exec = self.PlanExecutor(r)
+
+        result = criteria_exec.run(plan)
+        self.assertTrue(result["success"])
+        bb = result["blackboard"]
+        self.assertIn("criteria_tool", bb)
+        self.assertEqual(bb["criteria_tool"]["value"], 15)
+
+    def test_step_with_timeout(self):
+        """Test that a step with a timeout fails if execution exceeds the limit."""
+        plan = self.GlobalPlan(
+            plan=[
+                self.PlanNode(
+                    kind="SEQUENCE",
+                    steps=[
+                        self.Step(tool="sleep", args={"duration": 3}, timeout_ms=2000),
+                    ],
+                )
+            ],
+        )
+
+        # Test with timeout that causes failure
+        result = self.exec.run(plan)
+        self.assertFalse(result["success"])
+        # Increase timeout and test for success
+        plan.plan[0].steps[0].timeout_ms = 4000
+        result = self.exec.run(plan)
+        self.assertTrue(result["success"])
 
 
 if __name__ == "__main__":
