@@ -70,10 +70,31 @@ class PlanExecutor:
         # Bind args with blackboard placeholders
         args = self._bind_args(step.args, bb)
 
-        # Call the tool
-        ok, out = self._call_tool(step.tool, args, timeout_ms=step.timeout_ms)
-        bb[step.tool] = out
-        return ok
+        attempts = step.retry + 1
+        for i in range(attempts):
+            # Call the tool
+            ok, out = self._call_tool(step.tool, args, timeout_ms=step.timeout_ms)
+            # Save output to blackboard
+            bb[step.tool] = out
+            # Check if the step succeeded
+            if ok and self._check_success(step, bb):
+                return True
+            else:
+                self.logger(f"Step {step.tool} attempt {i+1}/{attempts} failed")
+
+        return False
+
+    def _check_success(self, step: Step, bb: Blackboard) -> bool:
+        """Evaluate success criteria expression."""
+        if not step.success_criteria:
+            # No criteria means any finishing is success
+            return True
+        if self._safe_eval(step.success_criteria, bb):
+            self.logger(f"Step {step.tool} succeeded with criteria={step.success_criteria}")
+            return True
+        else:
+            self.logger(f"Step {step.tool} failed with criteria={step.success_criteria}")
+        return False
 
     def _safe_eval(self, expr: str, bb: Blackboard) -> bool:
         """Evaluate a simple expression against bb."""
@@ -127,10 +148,18 @@ class PlanExecutor:
 
         start = time.time()
         try:
-            result = tool.run(**args)
+            if timeout_ms:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(tool.run, **args)
+                    result = future.result(timeout=timeout_ms / 1000)
+            else:
+                result = tool.run(**args)
             elapsed = (time.time() - start) * 1000
             self.logger(f"Executed {tool_name} in {elapsed:.1f} ms with result: {result}")
             return True, result
+        except concurrent.futures.TimeoutError:
+            self.logger(f"Execution of {tool_name} timed out after {timeout_ms} ms")
+            return False, None
         except Exception as e:
             self.logger(f"Execution failed for {tool_name}: {e}")
             return False, None
