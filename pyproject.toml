@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+
+[project]
+name = "vulcanai"
+version = "0.1.0"
+description = "VulcanAI: the LLM library."
+readme = "README.md"
+authors = [{ name = "Carlos Ferreira", email = "carlosferreira@eprosima.com" }]
+license = { file = "LICENSE" }
+keywords = ["Robotics", "LLM", "VLM", "VLA", "Vulcanexus", "ROS2"]
+requires-python = ">=3.10, <4"
+dependencies = [
+    "numpy==2.2.6",
+    "sentence-transformers==5.1.0"
+]
+
+[project.urls]
+"eProsima" = "https://www.eprosima.com/"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.entry-points."spam.magical"]
+tomatoes = "spam:main_tomatoes"
