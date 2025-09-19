@@ -13,7 +13,9 @@
 # limitations under the License.
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+from vulcanai.plan_types import ArgValue
 
 
 class ITool(ABC):
@@ -27,9 +29,10 @@ class ITool(ABC):
     description: str
     # List of keywords associated with the tool
     tags: list[str] = []
-    # JSON schemas for input validation and output formatting
-    input_schema: Dict[str, Any]
-    output_schema: Dict[str, Any]
+    # JSON schemas for input validation and output formatting.
+    # Only used for documentation and LLM prompt generation.
+    input_schema: List[Tuple[str, str]] = []  # List of (key, type) pairs, simulating a ArgValue list
+    output_schema: Dict[str, str] = {}
     # Tool version
     version: str = "0.1.0"
     # Enable ROS 2 dynamic discovery of this tool

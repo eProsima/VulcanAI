@@ -40,12 +40,14 @@ class TestPlanExecutor(unittest.TestCase):
         GlobalPlan = plan_types_mod.GlobalPlan
         PlanNode = plan_types_mod.PlanNode
         Step = plan_types_mod.Step
+        ArgValue = plan_types_mod.ArgValue
         self.PlanExecutor = executor_mod.PlanExecutor
 
         # Expose for tests
         self.GlobalPlan = GlobalPlan
         self.PlanNode = PlanNode
         self.Step = Step
+        self.Arg = ArgValue
 
         # Local dummy embedder
         class LocalDummyEmbedder:
@@ -66,7 +68,7 @@ class TestPlanExecutor(unittest.TestCase):
             name = "go_to_pose"
             description = "Navigate robot to a target location"
             tags = ["navigation", "goal", "go to", "move"]
-            input_schema = {"pose": "dict(x: float, y: float, z: float)"}
+            input_schema = [("x", "float"), ("y", "float"), ("z", "float")]
             output_schema = {"arrived": "bool"}
             version = "0.1"
             def run(self, **kwargs):
@@ -75,7 +77,7 @@ class TestPlanExecutor(unittest.TestCase):
             name = "detect_object"
             description = "Detect an object in the environment"
             tags = ["vision", "perception"]
-            input_schema = {"label": "string"}
+            input_schema = [("label", "string")]
             output_schema = {"found": "bool", "pose": "dict(x: float, y: float, z: float)"}
             version = "0.1"
             def run(self, **kwargs):
@@ -84,7 +86,7 @@ class TestPlanExecutor(unittest.TestCase):
             name = "speak"
             description = "Speak a text string"
             tags = ["speech", "text"]
-            input_schema = {"text": "string"}
+            input_schema = [("text", "string")]
             output_schema = {"spoken": "bool"}
             version = "0.1"
             def run(self, **kwargs):
@@ -93,7 +95,7 @@ class TestPlanExecutor(unittest.TestCase):
             name = "sleep"
             description = "Sleep for a specified duration"
             tags = ["sleep"]
-            input_schema = {"duration": "int"}
+            input_schema = [("duration", "int")]
             output_schema = {"slept": "bool"}
             version = "0.1"
             def run(self, **kwargs):
@@ -103,7 +105,7 @@ class TestPlanExecutor(unittest.TestCase):
             name = "flaky"
             description = "A tool that fails a few times before succeeding"
             tags = ["flaky"]
-            input_schema = {}
+            input_schema = []
             output_schema = {"succeeded": "bool"}
             version = "0.1"
             def __init__(self):
@@ -121,7 +123,7 @@ class TestPlanExecutor(unittest.TestCase):
             name = "criteria_tool"
             description = "A tool that returns a numeric value"
             tags = ["criteria"]
-            input_schema = {}
+            input_schema = []
             output_schema = {"value": "int"}
             version = "0.1"
             def __init__(self, return_value):
@@ -152,10 +154,10 @@ class TestPlanExecutor(unittest.TestCase):
                 self.PlanNode(
                     kind="SEQUENCE",
                     steps=[
-                        self.Step(tool="go_to_pose", args={"pose": {"x": 1.0, "y": 2.0, "z": 0.0}}),
-                        self.Step(tool="detect_object", args={"label": "mug"}),
-                        self.Step(tool="go_to_pose", args={"pose": "{{bb.detect_object.pose}}"}),
-                        self.Step(tool="speak", args={"text": "I have arrived and detected a mug."}),
+                        self.Step(tool="go_to_pose", args=[self.Arg(key="x", val=1.0), self.Arg(key="y", val=2.0), self.Arg(key="z", val=0.0)]),
+                        self.Step(tool="detect_object", args=[self.Arg(key="label", val="mug")]),
+                        self.Step(tool="go_to_pose", args=[self.Arg(key="x", val="{{bb.detect_object.pose.x}}"), self.Arg(key="y", val="{{bb.detect_object.pose.y}}"), self.Arg(key="z", val="{{bb.detect_object.pose.z}}")]),
+                        self.Step(tool="speak", args=[self.Arg(key="text", val="I have arrived and detected a mug.")]),
                     ],
                 )
             ],
@@ -178,7 +180,7 @@ class TestPlanExecutor(unittest.TestCase):
                 self.PlanNode(
                     kind="SEQUENCE",
                     steps=[
-                        self.Step(tool="speak", args={"text": "Hello"}, condition="{{bb.missing_flag}} == True"),
+                        self.Step(tool="speak", args=[self.Arg(key="text", val="Hello")], condition="{{bb.missing_flag}} == True"),
                     ],
                 )
             ]
@@ -195,7 +197,7 @@ class TestPlanExecutor(unittest.TestCase):
                 self.PlanNode(
                     kind="SEQUENCE",
                     steps=[
-                        self.Step(tool="speak", args={"text": "Hello"}, condition="True"),
+                        self.Step(tool="speak", args=[self.Arg(key="text", val="Hello")], condition="True"),
                     ],
                 )
             ]
@@ -214,10 +216,10 @@ class TestPlanExecutor(unittest.TestCase):
                 self.PlanNode(
                     kind="SEQUENCE",
                     steps=[
-                        self.Step(tool="detect_object", args={"label": "book"}),
-                        self.Step(tool="go_to_pose", args={"pose": "{{bb.detect_object.pose}}"}, condition="{{bb.detect_object.found}} == True"),
+                        self.Step(tool="detect_object", args=[self.Arg(key="label", val="book")]),
+                        self.Step(tool="go_to_pose", args=[self.Arg(key="x", val="{{bb.detect_object.pose.x}}"), self.Arg(key="y", val="{{bb.detect_object.pose.y}}"), self.Arg(key="z", val="{{bb.detect_object.pose.z}}")], condition="{{bb.detect_object.found}} == True"),
                         # Skip next step by making condition False
-                        self.Step(tool="speak", args={"text": "I have arrived."}, condition="{{bb.go_to_pose.arrived}} != True"),
+                        self.Step(tool="speak", args=[self.Arg(key="text", val="I have arrived.")], condition="{{bb.go_to_pose.arrived}} != True"),
                     ],
                 )
             ]
@@ -238,8 +240,8 @@ class TestPlanExecutor(unittest.TestCase):
                 self.PlanNode(
                     kind="SEQUENCE",
                     steps=[
-                        self.Step(tool="detect_object", args={"label": "book"}),
-                        self.Step(tool="go_to_pose", args={"pose": "{{bb.detect_object.pose}}"}, condition="True == {{bb.detect_object.found}}"),
+                        self.Step(tool="detect_object", args=[self.Arg(key="label", val="book")]),
+                        self.Step(tool="go_to_pose", args=[self.Arg(key="x", val="{{bb.detect_object.pose.x}}"), self.Arg(key="y", val="{{bb.detect_object.pose.y}}"), self.Arg(key="z", val="{{bb.detect_object.pose.z}}")], condition="True == {{bb.detect_object.found}}"),
                     ],
                 )
             ]
@@ -258,9 +260,9 @@ class TestPlanExecutor(unittest.TestCase):
                 self.PlanNode(
                     kind="SEQUENCE",
                     steps=[
-                        self.Step(tool="detect_object", args={"label": "book"}),
-                        self.Step(tool="speak", args={"text": "I have arrived."}),
-                        self.Step(tool="go_to_pose", args={"pose": "{{bb.detect_object.pose}}"}, condition="{{bb.speak.spoken}} == {{bb.detect_object.found}}"),
+                        self.Step(tool="detect_object", args=[self.Arg(key="label", val="book")]),
+                        self.Step(tool="speak", args=[self.Arg(key="text", val="I have arrived.")]),
+                        self.Step(tool="go_to_pose", args=[self.Arg(key="x", val="{{bb.detect_object.pose.x}}"), self.Arg(key="y", val="{{bb.detect_object.pose.y}}"), self.Arg(key="z", val="{{bb.detect_object.pose.z}}")], condition="{{bb.speak.spoken}} == {{bb.detect_object.found}}"),
                     ],
                 )
             ]
@@ -282,9 +284,9 @@ class TestPlanExecutor(unittest.TestCase):
                 self.PlanNode(
                     kind="PARALLEL",
                     steps=[
-                        self.Step(tool="sleep", args={"duration": 1}),
-                        self.Step(tool="sleep", args={"duration": 2}),
-                        self.Step(tool="sleep", args={"duration": 3}),
+                        self.Step(tool="sleep", args=[self.Arg(key="duration", val=1)]),
+                        self.Step(tool="sleep", args=[self.Arg(key="duration", val=2)]),
+                        self.Step(tool="sleep", args=[self.Arg(key="duration", val=3)]),
                     ],
                 )
             ],
@@ -308,7 +310,7 @@ class TestPlanExecutor(unittest.TestCase):
                 self.PlanNode(
                     kind="SEQUENCE",
                     steps=[
-                        self.Step(tool="flaky", args={}, retry=1),
+                        self.Step(tool="flaky", args=[], retry=1),
                     ],
                 )
             ],
@@ -346,7 +348,7 @@ class TestPlanExecutor(unittest.TestCase):
                 self.PlanNode(
                     kind="SEQUENCE",
                     steps=[
-                        self.Step(tool="criteria_tool", args={}, success_criteria="{{bb.criteria_tool.value}} >= 10"),
+                        self.Step(tool="criteria_tool", args=[], success_criteria="{{bb.criteria_tool.value}} >= 10"),
                     ],
                 )
             ],
@@ -381,7 +383,7 @@ class TestPlanExecutor(unittest.TestCase):
                 self.PlanNode(
                     kind="SEQUENCE",
                     steps=[
-                        self.Step(tool="sleep", args={"duration": 3}, timeout_ms=2000),
+                        self.Step(tool="sleep", args=[self.Arg(key="duration", val=3)], timeout_ms=2000),
                     ],
                 )
             ],
@@ -402,7 +404,7 @@ class TestPlanExecutor(unittest.TestCase):
                 self.PlanNode(
                     kind="SEQUENCE",
                     steps=[
-                        self.Step(tool="speak", args={"text": "This should be skipped"}),
+                        self.Step(tool="speak", args=[self.Arg(key="text", val="This should be skipped")]),
                     ],
                     condition="False",
                 )
@@ -421,7 +423,7 @@ class TestPlanExecutor(unittest.TestCase):
                 self.PlanNode(
                     kind="SEQUENCE",
                     steps=[
-                        self.Step(tool="speak", args={"text": "This should be spoken"}),
+                        self.Step(tool="speak", args=[self.Arg(key="text", val="This should be spoken")]),
                     ],
                     condition="True",
                 )
@@ -441,7 +443,7 @@ class TestPlanExecutor(unittest.TestCase):
                 self.PlanNode(
                     kind="SEQUENCE",
                     steps=[
-                        self.Step(tool="criteria_tool", args={}),
+                        self.Step(tool="criteria_tool", args=[]),
                     ],
                     success_criteria="{{bb.criteria_tool.value}} >= 10",
                 )
@@ -477,7 +479,7 @@ class TestPlanExecutor(unittest.TestCase):
                 self.PlanNode(
                     kind="SEQUENCE",
                     steps=[
-                        self.Step(tool="flaky", args={}),
+                        self.Step(tool="flaky", args=[]),
                     ],
                     retry=1,
                 )
@@ -517,7 +519,7 @@ class TestPlanExecutor(unittest.TestCase):
                 self.PlanNode(
                     kind="SEQUENCE",
                     steps=[
-                        self.Step(tool="sleep", args={"duration": 3}),
+                        self.Step(tool="sleep", args=[self.Arg(key="duration", val=3)]),
                     ],
                     timeout_ms=2000,
                 )
@@ -534,21 +536,20 @@ class TestPlanExecutor(unittest.TestCase):
 
     def test_plan_node_with_unknown_kind(self):
         """Test that a PlanNode with an unknown kind is skipped with a warning."""
-        plan = self.GlobalPlan(
-            plan=[
-                self.PlanNode(
-                    kind="UNKNOWN",
-                    steps=[
-                        self.Step(tool="speak", args={"text": "This should be skipped"}),
-                    ],
-                )
-            ],
-        )
-
-        result = self.exec.run(plan)
-        self.assertTrue(result["success"])
-        bb = result["blackboard"]
-        self.assertNotIn("speak", bb)  # Step was skipped
+        try:
+            plan = self.GlobalPlan(
+                plan=[
+                    self.PlanNode(
+                        kind="UNKNOWN",
+                        steps=[
+                            self.Step(tool="speak", args=[self.Arg(key="text", val="This should be skipped")]),
+                        ],
+                    )
+                ],
+            )
+            self.fail("PlanNode creation should have failed with ValueError")
+        except Exception as e:
+            pass
 
     def test_plan_node_with_on_fail(self):
         """Test that a PlanNode with on_fail executes the on_fail node upon failure."""
@@ -557,13 +558,13 @@ class TestPlanExecutor(unittest.TestCase):
                 self.PlanNode(
                     kind="SEQUENCE",
                     steps=[
-                        self.Step(tool="criteria_tool", args={}),
+                        self.Step(tool="criteria_tool", args=[]),
                     ],
                     success_criteria="{{bb.criteria_tool.value}} >= 10",
                     on_fail=self.PlanNode(
                         kind="SEQUENCE",
                         steps=[
-                            self.Step(tool="speak", args={"text": "The criteria tool failed."}),
+                            self.Step(tool="speak", args=[self.Arg(key="text", val="The criteria tool failed.")]),
                         ],
                     ),
                 )

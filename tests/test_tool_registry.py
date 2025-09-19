@@ -30,10 +30,12 @@ class TestToolRegistry(unittest.TestCase):
         # Import package modules dynamically to avoid static import issues
         tool_registry_mod = importlib.import_module("vulcanai.tool_registry")
         tools_mod = importlib.import_module("vulcanai.tools")
+        plan_types_mod = importlib.import_module("vulcanai.plan_types")
 
         # Keep references we need
         self.ToolRegistry = tool_registry_mod.ToolRegistry
         self.ITool = tools_mod.ITool
+        self.Arg = plan_types_mod.ArgValue
 
         # Lightweight embedder matching expected API
         class LocalDummyEmbedder:
@@ -51,7 +53,7 @@ class TestToolRegistry(unittest.TestCase):
             name = "go_to_pose"
             description = "Navigate robot to a target location"
             tags = ["navigation", "goal", "go", "move"]
-            input_schema = {"pose": "geometry_msgs/Pose"}
+            input_schema = [("x", "float"), ("y", "float"), ("z", "float")]
             output_schema = {"arrived": "bool"}
             version = "0.1"
             def run(self, **kwargs):
@@ -60,7 +62,7 @@ class TestToolRegistry(unittest.TestCase):
             name = "detect_object"
             description = "Detect an object in the environment"
             tags = ["vision", "perception"]
-            input_schema = {"label": "string"}
+            input_schema = [("label", "string")]
             output_schema = {"found": "bool"}
             version = "0.1"
             def run(self, **kwargs):
@@ -69,7 +71,7 @@ class TestToolRegistry(unittest.TestCase):
             name = "speak"
             description = "Speak a text string"
             tags = ["speech", "text"]
-            input_schema = {"text": "string"}
+            input_schema = [("text", "string")]
             output_schema = {"spoken": "bool"}
             version = "0.1"
             def run(self, **kwargs):

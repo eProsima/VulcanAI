@@ -12,28 +12,36 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Literal
+from pydantic import BaseModel, Field
+from typing import List, Optional, Literal, Union
 
 
 Kind = Literal["SEQUENCE","PARALLEL"]
 
 
-@dataclass
-class Step:
+class ArgValue(BaseModel):
+    """Key-value pair representing a tool argument."""
+    key: str
+    val: Union[str, int, float, bool]
+
+
+class Step(BaseModel):
     """Atomic execution unit bound to a ITool."""
     # Associated tool
     tool: str = None
     # Tool arguments
-    args: Dict[str, Any] = field(default_factory=dict)
+    args: List[ArgValue] = Field(
+        default_factory=list,
+        description="List of key-value pairs representing tool arguments",
+    )
     # Execution control
     condition: Optional[str] = None
     success_criteria: Optional[str] = None
     timeout_ms: Optional[int] = None
-    retry: int = 0
+    retry: Optional[int] = 0
 
-@dataclass
-class PlanNode:
+
+class PlanNode(BaseModel):
     """
     A node that defines a plan which is composed of one or more steps and
     has execution control parameters.
@@ -41,18 +49,18 @@ class PlanNode:
     # Sequence or parallel execution of children
     kind: Kind
     # Child nodes
-    steps: List[Step] = field(default_factory=list)
+    steps: List[Step] = Field(default_factory=list)
     # Execution control
     condition: Optional[str] = None
     success_criteria: Optional[str] = None
     timeout_ms: Optional[int] = None
-    retry: int = 0
+    retry: Optional[int] = 0
     on_fail: Optional["PlanNode"] = None
 
-@dataclass
-class GlobalPlan:
+
+class GlobalPlan(BaseModel):
     """GlobalPlan returned by the LLM with each step to be executed."""
     # Top-level plan structure. Always executed sequentially.
-    plan: List[PlanNode] = field(default_factory=list)
+    plan: List[PlanNode] = Field(default_factory=list)
     # Brief summary of the plan
     summary: Optional[str] = None

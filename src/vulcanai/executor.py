@@ -15,8 +15,8 @@
 import concurrent.futures
 import re
 import time
-from typing import Dict, Any, Tuple
-from vulcanai.plan_types import GlobalPlan, PlanNode, Step
+from typing import Dict, Any, Tuple, List
+from vulcanai.plan_types import GlobalPlan, PlanNode, Step, ArgValue
 
 
 class Blackboard(dict):
@@ -161,15 +161,15 @@ class PlanExecutor:
             self.logger(f"Blackboard substitution failed: {expr} ({e})")
             return expr
 
-    def _bind_args(self, args: Dict[str, Any], bb: Blackboard) -> Dict[str, Any]:
+    def _bind_args(self, args: List[ArgValue], bb: Blackboard) -> List[ArgValue]:
         """Replace {{bb.key}} placeholders with actual values."""
-        bound = {}
-        for k, v in args.items():
-            if isinstance(v, str) and v.startswith("{{bb.") and v.endswith("}}"):
-                val = self._get_from_bb(v, bb)
-                bound[k] = val
+        bound = []
+        for arg in args:
+            if isinstance(arg.val, str) and arg.val.startswith("{{bb.") and arg.val.endswith("}}"):
+                val = self._get_from_bb(arg.val, bb)
+                bound.append(ArgValue(key=arg.key, val=val))
             else:
-                bound[k] = v
+                bound.append(arg)
         return bound
 
     def _get_from_bb(self, path: str, bb: Blackboard) -> Any:
@@ -180,21 +180,24 @@ class PlanExecutor:
             val = val.get(key, None) if isinstance(val, dict) else None
         return val
 
-    def _call_tool(self, tool_name: str, args: Dict[str, Any], timeout_ms: int = None) -> Tuple[bool, Any]:
+    def _call_tool(self, tool_name: str, args: List[ArgValue], timeout_ms: int = None) -> Tuple[bool, Any]:
         """Invoke a registered tool."""
         tool = self.registry.tools.get(tool_name)
         if not tool:
             self.logger(f"Tool {tool_name} not found")
             return False, None
 
+        # Convert args list to dict
+        arg_dict = {a.key: a.val for a in args}
+
         start = time.time()
         try:
             if timeout_ms:
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(tool.run, **args)
+                    future = executor.submit(tool.run, **arg_dict)
                     result = future.result(timeout=timeout_ms / 1000)
             else:
-                result = tool.run(**args)
+                result = tool.run(**arg_dict)
             elapsed = (time.time() - start) * 1000
             self.logger(f"Executed {tool_name} in {elapsed:.1f} ms with result: {result}")
             return True, result
