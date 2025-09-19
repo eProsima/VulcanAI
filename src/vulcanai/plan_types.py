@@ -52,7 +52,7 @@ class PlanNode:
 @dataclass
 class GlobalPlan:
     """GlobalPlan returned by the LLM with each step to be executed."""
-    # Top-level plan structure
+    # Top-level plan structure. Always executed sequentially.
     plan: List[PlanNode] = field(default_factory=list)
     # Brief summary of the plan
     summary: Optional[str] = None

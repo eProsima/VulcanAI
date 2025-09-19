@@ -25,27 +25,67 @@ class Blackboard(dict):
 
 
 class PlanExecutor:
-    """Executes a validated GlobalPlan with blackboard and conditions."""
+    """Executes a validated GlobalPlan with blackboard and execution control parameters."""
 
     def __init__(self, registry, logger=None):
         self.registry = registry
         self.logger = logger or print
 
     def run(self, plan: GlobalPlan) -> Dict[str, Any]:
+        """
+        Execute the entire plan.
+
+        :param plan: The @GlobalPlan to execute.
+        :return: A dictionary with execution success status and the final blackboard state.
+        """
         bb = Blackboard()
         ok = True
         for node in plan.plan:
-            ok = self._run_node(node, bb)
+            ok = self._run_plan_node(node, bb)
             if not ok:
                 break
         return {"success": ok, "blackboard": bb}
 
-    def _run_node(self, node: PlanNode, bb: Blackboard) -> bool:
+    def _run_plan_node(self, node: PlanNode, bb: Blackboard) -> bool:
+        """Run a PlanNode with execution control parameters."""
         # Evaluate PlanNode-level condition
         if node.condition and not self._safe_eval(node.condition, bb):
-            self.logger(f"Skipping node {node.kind} due to not fulfilled condition={node.condition}")
+            self.logger(f"Skipping PlanNode {node.kind} due to not fulfilled condition={node.condition}")
             return True
 
+        attempts = node.retry + 1
+        for i in range(attempts):
+            self.logger(f"Executing PlanNode {node.kind} attempt {i+1}/{attempts}")
+            ok = self._execute_plan_node_with_timeout(node, bb)
+            if ok and self._check_success(node, bb):
+                self.logger(f"PlanNode {node.kind} succeeded on attempt {i+1}/{attempts}")
+                return True
+            self.logger(f"PlanNode {node.kind} failed on attempt {i+1}/{attempts}")
+
+        if node.on_fail:
+            self.logger(f"Executing on_fail branch for PlanNode {node.kind}")
+            # Prevent nested on_fail to avoid infinite loops
+            node.on_fail.on_fail = None
+            # Execute the on_fail branch but ignore its result and return False
+            self._run_plan_node(node.on_fail, bb)
+
+        return False
+
+    def _execute_plan_node_with_timeout(self, node: PlanNode, bb: Blackboard) -> bool:
+        """Check if timeout needs to be considered for executing the PlanNode logic."""
+        if node.timeout_ms:
+            try:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(self._execute_plan_node, node, bb)
+                    return future.result(timeout=node.timeout_ms / 1000.0)
+            except concurrent.futures.TimeoutError:
+                self.logger(f"PlanNode {node.kind} timed out after {node.timeout_ms} ms")
+                return False
+        else:
+            return self._execute_plan_node(node, bb)
+
+    def _execute_plan_node(self, node: PlanNode, bb: Blackboard) -> bool:
+        """Execute a PlanNode, which can be SEQUENCE or PARALLEL."""
         if node.kind == "SEQUENCE":
             for step in node.steps:
                 if not self._run_step(step, bb):
@@ -58,7 +98,7 @@ class PlanExecutor:
                 results = [f.result() for f in futures]
             return all(results)
 
-        self.logger(f"Unknown node kind {node.kind}, skipping")
+        self.logger(f"Unknown PlanNode kind {node.kind}, skipping")
         return True
 
     def _run_step(self, step: Step, bb: Blackboard) -> bool:
@@ -77,23 +117,24 @@ class PlanExecutor:
             # Save output to blackboard
             bb[step.tool] = out
             # Check if the step succeeded
-            if ok and self._check_success(step, bb):
+            if ok and self._check_success(step, bb, is_step=True):
                 return True
             else:
                 self.logger(f"Step {step.tool} attempt {i+1}/{attempts} failed")
 
         return False
 
-    def _check_success(self, step: Step, bb: Blackboard) -> bool:
+    def _check_success(self, entity: Step | PlanNode, bb: Blackboard, is_step: bool = False) -> bool:
         """Evaluate success criteria expression."""
-        if not step.success_criteria:
+        if not entity.success_criteria:
             # No criteria means any finishing is success
             return True
-        if self._safe_eval(step.success_criteria, bb):
-            self.logger(f"Step {step.tool} succeeded with criteria={step.success_criteria}")
+        log_value = entity.tool if is_step else entity.kind
+        if self._safe_eval(entity.success_criteria, bb):
+            self.logger(f"Entity '{log_value}' succeeded with criteria={entity.success_criteria}")
             return True
         else:
-            self.logger(f"Step {step.tool} failed with criteria={step.success_criteria}")
+            self.logger(f"Entity '{log_value}' failed with criteria={entity.success_criteria}")
         return False
 
     def _safe_eval(self, expr: str, bb: Blackboard) -> bool:
