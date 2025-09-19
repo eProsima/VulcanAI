@@ -21,7 +21,7 @@ Kind = Literal["SEQUENCE","PARALLEL"]
 
 @dataclass
 class Step:
-    """Atomic execution unit bound to a ToolInterface."""
+    """Atomic execution unit bound to a ITool."""
     # Associated tool
     tool: str = None
     # Tool arguments

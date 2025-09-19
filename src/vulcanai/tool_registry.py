@@ -20,13 +20,13 @@ from pathlib import Path
 from types import ModuleType
 from typing import Dict, Tuple, Type
 
-from vulcanai.tools import ToolInterface
+from vulcanai.tools import ITool
 from vulcanai.embedder import SBERTEmbedder
 
 
-def vulcanai_tool(cls: Type[ToolInterface]):
-    if not issubclass(cls, ToolInterface):
-        raise TypeError(f"{cls.__name__} must inherit from ToolInterface")
+def vulcanai_tool(cls: Type[ITool]):
+    if not issubclass(cls, ITool):
+        raise TypeError(f"{cls.__name__} must inherit from ITool")
     setattr(cls, "__is_vulcanai_tool__", True)
     return cls
 
@@ -35,7 +35,7 @@ class ToolRegistry:
     """Holds all known tools and performs vector search over metadata."""
     def __init__(self, embedder=None):
         # Dictionary of tool name -> tool instance
-        self.tools: Dict[str, ToolInterface] = {}
+        self.tools: Dict[str, ITool] = {}
         # Embedding model for tool metadata
         self.embedder = embedder or SBERTEmbedder()
         # Simple in-memory index of (name, embedding)
@@ -43,7 +43,7 @@ class ToolRegistry:
         # List of modules where tools can be loaded from
         self._loaded_modules: list[ModuleType] = []
 
-    def register_tool(self, tool: ToolInterface):
+    def register_tool(self, tool: ITool):
         """Register a single tool instance."""
         # Avoid duplicates
         if tool.name in self.tools:
@@ -58,7 +58,7 @@ class ToolRegistry:
         for module in self._loaded_modules:
             for name in dir(module):
                 tool = getattr(module, name, None)
-                if isinstance(tool, type) and issubclass(tool, ToolInterface):
+                if isinstance(tool, type) and issubclass(tool, ITool):
                     if getattr(tool, "__is_vulcanai_tool__", False):
                         self.register_tool(tool())
 
@@ -95,7 +95,7 @@ class ToolRegistry:
         # NOTE: Implement a small client that calls tool_info and constructs a proxy
         ...
 
-    def top_k(self, query: str, k: int = 5) -> list[ToolInterface]:
+    def top_k(self, query: str, k: int = 5) -> list[ITool]:
         """Return top-k tools most relevant to the query."""
         if not self._index:
             print("No tools registered.")
@@ -121,6 +121,6 @@ class ToolRegistry:
         return [self.tools[name] for name in names]
 
     @staticmethod
-    def _doc(tool: ToolInterface) -> str:
+    def _doc(tool: ITool) -> str:
         # Text used for embeddings
         return f"{tool.name}\n{tool.description}\n{tool.tags}\n{tool.input_schema}\n"

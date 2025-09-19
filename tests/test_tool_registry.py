@@ -33,7 +33,7 @@ class TestToolRegistry(unittest.TestCase):
 
         # Keep references we need
         self.ToolRegistry = tool_registry_mod.ToolRegistry
-        self.ToolInterface = tools_mod.ToolInterface
+        self.ITool = tools_mod.ITool
 
         # Lightweight embedder matching expected API
         class LocalDummyEmbedder:
@@ -47,7 +47,7 @@ class TestToolRegistry(unittest.TestCase):
         self.Embedder = LocalDummyEmbedder
 
         # Define dummy tools inside setUp to use imported base class
-        class NavTool(self.ToolInterface):
+        class NavTool(self.ITool):
             name = "go_to_pose"
             description = "Navigate robot to a target location"
             tags = ["navigation", "goal", "go", "move"]
@@ -56,7 +56,7 @@ class TestToolRegistry(unittest.TestCase):
             version = "0.1"
             def run(self, **kwargs):
                 return {"arrived": True}
-        class DetectTool(self.ToolInterface):
+        class DetectTool(self.ITool):
             name = "detect_object"
             description = "Detect an object in the environment"
             tags = ["vision", "perception"]
@@ -65,7 +65,7 @@ class TestToolRegistry(unittest.TestCase):
             version = "0.1"
             def run(self, **kwargs):
                 return {"found": True}
-        class SpeakTool(self.ToolInterface):
+        class SpeakTool(self.ITool):
             name = "speak"
             description = "Speak a text string"
             tags = ["speech", "text"]

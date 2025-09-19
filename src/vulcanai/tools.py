@@ -16,7 +16,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
 
-class ToolInterface(ABC):
+class ITool(ABC):
     """
     Abstract class containing base metadata every tool must provide.
     All tools must inherit from this interface to ensure consistency during LLMs calls.
@@ -42,11 +42,11 @@ class ToolInterface(ABC):
         ...
 
 
-class AtomicTool(ToolInterface):
+class AtomicTool(ITool):
     """Atomic tool with a single capability."""
     pass
 
-class CompositeTool(ToolInterface):
+class CompositeTool(ITool):
     """
     Composite tool used to define more complex actions.
     It reuses existing tools and their capabilities, which must be listed as dependencies.
