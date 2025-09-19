@@ -98,6 +98,7 @@ class PlanExecutor:
                 results = [f.result() for f in futures]
             return all(results)
 
+        # Pydantic should have validated this already
         self.logger(f"Unknown PlanNode kind {node.kind}, skipping")
         return True
 

@@ -12,7 +12,8 @@ keywords = ["Robotics", "LLM", "VLM", "VLA", "Vulcanexus", "ROS2"]
 requires-python = ">=3.10, <4"
 dependencies = [
     "numpy==2.2.6",
-    "sentence-transformers==5.1.0"
+    "sentence-transformers==5.1.0",
+    "openai==1.108.0",
 ]
 
 [project.urls]
