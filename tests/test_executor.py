@@ -99,6 +99,38 @@ class TestPlanExecutor(unittest.TestCase):
             def run(self, **kwargs):
                 time.sleep(kwargs.get("duration", 1))
                 return {"slept": True}
+        class FlakyTool(self.AtomicTool):
+            name = "flaky"
+            description = "A tool that fails a few times before succeeding"
+            tags = ["flaky"]
+            input_schema = {}
+            output_schema = {"succeeded": "bool"}
+            version = "0.1"
+            def __init__(self):
+                super().__init__()
+                self.attempts = 0
+            def run(self, **kwargs):
+                self.attempts += 1
+                if self.attempts < 3:
+                    raise RuntimeError("Simulated failure")
+                return {"succeeded": True}
+        # This tool can be instantiated directly to allow resetting attempts
+        self.FlakyTool = FlakyTool
+
+        class CriteriaTool(self.AtomicTool):
+            name = "criteria_tool"
+            description = "A tool that returns a numeric value"
+            tags = ["criteria"]
+            input_schema = {}
+            output_schema = {"value": "int"}
+            version = "0.1"
+            def __init__(self, return_value):
+                super().__init__()
+                self.return_value = return_value
+            def run(self, **kwargs):
+                return {"value": self.return_value}
+        # This tool can be instantiated directly to allow modifying returned value
+        self.CriteriaTool = CriteriaTool
 
         self.registry.register_tool(NavTool())
         self.registry.register_tool(DetectTool())
@@ -271,21 +303,6 @@ class TestPlanExecutor(unittest.TestCase):
 
     def test_step_with_retries(self):
         """Test that a step with retries is attempted the specified number of times upon failure."""
-        class FlakyTool(self.AtomicTool):
-            name = "flaky"
-            description = "A tool that fails a few times before succeeding"
-            tags = ["flaky"]
-            input_schema = {}
-            output_schema = {"succeeded": "bool"}
-            version = "0.1"
-            def __init__(self):
-                super().__init__()
-                self.attempts = 0
-            def run(self, **kwargs):
-                self.attempts += 1
-                if self.attempts < 3:
-                    raise RuntimeError("Simulated failure")
-                return {"succeeded": True}
         plan = self.GlobalPlan(
             plan=[
                 self.PlanNode(
@@ -298,7 +315,7 @@ class TestPlanExecutor(unittest.TestCase):
         )
 
         r = self.ToolRegistry(embedder=self.Embedder)
-        flaky_tool = FlakyTool()
+        flaky_tool = self.FlakyTool()
         r.register_tool(flaky_tool)
         flaky_exec = self.PlanExecutor(r)
 
@@ -324,18 +341,6 @@ class TestPlanExecutor(unittest.TestCase):
 
     def test_step_with_criteria(self):
         """Test that a step with success criteria evaluates output correctly."""
-        class CriteriaTool(self.AtomicTool):
-            name = "criteria_tool"
-            description = "A tool that returns a numeric value"
-            tags = ["criteria"]
-            input_schema = {}
-            output_schema = {"value": "int"}
-            version = "0.1"
-            def __init__(self, return_value):
-                super().__init__()
-                self.return_value = return_value
-            def run(self, **kwargs):
-                return {"value": self.return_value}
         plan = self.GlobalPlan(
             plan=[
                 self.PlanNode(
@@ -349,7 +354,7 @@ class TestPlanExecutor(unittest.TestCase):
 
         r = self.ToolRegistry(embedder=self.Embedder)
         # First test with a value that does not meet criteria
-        r.register_tool(CriteriaTool(return_value=5))
+        r.register_tool(self.CriteriaTool(return_value=5))
         criteria_exec = self.PlanExecutor(r)
 
         result = criteria_exec.run(plan)
@@ -360,7 +365,7 @@ class TestPlanExecutor(unittest.TestCase):
 
         # Now test with a value that meets criteria
         r = self.ToolRegistry(embedder=self.Embedder)
-        r.register_tool(CriteriaTool(return_value=15))
+        r.register_tool(self.CriteriaTool(return_value=15))
         criteria_exec = self.PlanExecutor(r)
 
         result = criteria_exec.run(plan)
@@ -389,6 +394,220 @@ class TestPlanExecutor(unittest.TestCase):
         plan.plan[0].steps[0].timeout_ms = 4000
         result = self.exec.run(plan)
         self.assertTrue(result["success"])
+
+    def test_plan_node_with_false_condition(self):
+        """Test that a PlanNode with a False condition is skipped."""
+        plan = self.GlobalPlan(
+            plan=[
+                self.PlanNode(
+                    kind="SEQUENCE",
+                    steps=[
+                        self.Step(tool="speak", args={"text": "This should be skipped"}),
+                    ],
+                    condition="False",
+                )
+            ],
+        )
+
+        result = self.exec.run(plan)
+        self.assertTrue(result["success"])
+        bb = result["blackboard"]
+        self.assertNotIn("speak", bb)  # Step was skipped
+
+    def test_plan_node_with_true_condition(self):
+        """Test that a PlanNode with a True condition executes."""
+        plan = self.GlobalPlan(
+            plan=[
+                self.PlanNode(
+                    kind="SEQUENCE",
+                    steps=[
+                        self.Step(tool="speak", args={"text": "This should be spoken"}),
+                    ],
+                    condition="True",
+                )
+            ],
+        )
+
+        result = self.exec.run(plan)
+        self.assertTrue(result["success"])
+        bb = result["blackboard"]
+        self.assertIn("speak", bb)
+        self.assertTrue(bb["speak"]["spoken"])
+
+    def test_plan_node_with_criteria(self):
+        """Test that a PlanNode with success criteria evaluates output correctly."""
+        plan = self.GlobalPlan(
+            plan=[
+                self.PlanNode(
+                    kind="SEQUENCE",
+                    steps=[
+                        self.Step(tool="criteria_tool", args={}),
+                    ],
+                    success_criteria="{{bb.criteria_tool.value}} >= 10",
+                )
+            ],
+        )
+
+        r = self.ToolRegistry(embedder=self.Embedder)
+        # First test with a value that does not meet criteria
+        r.register_tool(self.CriteriaTool(return_value=5))
+        criteria_exec = self.PlanExecutor(r)
+
+        result = criteria_exec.run(plan)
+        self.assertFalse(result["success"])
+        bb = result["blackboard"]
+        self.assertIn("criteria_tool", bb)
+        self.assertEqual(bb["criteria_tool"]["value"], 5)
+
+        # Now test with a value that meets criteria
+        r = self.ToolRegistry(embedder=self.Embedder)
+        r.register_tool(self.CriteriaTool(return_value=15))
+        criteria_exec = self.PlanExecutor(r)
+
+        result = criteria_exec.run(plan)
+        self.assertTrue(result["success"])
+        bb = result["blackboard"]
+        self.assertIn("criteria_tool", bb)
+        self.assertEqual(bb["criteria_tool"]["value"], 15)
+
+    def test_plan_node_with_retries(self):
+        """Test that a PlanNode with retries is attempted the specified number of times upon failure."""
+        plan = self.GlobalPlan(
+            plan=[
+                self.PlanNode(
+                    kind="SEQUENCE",
+                    steps=[
+                        self.Step(tool="flaky", args={}),
+                    ],
+                    retry=1,
+                )
+            ],
+        )
+
+        r = self.ToolRegistry(embedder=self.Embedder)
+        flaky_tool = self.FlakyTool()
+        r.register_tool(flaky_tool)
+        flaky_exec = self.PlanExecutor(r)
+
+        # Fail after 1 retry (2 attempts total)
+        result = flaky_exec.run(plan)
+        self.assertFalse(result["success"])
+        bb = result["blackboard"]
+        self.assertIn("flaky", bb)
+        self.assertFalse(bb["flaky"])
+        # Check that the step was retried
+        self.assertEqual(flaky_tool.attempts, 2)
+
+        # Success after 2 retries (3 attempts total)
+        print("Resetting flaky tool attempts and increasing PlanNode retries")
+        flaky_tool.attempts = 0  # Reset attempts
+        plan.plan[0].retry = 2
+        result = flaky_exec.run(plan)
+        self.assertTrue(result["success"])
+        bb = result["blackboard"]
+        self.assertIn("flaky", bb)
+        self.assertTrue(bb["flaky"]["succeeded"])
+        # Check that the step was retried
+        self.assertEqual(flaky_tool.attempts, 3)
+
+    def test_plan_node_with_timeout(self):
+        """Test that a PlanNode with a timeout fails if execution exceeds the limit."""
+        plan = self.GlobalPlan(
+            plan=[
+                self.PlanNode(
+                    kind="SEQUENCE",
+                    steps=[
+                        self.Step(tool="sleep", args={"duration": 3}),
+                    ],
+                    timeout_ms=2000,
+                )
+            ],
+        )
+
+        # Test with timeout that causes failure
+        result = self.exec.run(plan)
+        self.assertFalse(result["success"])
+        # Increase timeout and test for success
+        plan.plan[0].timeout_ms = 4000
+        result = self.exec.run(plan)
+        self.assertTrue(result["success"])
+
+    def test_plan_node_with_unknown_kind(self):
+        """Test that a PlanNode with an unknown kind is skipped with a warning."""
+        plan = self.GlobalPlan(
+            plan=[
+                self.PlanNode(
+                    kind="UNKNOWN",
+                    steps=[
+                        self.Step(tool="speak", args={"text": "This should be skipped"}),
+                    ],
+                )
+            ],
+        )
+
+        result = self.exec.run(plan)
+        self.assertTrue(result["success"])
+        bb = result["blackboard"]
+        self.assertNotIn("speak", bb)  # Step was skipped
+
+    def test_plan_node_with_on_fail(self):
+        """Test that a PlanNode with on_fail executes the on_fail node upon failure."""
+        plan = self.GlobalPlan(
+            plan=[
+                self.PlanNode(
+                    kind="SEQUENCE",
+                    steps=[
+                        self.Step(tool="criteria_tool", args={}),
+                    ],
+                    success_criteria="{{bb.criteria_tool.value}} >= 10",
+                    on_fail=self.PlanNode(
+                        kind="SEQUENCE",
+                        steps=[
+                            self.Step(tool="speak", args={"text": "The criteria tool failed."}),
+                        ],
+                    ),
+                )
+            ],
+        )
+
+        # Register criteria tool that fails the criteria
+        self.registry.register_tool(self.CriteriaTool(return_value=5))
+        on_fail_exec = self.PlanExecutor(self.registry)
+
+        result = on_fail_exec.run(plan)
+        self.assertFalse(result["success"])
+        bb = result["blackboard"]
+        self.assertIn("criteria_tool", bb)
+        self.assertEqual(bb["criteria_tool"]["value"], 5)
+        # Check that the on_fail step executed
+        self.assertIn("speak", bb)
+        self.assertTrue(bb["speak"]["spoken"])
+
+    def test_plan_stops_if_middle_step_fails(self):
+        plan = self.GlobalPlan(
+            plan=[
+                self.PlanNode(
+                    kind="SEQUENCE",
+                    steps=[
+                        self.Step(tool="speak", args=[self.Arg(key="text", val="Hello")]),
+                        self.Step(tool="flaky", args=[], retry=0),  # This will fail
+                        self.Step(tool="speak", args=[self.Arg(key="text", val="This should not be spoken")]),
+                    ],
+                )
+            ],
+        )
+
+        self.registry.register_tool(self.FlakyTool())
+        exec = self.PlanExecutor(self.registry)
+
+        result = exec.run(plan)
+        self.assertFalse(result["success"])
+        bb = result["blackboard"]
+        self.assertIn("flaky", bb)
+        self.assertFalse(bb["flaky"])
+        # Check that the second step was not executed
+        self.assertIn("speak", bb)
+        self.assertEqual(bb["speak"]["spoken_text"], "Hello")
 
 
 if __name__ == "__main__":
