@@ -90,7 +90,16 @@ class TestPlanExecutor(unittest.TestCase):
             output_schema = {"spoken": "bool"}
             version = "0.1"
             def run(self, **kwargs):
-                return {"spoken": True}
+                return {"spoken": True, "spoken_text": kwargs.get("text", "")}
+        class ListTool(self.AtomicTool):
+            name = "output_list"
+            description = "Output a list of items"
+            tags = ["output", "list"]
+            input_schema = []
+            output_schema = {"output": "list"}
+            version = "0.1"
+            def run(self, **kwargs):
+                return {"output": ["apple", "banana", "cherry"]}
         class SleepTool(self.AtomicTool):
             name = "sleep"
             description = "Sleep for a specified duration"
@@ -137,6 +146,7 @@ class TestPlanExecutor(unittest.TestCase):
         self.registry.register_tool(NavTool())
         self.registry.register_tool(DetectTool())
         self.registry.register_tool(SpeakTool())
+        self.registry.register_tool(ListTool())
         self.registry.register_tool(SleepTool())
 
         self.exec = self.PlanExecutor(self.registry)
@@ -276,6 +286,30 @@ class TestPlanExecutor(unittest.TestCase):
         self.assertTrue(bb["speak"]["spoken"])
         self.assertIn("go_to_pose", bb)
         self.assertTrue(bb["go_to_pose"]["arrived"])
+
+        # Test substitution of an element of a list in the blackboard
+        plan = self.GlobalPlan(
+            plan=[
+                self.PlanNode(
+                    kind="SEQUENCE",
+                    steps=[
+                        self.Step(tool="output_list", args=[]),
+                        self.Step(tool="speak",
+                            args=[self.Arg(key="text", val="First item is {{bb.output_list.output[0]}}")],
+                        ),
+                    ],
+                )
+            ],
+        )
+
+        result = self.exec.run(plan)
+        self.assertTrue(result["success"])
+        bb = result["blackboard"]
+        self.assertIn("output_list", bb)
+        self.assertEqual(bb["output_list"]["output"], ["apple", "banana", "cherry"])
+        self.assertIn("speak", bb)
+        self.assertTrue(bb["speak"]["spoken"])
+        self.assertEqual(bb["speak"]["spoken_text"], "First item is apple")
 
     def test_parallel_node_execution(self):
         """Test that a parallel PlanNode executes all steps and collects their results."""

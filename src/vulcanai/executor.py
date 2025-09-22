@@ -166,11 +166,8 @@ class PlanExecutor:
         """Replace {{bb.key}} placeholders with actual values."""
         bound = []
         for arg in args:
-            if isinstance(arg.val, str) and arg.val.startswith("{{bb.") and arg.val.endswith("}}"):
-                val = self._get_from_bb(arg.val, bb)
-                bound.append(ArgValue(key=arg.key, val=val))
-            else:
-                bound.append(arg)
+            arg.val = self._make_bb_subs(arg.val, bb)
+            bound.append(arg)
         return bound
 
     def _get_from_bb(self, path: str, bb: Blackboard) -> Any:
@@ -178,7 +175,20 @@ class PlanExecutor:
         keys = path.replace("{{", "").replace("}}", "").replace("bb.", "").split(".")
         val = bb
         for key in keys:
-            val = val.get(key, None) if isinstance(val, dict) else None
+            if "[" in key and "]" in key:
+                base, idx = key[:-1].split("[")
+                val = val.get(base, None) if isinstance(val, dict) else None
+                if isinstance(val, list):
+                    try:
+                        val = val[int(idx)]
+                    except (IndexError, ValueError):
+                        val = None
+                        break
+                else:
+                    val = None
+                    break
+            else:
+                val = val.get(key, None) if isinstance(val, dict) else None
         return val
 
     def _call_tool(self, tool_name: str, args: List[ArgValue], timeout_ms: int = None) -> Tuple[bool, Any]:
