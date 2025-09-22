@@ -20,15 +20,55 @@ from pathlib import Path
 from types import ModuleType
 from typing import Dict, Tuple, Type
 
+from vulcanai.plan_types import ArgValue
 from vulcanai.tools import ITool
 from vulcanai.embedder import SBERTEmbedder
 
 
 def vulcanai_tool(cls: Type[ITool]):
+    """Class decorator to mark a class as a VulcanAI tool."""
     if not issubclass(cls, ITool):
         raise TypeError(f"{cls.__name__} must inherit from ITool")
     setattr(cls, "__is_vulcanai_tool__", True)
     return cls
+
+
+class HelpTool(ITool):
+    """A tool that provides help information."""
+    name = "help"
+    description = "Provides help information for using the library. It can list all available tools or" \
+                    " give info about the usage of a specific tool if <tool_name> is provided as an argument."
+    tags = ["help", "info", "documentation", "usage", "developer", "manual", "available tools"]
+    input_schema = [("tool", "string")]
+    output_schema = {"info": "str"}
+    version = "0.1"
+
+    available_tools: Dict[str, ITool] = {}
+
+    def run(self, **kwargs):
+        help_msg = (
+            "This is the VulcanAI help tool. Use it to get information about available tools.\n"
+            "Example queries:\n"
+            "  - 'List all available tools'\n"
+            "  - 'Provide info about the detect_pose tool'\n\n"
+            "Info requested:\n"
+        )
+
+        tool_name = kwargs.get("tool")
+        if tool_name:
+            tool = self.available_tools.get(tool_name)
+            if tool:
+                help_msg += f"\nTool: {tool.name}: {tool.description}\n"
+                help_msg += f"  Inputs: {tool.input_schema}\n  Outputs: {tool.output_schema}\n"
+                help_msg += f"  Tags: {tool.tags}\n  Version: {tool.version}\n"
+            else:
+                help_msg += f"\nNo tool found with the name '{tool_name}'."
+        else:
+            help_msg += "\nAvailable tools:\n"
+            for tool in self.available_tools.values():
+                help_msg += f"- {tool.name}: {tool.description}\n"
+
+        return help_msg
 
 
 class ToolRegistry:
@@ -42,6 +82,9 @@ class ToolRegistry:
         self._index: list[Tuple[str, np.ndarray]] = []
         # List of modules where tools can be loaded from
         self._loaded_modules: list[ModuleType] = []
+        # Add help_tool to registry but not to index
+        self.help_tool = HelpTool()
+        self.tools[self.help_tool.name] = self.help_tool
 
     def register_tool(self, tool: ITool):
         """Register a single tool instance."""
@@ -52,6 +95,7 @@ class ToolRegistry:
         emb = self.embedder.embed(self._doc(tool))
         self._index.append((tool.name, emb))
         print(f"Registered tool: {tool.name}")
+        self.help_tool.available_tools = self.tools
 
     def register(self):
         """Register all loaded classes marked with @vulcanai_tool."""
@@ -82,6 +126,7 @@ class ToolRegistry:
         """Load tools from a Python file and register them."""
         self.load_tools_from_file(path)
         self.register()
+        self.help_tool.available_tools = self.tools
 
     def discover_tools_from_entry_points(self, group: str = "custom_tools"):
         """Load tools from Python entry points."""
@@ -89,6 +134,7 @@ class ToolRegistry:
             module = importlib.import_module(ep.module)
             self._loaded_modules.append(module)
         self.register()
+        self.help_tool.available_tools = self.tools
 
     def discover_ros(self):
         # Query ROS graph for /<tool>/tool_info services and register dynamically
@@ -118,6 +164,8 @@ class ToolRegistry:
         scores.sort(reverse=True, key=lambda x: x[0])
         print("Scores:", scores)
         names = [name for _, name in scores[:k]]
+        # Add help tool as it always available
+        names.append("help")
         return [self.tools[name] for name in names]
 
     @staticmethod

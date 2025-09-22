@@ -91,7 +91,7 @@ class TestToolRegistry(unittest.TestCase):
     def test_top_k_returns_expected_count(self):
         """Test that top_k returns up to k tools."""
         res = self.registry.top_k("go to the room", k=2)
-        self.assertEqual(len(res), 2)
+        self.assertEqual(len(res), 2+1)  # +1 for help tool
 
     def test_top_k_returns_registered_instances(self):
         """Test that top_k returns only registered tool instances."""
@@ -104,7 +104,11 @@ class TestToolRegistry(unittest.TestCase):
         """Test that top_k on empty registry returns empty list."""
         r = self.ToolRegistry(embedder=self.Embedder())
         res = r.top_k("anything", k=3)
+        # When no tools are registered, only the help tool is present.
+        # However, top_k will return an empty list because a tool registry with only the help tool
+        # has no purpose and should report an error.
         self.assertEqual(res, [])
+        self.assertEqual(len(r.tools), 1)  # Only help tool
 
     def test_k_greater_than_tools(self):
         """Test that k greater than number of tools returns all tools skipping embedding."""
@@ -122,24 +126,24 @@ class TestToolRegistry(unittest.TestCase):
         r.register_tool(self.SpeakTool())
         self.assertEqual(r.embedder.embed_call_count, 3)
         res = r.top_k("go to the room", k=10)
-        self.assertEqual(len(res), 3)
+        self.assertEqual(len(res), 3+1)  # +1 for help tool
         # Check that self.embedder.embed has not been called during top_k
         self.assertEqual(r.embedder.embed_call_count, 3)
         res = r.top_k("detect", k=2)
-        self.assertEqual(len(res), 2)
+        self.assertEqual(len(res), 2+1)  # +1 for help tool
         self.assertEqual(r.embedder.embed_call_count, 4)
 
     # Test registers
     def test_register_tool(self):
         """Test that tools can be registered and are present in the registry."""
         r = self.ToolRegistry(embedder=self.Embedder())
-        self.assertEqual(len(r.tools), 0)
+        self.assertEqual(len(r.tools), 0+1)  # +1 for help tool
         r.register_tool(self.NavTool())
-        self.assertEqual(len(r.tools), 1)
+        self.assertEqual(len(r.tools), 1+1)  # +1 for help tool
         r.register_tool(self.DetectTool())
-        self.assertEqual(len(r.tools), 2)
+        self.assertEqual(len(r.tools), 2+1)  # +1 for help tool
         r.register_tool(self.SpeakTool())
-        self.assertEqual(len(r.tools), 3)
+        self.assertEqual(len(r.tools), 3+1)  # +1 for help tool
         print(r.tools)
         self.assertIn("go_to_pose", r.tools)
         self.assertIn("detect_object", r.tools)
@@ -150,13 +154,12 @@ class TestToolRegistry(unittest.TestCase):
         # Register tools from test_tools.py
         self.registry.discover_tools_from_file(os.path.join(CURRENT_DIR, "resources", "test_tools.py"))
         print(len(self.registry.tools))
-        self.assertEqual(len(self.registry.tools), 6)
+        self.assertEqual(len(self.registry.tools), 6+1)  # +1 for help tool
 
     def test_register_tool_from_nonexistent_file(self):
         r = self.ToolRegistry(embedder=self.Embedder())
         r.discover_tools_from_file("/path/does/not/exist.py")
-        print(r.tools)
-        self.assertEqual(len(r.tools), 0)
+        self.assertEqual(len(r.tools), 0+1)  # +1 for help tool
 
 
 if __name__ == "__main__":
