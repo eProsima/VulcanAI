@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from pydantic import BaseModel, Field
-from typing import List, Optional, Literal, Union
+from typing import List, Literal, Optional, Union
 
 
 Kind = Literal["SEQUENCE","PARALLEL"]
@@ -38,7 +38,7 @@ class Step(BaseModel):
     condition: Optional[str] = None
     success_criteria: Optional[str] = None
     timeout_ms: Optional[int] = None
-    retry: Optional[int] = 0
+    retry: int = 0
 
 
 class PlanNode(BaseModel):
@@ -54,7 +54,7 @@ class PlanNode(BaseModel):
     condition: Optional[str] = None
     success_criteria: Optional[str] = None
     timeout_ms: Optional[int] = None
-    retry: Optional[int] = 0
+    retry: int = 0
     on_fail: Optional["PlanNode"] = None
 
 

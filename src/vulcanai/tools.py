@@ -38,6 +38,8 @@ class ITool(ABC):
     # Enable ROS 2 dynamic discovery of this tool
     # This will create a ROS 2 service with the tool metadata
     enable_ros_discovery: bool = False
+    # Blackboard shared memory (injected at execution time)
+    bb: Optional[Dict[str, Any]] = None
 
     @abstractmethod
     def run(self, **kwargs) -> Dict[str, Any]:

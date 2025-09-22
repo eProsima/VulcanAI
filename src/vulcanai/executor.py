@@ -53,7 +53,7 @@ class PlanExecutor:
             self.logger(f"Skipping PlanNode {node.kind} due to not fulfilled condition={node.condition}")
             return True
 
-        attempts = node.retry + 1
+        attempts = node.retry + 1 if node.retry else 1
         for i in range(attempts):
             self.logger(f"Executing PlanNode {node.kind} attempt {i+1}/{attempts}")
             ok = self._execute_plan_node_with_timeout(node, bb)
@@ -111,10 +111,10 @@ class PlanExecutor:
         # Bind args with blackboard placeholders
         args = self._bind_args(step.args, bb)
 
-        attempts = step.retry + 1
+        attempts = step.retry + 1 if step.retry else 1
         for i in range(attempts):
             # Call the tool
-            ok, out = self._call_tool(step.tool, args, timeout_ms=step.timeout_ms)
+            ok, out = self._call_tool(step.tool, args, timeout_ms=step.timeout_ms, bb=bb)
             # Save output to blackboard
             bb[step.tool] = out
             # Check if the step succeeded
@@ -191,7 +191,7 @@ class PlanExecutor:
                 val = val.get(key, None) if isinstance(val, dict) else None
         return val
 
-    def _call_tool(self, tool_name: str, args: List[ArgValue], timeout_ms: int = None) -> Tuple[bool, Any]:
+    def _call_tool(self, tool_name: str, args: List[ArgValue], timeout_ms: int = None, bb: Blackboard = None) -> Tuple[bool, Any]:
         """Invoke a registered tool."""
         tool = self.registry.tools.get(tool_name)
         if not tool:
@@ -200,6 +200,7 @@ class PlanExecutor:
 
         # Convert args list to dict
         arg_dict = {a.key: a.val for a in args}
+        tool.bb = bb
 
         start = time.time()
         try:
