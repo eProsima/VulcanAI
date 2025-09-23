@@ -64,3 +64,33 @@ class GlobalPlan(BaseModel):
     plan: List[PlanNode] = Field(default_factory=list)
     # Brief summary of the plan
     summary: Optional[str] = None
+
+    def __str__(self) -> str:
+        lines = []
+        if self.summary:
+            lines.append(f"- [bold]Plan Summary[/bold]: {self.summary}\n")
+
+        for i, node in enumerate(self.plan, 1):
+            lines.append(f"- PlanNode {i}: kind={node.kind}")
+            if node.condition:
+                lines.append(f"    Condition: {node.condition}")
+            if node.retry:
+                lines.append(f"    Retry: {node.retry}")
+            if node.timeout_ms:
+                lines.append(f"    Timeout: {node.timeout_ms} ms")
+            if node.success_criteria:
+                lines.append(f"    Success Criteria: {node.success_criteria}")
+            if node.on_fail:
+                lines.append(f"    On Fail: {node.on_fail.kind} with {len(node.on_fail.steps)} steps")
+            for j, step in enumerate(node.steps, 1):
+                arg_str = ", ".join([f"{a.key}={a.val}" for a in step.args]) if step.args else "no args"
+                lines.append(f"    Step {j}: {step.tool}({arg_str})")
+                if step.condition:
+                    lines.append(f"      Condition: {step.condition}")
+                if step.retry:
+                    lines.append(f"      Retry: {step.retry}")
+                if step.timeout_ms:
+                    lines.append(f"      Timeout: {step.timeout_ms} ms")
+                if step.success_criteria:
+                    lines.append(f"      Success Criteria: {step.success_criteria}")
+        return "\n".join(lines)

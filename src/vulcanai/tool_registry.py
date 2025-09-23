@@ -20,9 +20,10 @@ from pathlib import Path
 from types import ModuleType
 from typing import Dict, Tuple, Type
 
+from vulcanai.embedder import SBERTEmbedder
+from vulcanai.logger import VulcanAILogger
 from vulcanai.plan_types import ArgValue
 from vulcanai.tools import ITool
-from vulcanai.embedder import SBERTEmbedder
 
 
 def vulcanai_tool(cls: Type[ITool]):
@@ -73,7 +74,9 @@ class HelpTool(ITool):
 
 class ToolRegistry:
     """Holds all known tools and performs vector search over metadata."""
-    def __init__(self, embedder=None):
+    def __init__(self, embedder=None, logger=None):
+        # Logging function
+        self.logger = logger or VulcanAILogger().log_registry
         # Dictionary of tool name -> tool instance
         self.tools: Dict[str, ITool] = {}
         # Embedding model for tool metadata
@@ -94,7 +97,7 @@ class ToolRegistry:
         self.tools[tool.name] = tool
         emb = self.embedder.embed(self._doc(tool))
         self._index.append((tool.name, emb))
-        print(f"Registered tool: {tool.name}")
+        self.logger(f"Registered tool: {tool.name}")
         self.help_tool.available_tools = self.tools
 
     def register(self):
@@ -120,7 +123,7 @@ class ToolRegistry:
             spec.loader.exec_module(module)
             self._loaded_modules.append(module)
         except Exception as e:
-            print(f"Error loading tools from {path}: {e}")
+            self.logger(f"Error loading tools from {path}: {e}", error=True)
 
     def discover_tools_from_file(self, path: str):
         """Load tools from a Python file and register them."""
@@ -144,7 +147,7 @@ class ToolRegistry:
     def top_k(self, query: str, k: int = 5) -> list[ITool]:
         """Return top-k tools most relevant to the query."""
         if not self._index:
-            print("No tools registered.")
+            self.logger("No tools registered.", error=True)
             return []
 
         # If k > number of tools, return all
@@ -154,15 +157,10 @@ class ToolRegistry:
         q_vec = self.embedder.embed(query)
         scores = []
         for name, vec in self._index:
-            # Cosine similarity
-            sim = float(np.dot(q_vec, vec) / (np.linalg.norm(q_vec) * np.linalg.norm(vec) + 1e-8))
-            print(f"Cosine Similarity [{name}]: {sim}")
-            scores.append((sim, name))
-            print(f"Similarity built-in: {self.embedder.similarity(q_vec, vec)}")
+            scores.append((self.embedder.similarity(q_vec, vec), name))
 
         # Sort by similarity
         scores.sort(reverse=True, key=lambda x: x[0])
-        print("Scores:", scores)
         names = [name for _, name in scores[:k]]
         # Add help tool as it always available
         names.append("help")

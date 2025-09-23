@@ -13,9 +13,13 @@
 # limitations under the License.
 
 import concurrent.futures
+import contextlib
+import io
 import re
 import time
 from typing import Dict, Any, Tuple, List
+
+from vulcanai.logger import VulcanAILogger
 from vulcanai.plan_types import GlobalPlan, PlanNode, Step, ArgValue
 
 
@@ -29,7 +33,7 @@ class PlanExecutor:
 
     def __init__(self, registry, logger=None):
         self.registry = registry
-        self.logger = logger or print
+        self.logger = logger or VulcanAILogger().log_executor
 
     def run(self, plan: GlobalPlan) -> Dict[str, Any]:
         """
@@ -55,12 +59,11 @@ class PlanExecutor:
 
         attempts = node.retry + 1 if node.retry else 1
         for i in range(attempts):
-            self.logger(f"Executing PlanNode {node.kind} attempt {i+1}/{attempts}")
             ok = self._execute_plan_node_with_timeout(node, bb)
             if ok and self._check_success(node, bb):
                 self.logger(f"PlanNode {node.kind} succeeded on attempt {i+1}/{attempts}")
                 return True
-            self.logger(f"PlanNode {node.kind} failed on attempt {i+1}/{attempts}")
+        self.logger(f"PlanNode {node.kind} failed on attempt {i+1}/{attempts}", error=True)
 
         if node.on_fail:
             self.logger(f"Executing on_fail branch for PlanNode {node.kind}")
@@ -99,13 +102,13 @@ class PlanExecutor:
             return all(results)
 
         # Pydantic should have validated this already
-        self.logger(f"Unknown PlanNode kind {node.kind}, skipping")
+        self.logger(f"Unknown PlanNode kind {node.kind}, skipping", error=True)
         return True
 
     def _run_step(self, step: Step, bb: Blackboard) -> bool:
         # Evaluate Step-level condition
         if step.condition and not self._safe_eval(step.condition, bb):
-            self.logger(f"Skipping step {step.tool} due to condition={step.condition}")
+            self.logger(f"Skipping step [italic]'{step.tool}'[/italic] due to condition={step.condition}")
             return True
 
         # Bind args with blackboard placeholders
@@ -121,7 +124,7 @@ class PlanExecutor:
             if ok and self._check_success(step, bb, is_step=True):
                 return True
             else:
-                self.logger(f"Step {step.tool} attempt {i+1}/{attempts} failed")
+                self.logger(f"Step [italic]'{step.tool}'[/italic] attempt {i+1}/{attempts} failed")
 
         return False
 
@@ -195,7 +198,7 @@ class PlanExecutor:
         """Invoke a registered tool."""
         tool = self.registry.tools.get(tool_name)
         if not tool:
-            self.logger(f"Tool {tool_name} not found")
+            self.logger(f"Tool [italic]'{tool_name}'[/italic] not found", error=True)
             return False, None
 
         # Convert args list to dict
@@ -203,19 +206,25 @@ class PlanExecutor:
         tool.bb = bb
 
         start = time.time()
+        buff = io.StringIO()
         try:
-            if timeout_ms:
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(tool.run, **arg_dict)
-                    result = future.result(timeout=timeout_ms / 1000)
-            else:
-                result = tool.run(**arg_dict)
+            self.logger(f"Invoking [italic]'{tool_name}'[/italic] with args: [italic]'{arg_dict}'[/italic]")
+            with contextlib.redirect_stdout(buff):
+                if timeout_ms:
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                        future = executor.submit(tool.run, **arg_dict)
+                        result = future.result(timeout=timeout_ms / 1000)
+                else:
+                    result = tool.run(**arg_dict)
+            tool_log = buff.getvalue().strip()
+            if tool_log:
+                self.logger(f"{tool_log}", tool=True, tool_name=tool_name)
             elapsed = (time.time() - start) * 1000
-            self.logger(f"Executed {tool_name} in {elapsed:.1f} ms with result: {result}")
+            self.logger(f"Executed [italic]'{tool_name}'[/italic] in {elapsed:.1f} ms with result: {result}")
             return True, result
         except concurrent.futures.TimeoutError:
-            self.logger(f"Execution of {tool_name} timed out after {timeout_ms} ms")
+            self.logger(f"Execution of [italic]'{tool_name}'[/italic] timed out after {timeout_ms} ms")
             return False, None
         except Exception as e:
-            self.logger(f"Execution failed for {tool_name}: {e}")
+            self.logger(f"Execution failed for [italic]'{tool_name}'[/italic]: {e}")
             return False, None

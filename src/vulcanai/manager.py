@@ -17,17 +17,18 @@ from typing import Any, Dict, Optional, Tuple
 from vulcanai.executor import PlanExecutor
 from vulcanai.tool_registry import ToolRegistry
 from vulcanai.llm_agent import LLMAgent
+from vulcanai.logger import VulcanAILogger
 
 
 class ToolManager:
     """Manages the LLM Agent and calls the executor with the LLM output."""
     def __init__(self, model: str, registry: Optional[ToolRegistry]=None, k: int=10, logger=None):
-        self.logger = logger or print
+        self.logger = logger or VulcanAILogger().log_manager
         self.llm = LLMAgent(model, self.logger)
         self.k = k
-        self.registry = registry or ToolRegistry()
+        self.registry = registry or ToolRegistry(logger=(logger or VulcanAILogger().log_registry))
         # self.validator = PlanValidator(registry)
-        self.executor = PlanExecutor(self.registry, self.logger)
+        self.executor = PlanExecutor(self.registry, logger=(logger or VulcanAILogger().log_executor))
 
     def register_tool(self, tool):
         """Wrapper for registering a single tool."""
@@ -54,6 +55,7 @@ class ToolManager:
 
         # Query LLM
         plan = self.llm.inference(system_prompt, user_prompt)
+        self.logger(f"Plan received:\n{plan}")
 
         # Execute
         result = self.executor.run(plan)

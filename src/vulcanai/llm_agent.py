@@ -16,6 +16,7 @@ import time
 from typing import Literal
 from openai import OpenAI
 
+from vulcanai.logger import VulcanAILogger
 from vulcanai.plan_types import GlobalPlan
 
 
@@ -27,7 +28,7 @@ class LLMAgent:
     def __init__(self, model: str, logger=None):
         self.model = model
         self.llm_brand: LLMBrand = "gpt"  # TODO: detect from model string
-        self.logger = logger or print
+        self.logger = logger or VulcanAILogger().log_manager
         self._load_model(model)
 
     def inference(self, system_context: str, user_text: str) -> GlobalPlan:
@@ -36,7 +37,7 @@ class LLMAgent:
             response = self._gpt_inference(system_context, user_text)
             plan: GlobalPlan = response.choices[0].message.parsed
         else:
-            raise NotImplementedError(f"LLM brand {self.llm_brand} not supported yet.")
+            raise NotImplementedError(f"LLM brand {self.llm_brand} not supported.")
 
         return plan
 
@@ -46,10 +47,10 @@ class LLMAgent:
             try:
                 self.llm = OpenAI()
             except Exception as e:
-                self.logger(f"Missing API Key: {e}")
+                self.logger(f"Missing API Key: {e}", error=True)
                 return
         else:
-            raise NotImplementedError(f"LLM brand {self.llm_brand} not supported yet.")
+            raise NotImplementedError(f"LLM brand {self.llm_brand} not supported.")
 
     def _gpt_inference(self, system_prompt: str, user_prompt: str) -> str:
         start = time.time()
