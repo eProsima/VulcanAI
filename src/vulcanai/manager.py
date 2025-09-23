@@ -32,21 +32,37 @@ class ToolManager:
         self.bb = Blackboard()
 
     def register_tool(self, tool):
-        """Wrapper for registering a single tool."""
+        """
+        Wrapper for registering a single tool.
+
+        :param tool: The tool class (ITool) to register.
+        """
         self.registry.register(tool)
 
     def register_tools_from_file(self, path: str):
-        """Wrapper for discovering tools from a file."""
+        """
+        Wrapper for discovering tools from a file.
+
+        :param path: The absolute path to the file containing tool definitions.
+        """
         self.registry.discover_tools_from_file(path)
 
     def register_tools_from_entry_points(self, group: str = "custom_tools"):
-        """Wrapper for discovering tools from entry points."""
+        """
+        Wrapper for discovering tools from entry points.
+
+        :param group: The entry point group name. Default is "custom_tools".
+        """
         self.registry.discover_tools_from_entry_points(group)
 
     def handle_user_request(self, user_text: str, context: Dict[str, Any]) -> Dict[str, Any]:
         """
         Given a natural language request, ask LLM to pick ONE tool and args.
         Then execute it via PlanExecutor.
+
+        :param user_text: The user request in natural language.
+        :param context: Additional context that may help the LLM to choose the best tool.
+        :return: A dictionary with the execution result, including the plan used and the final blackboard state.
         """
         # Build prompt with available tools
         system_prompt, user_prompt = self._build_prompt(user_text, context)
