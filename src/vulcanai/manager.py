@@ -14,7 +14,7 @@
 
 from typing import Any, Dict, Optional, Tuple
 
-from vulcanai.executor import PlanExecutor
+from vulcanai.executor import Blackboard, PlanExecutor
 from vulcanai.tool_registry import ToolRegistry
 from vulcanai.llm_agent import LLMAgent
 from vulcanai.logger import VulcanAILogger
@@ -29,6 +29,7 @@ class ToolManager:
         self.registry = registry or ToolRegistry(logger=(logger or VulcanAILogger().log_registry))
         # self.validator = PlanValidator(registry)
         self.executor = PlanExecutor(self.registry, logger=(logger or VulcanAILogger().log_executor))
+        self.bb = Blackboard()
 
     def register_tool(self, tool):
         """Wrapper for registering a single tool."""
@@ -58,7 +59,7 @@ class ToolManager:
         self.logger(f"Plan received:\n{plan}")
 
         # Execute
-        result = self.executor.run(plan)
+        result = self.executor.run(plan, self.bb)
         return {"plan": plan, **result}
 
     def _build_prompt(self, user_text: str, ctx: Dict[str, Any]) -> Tuple[str, str]:

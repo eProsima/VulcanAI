@@ -173,7 +173,7 @@ class TestPlanExecutor(unittest.TestCase):
             ],
         )
 
-        result = self.exec.run(plan)
+        result = self.exec.run(plan, {})
         self.assertTrue(result["success"])
         bb = result["blackboard"]
         self.assertIn("detect_object", bb)
@@ -195,7 +195,7 @@ class TestPlanExecutor(unittest.TestCase):
                 )
             ]
         )
-        result = self.exec.run(plan)
+        result = self.exec.run(plan, {})
         self.assertTrue(result["success"])
         bb = result["blackboard"]
         self.assertNotIn("speak", bb)
@@ -212,7 +212,7 @@ class TestPlanExecutor(unittest.TestCase):
                 )
             ]
         )
-        result = self.exec.run(plan)
+        result = self.exec.run(plan, {})
         self.assertTrue(result["success"])
         bb = result["blackboard"]
         self.assertIn("speak", bb)
@@ -234,7 +234,7 @@ class TestPlanExecutor(unittest.TestCase):
                 )
             ]
         )
-        result = self.exec.run(plan)
+        result = self.exec.run(plan, {})
         self.assertTrue(result["success"])
         bb = result["blackboard"]
         self.assertIn("detect_object", bb)
@@ -256,7 +256,7 @@ class TestPlanExecutor(unittest.TestCase):
                 )
             ]
         )
-        result = self.exec.run(plan)
+        result = self.exec.run(plan, {})
         self.assertTrue(result["success"])
         bb = result["blackboard"]
         self.assertIn("detect_object", bb)
@@ -277,7 +277,7 @@ class TestPlanExecutor(unittest.TestCase):
                 )
             ]
         )
-        result = self.exec.run(plan)
+        result = self.exec.run(plan, {})
         self.assertTrue(result["success"])
         bb = result["blackboard"]
         self.assertIn("detect_object", bb)
@@ -302,7 +302,7 @@ class TestPlanExecutor(unittest.TestCase):
             ],
         )
 
-        result = self.exec.run(plan)
+        result = self.exec.run(plan, {})
         self.assertTrue(result["success"])
         bb = result["blackboard"]
         self.assertIn("output_list", bb)
@@ -327,7 +327,7 @@ class TestPlanExecutor(unittest.TestCase):
         )
 
         start = time.time()
-        result = self.exec.run(plan)
+        result = self.exec.run(plan, {})
         end = time.time()
         elapsed = end - start
         # Check that total time is just over the longest sleep (3s) not the sum (6s)
@@ -356,7 +356,7 @@ class TestPlanExecutor(unittest.TestCase):
         flaky_exec = self.PlanExecutor(r)
 
         # Fail after 1 retry (2 attempts total)
-        result = flaky_exec.run(plan)
+        result = flaky_exec.run(plan, {})
         self.assertFalse(result["success"])
         bb = result["blackboard"]
         self.assertIn("flaky", bb)
@@ -367,7 +367,7 @@ class TestPlanExecutor(unittest.TestCase):
         # Success after 2 retries (3 attempts total)
         flaky_tool.attempts = 0  # Reset attempts
         plan.plan[0].steps[0].retry = 2
-        result = flaky_exec.run(plan)
+        result = flaky_exec.run(plan, {})
         self.assertTrue(result["success"])
         bb = result["blackboard"]
         self.assertIn("flaky", bb)
@@ -393,7 +393,7 @@ class TestPlanExecutor(unittest.TestCase):
         r.register_tool(self.CriteriaTool(return_value=5))
         criteria_exec = self.PlanExecutor(r)
 
-        result = criteria_exec.run(plan)
+        result = criteria_exec.run(plan, {})
         self.assertFalse(result["success"])
         bb = result["blackboard"]
         self.assertIn("criteria_tool", bb)
@@ -404,7 +404,7 @@ class TestPlanExecutor(unittest.TestCase):
         r.register_tool(self.CriteriaTool(return_value=15))
         criteria_exec = self.PlanExecutor(r)
 
-        result = criteria_exec.run(plan)
+        result = criteria_exec.run(plan, {})
         self.assertTrue(result["success"])
         bb = result["blackboard"]
         self.assertIn("criteria_tool", bb)
@@ -424,11 +424,11 @@ class TestPlanExecutor(unittest.TestCase):
         )
 
         # Test with timeout that causes failure
-        result = self.exec.run(plan)
+        result = self.exec.run(plan, {})
         self.assertFalse(result["success"])
         # Increase timeout and test for success
         plan.plan[0].steps[0].timeout_ms = 4000
-        result = self.exec.run(plan)
+        result = self.exec.run(plan, {})
         self.assertTrue(result["success"])
 
     def test_plan_node_with_false_condition(self):
@@ -445,7 +445,7 @@ class TestPlanExecutor(unittest.TestCase):
             ],
         )
 
-        result = self.exec.run(plan)
+        result = self.exec.run(plan, {})
         self.assertTrue(result["success"])
         bb = result["blackboard"]
         self.assertNotIn("speak", bb)  # Step was skipped
@@ -464,7 +464,7 @@ class TestPlanExecutor(unittest.TestCase):
             ],
         )
 
-        result = self.exec.run(plan)
+        result = self.exec.run(plan, {})
         self.assertTrue(result["success"])
         bb = result["blackboard"]
         self.assertIn("speak", bb)
@@ -489,7 +489,7 @@ class TestPlanExecutor(unittest.TestCase):
         r.register_tool(self.CriteriaTool(return_value=5))
         criteria_exec = self.PlanExecutor(r)
 
-        result = criteria_exec.run(plan)
+        result = criteria_exec.run(plan, {})
         self.assertFalse(result["success"])
         bb = result["blackboard"]
         self.assertIn("criteria_tool", bb)
@@ -500,7 +500,7 @@ class TestPlanExecutor(unittest.TestCase):
         r.register_tool(self.CriteriaTool(return_value=15))
         criteria_exec = self.PlanExecutor(r)
 
-        result = criteria_exec.run(plan)
+        result = criteria_exec.run(plan, {})
         self.assertTrue(result["success"])
         bb = result["blackboard"]
         self.assertIn("criteria_tool", bb)
@@ -526,7 +526,7 @@ class TestPlanExecutor(unittest.TestCase):
         flaky_exec = self.PlanExecutor(r)
 
         # Fail after 1 retry (2 attempts total)
-        result = flaky_exec.run(plan)
+        result = flaky_exec.run(plan, {})
         self.assertFalse(result["success"])
         bb = result["blackboard"]
         self.assertIn("flaky", bb)
@@ -538,7 +538,7 @@ class TestPlanExecutor(unittest.TestCase):
         print("Resetting flaky tool attempts and increasing PlanNode retries")
         flaky_tool.attempts = 0  # Reset attempts
         plan.plan[0].retry = 2
-        result = flaky_exec.run(plan)
+        result = flaky_exec.run(plan, {})
         self.assertTrue(result["success"])
         bb = result["blackboard"]
         self.assertIn("flaky", bb)
@@ -561,11 +561,11 @@ class TestPlanExecutor(unittest.TestCase):
         )
 
         # Test with timeout that causes failure
-        result = self.exec.run(plan)
+        result = self.exec.run(plan, {})
         self.assertFalse(result["success"])
         # Increase timeout and test for success
         plan.plan[0].timeout_ms = 4000
-        result = self.exec.run(plan)
+        result = self.exec.run(plan, {})
         self.assertTrue(result["success"])
 
     def test_plan_node_with_unknown_kind(self):
@@ -609,7 +609,7 @@ class TestPlanExecutor(unittest.TestCase):
         self.registry.register_tool(self.CriteriaTool(return_value=5))
         on_fail_exec = self.PlanExecutor(self.registry)
 
-        result = on_fail_exec.run(plan)
+        result = on_fail_exec.run(plan, {})
         self.assertFalse(result["success"])
         bb = result["blackboard"]
         self.assertIn("criteria_tool", bb)
@@ -635,7 +635,7 @@ class TestPlanExecutor(unittest.TestCase):
         self.registry.register_tool(self.FlakyTool())
         exec = self.PlanExecutor(self.registry)
 
-        result = exec.run(plan)
+        result = exec.run(plan, {})
         self.assertFalse(result["success"])
         bb = result["blackboard"]
         self.assertIn("flaky", bb)
@@ -643,6 +643,27 @@ class TestPlanExecutor(unittest.TestCase):
         # Check that the second step was not executed
         self.assertIn("speak", bb)
         self.assertEqual(bb["speak"]["spoken_text"], "Hello")
+
+    def test_tools_can_access_user_bb_elements(self):
+        """Test that tools can access user-provided blackboard elements."""
+        plan = self.GlobalPlan(
+            plan=[
+                self.PlanNode(
+                    kind="SEQUENCE",
+                    steps=[
+                        self.Step(tool="speak", args=[self.Arg(key="text", val="{{bb.user_topic}}")]),
+                    ],
+                )
+            ],
+        )
+
+        user_bb = {"user_topic": "VulcanAI"}
+        result = self.exec.run(plan, bb=user_bb)
+        self.assertTrue(result["success"])
+        bb = result["blackboard"]
+        self.assertIn("speak", bb)
+        self.assertTrue(bb["speak"]["spoken"])
+        self.assertEqual(bb["speak"]["spoken_text"], "VulcanAI")
 
 
 if __name__ == "__main__":

@@ -35,14 +35,14 @@ class PlanExecutor:
         self.registry = registry
         self.logger = logger or VulcanAILogger().log_executor
 
-    def run(self, plan: GlobalPlan) -> Dict[str, Any]:
+    def run(self, plan: GlobalPlan, bb: Blackboard) -> Dict[str, Any]:
         """
         Execute the entire plan.
 
         :param plan: The @GlobalPlan to execute.
+        :param bb: The blackboard to use for sharing data between steps.
         :return: A dictionary with execution success status and the final blackboard state.
         """
-        bb = Blackboard()
         ok = True
         for node in plan.plan:
             ok = self._run_plan_node(node, bb)
