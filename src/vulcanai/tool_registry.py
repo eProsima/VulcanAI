@@ -23,7 +23,7 @@ from typing import Dict, Tuple, Type
 from vulcanai.embedder import SBERTEmbedder
 from vulcanai.logger import VulcanAILogger
 from vulcanai.plan_types import ArgValue
-from vulcanai.tools import ITool
+from vulcanai.tools import ITool, CompositeTool
 
 
 def vulcanai_tool(cls: Type[ITool]):
@@ -89,7 +89,7 @@ class ToolRegistry:
         self.help_tool = HelpTool()
         self.tools[self.help_tool.name] = self.help_tool
 
-    def register_tool(self, tool: ITool):
+    def register_tool(self, tool: ITool, solve_deps: bool = True):
         """Register a single tool instance."""
         # Avoid duplicates
         if tool.name in self.tools:
@@ -99,17 +99,39 @@ class ToolRegistry:
         self._index.append((tool.name, emb))
         self.logger(f"Registered tool: {tool.name}")
         self.help_tool.available_tools = self.tools
+        if solve_deps:
+            # Get class of tool
+            if issubclass(type(tool), CompositeTool):
+                self._resolve_dependencies(tool)
 
     def register(self):
         """Register all loaded classes marked with @vulcanai_tool."""
+        composite_classes = []
         for module in self._loaded_modules:
             for name in dir(module):
                 tool = getattr(module, name, None)
                 if isinstance(tool, type) and issubclass(tool, ITool):
                     if getattr(tool, "__is_vulcanai_tool__", False):
-                        self.register_tool(tool())
+                        if issubclass(tool, CompositeTool):
+                            composite_classes.append(tool)
+                        else:
+                            self.register_tool(tool(), solve_deps=False)
+        # Register composite tools after atomic ones to resolve dependencies
+        for tool_cls in composite_classes:
+            tool = tool_cls()
+            self.register_tool(tool, solve_deps=True)
 
-    def load_tools_from_file(self, path: str):
+    def _resolve_dependencies(self, tool: CompositeTool):
+        """Resolve and attach dependencies for a CompositeTool."""
+        for dep_name in tool.dependencies:
+            dep_tool = self.tools.get(dep_name)
+            if dep_tool is None:
+                self.logger(f"Dependency '{dep_name}' for tool '{tool.name}' not found.", error=True)
+            else:
+                tool.resolved_deps[dep_name] = dep_tool
+
+
+    def _load_tools_from_file(self, path: str):
         """Dynamically load a Python file with @vulcanai_tool classes."""
         try:
             path = Path(path)
@@ -127,7 +149,7 @@ class ToolRegistry:
 
     def discover_tools_from_file(self, path: str):
         """Load tools from a Python file and register them."""
-        self.load_tools_from_file(path)
+        self._load_tools_from_file(path)
         self.register()
         self.help_tool.available_tools = self.tools
 

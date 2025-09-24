@@ -58,3 +58,9 @@ class CompositeTool(ITool):
     """
     # Names of tools this composite tool depends on
     dependencies: list[str] = []
+    # Resolved tool instances (injected at execution time)
+    resolved_deps: dict[str, "ITool"]
+
+    def __init__(self):
+        super().__init__()
+        self.resolved_deps = {}

@@ -34,7 +34,8 @@ class TestToolRegistry(unittest.TestCase):
 
         # Keep references we need
         self.ToolRegistry = tool_registry_mod.ToolRegistry
-        self.ITool = tools_mod.ITool
+        self.AtomicTool = tools_mod.AtomicTool
+        self.CompositeTool = tools_mod.CompositeTool
         self.Arg = plan_types_mod.ArgValue
 
         # Lightweight embedder matching expected API
@@ -49,7 +50,7 @@ class TestToolRegistry(unittest.TestCase):
         self.Embedder = LocalDummyEmbedder
 
         # Define dummy tools inside setUp to use imported base class
-        class NavTool(self.ITool):
+        class NavTool(self.AtomicTool):
             name = "go_to_pose"
             description = "Navigate robot to a target location"
             tags = ["navigation", "goal", "go", "move"]
@@ -58,7 +59,7 @@ class TestToolRegistry(unittest.TestCase):
             version = "0.1"
             def run(self, **kwargs):
                 return {"arrived": True}
-        class DetectTool(self.ITool):
+        class DetectTool(self.AtomicTool):
             name = "detect_object"
             description = "Detect an object in the environment"
             tags = ["vision", "perception"]
@@ -67,7 +68,7 @@ class TestToolRegistry(unittest.TestCase):
             version = "0.1"
             def run(self, **kwargs):
                 return {"found": True}
-        class SpeakTool(self.ITool):
+        class SpeakTool(self.AtomicTool):
             name = "speak"
             description = "Speak a text string"
             tags = ["speech", "text"]
@@ -76,11 +77,22 @@ class TestToolRegistry(unittest.TestCase):
             version = "0.1"
             def run(self, **kwargs):
                 return {"spoken": True}
+        class ComplexTool(self.CompositeTool):
+            name = "complex_action"
+            description = "A complex action using multiple tools"
+            tags = ["complex", "action"]
+            input_schema = [("param", "string")]
+            output_schema = {"result": "bool"}
+            version = "0.1"
+            dependencies = ["go_to_pose", "detect_object", "speak"]
+            def run(self, **kwargs):
+                return {"result": True}
 
         # Save for use
         self.NavTool = NavTool
         self.DetectTool = DetectTool
         self.SpeakTool = SpeakTool
+        self.ComplexTool = ComplexTool
 
         # Build registry with dummy embedder and register tools
         self.registry = self.ToolRegistry(embedder=self.Embedder())
@@ -144,7 +156,6 @@ class TestToolRegistry(unittest.TestCase):
         self.assertEqual(len(r.tools), 2+1)  # +1 for help tool
         r.register_tool(self.SpeakTool())
         self.assertEqual(len(r.tools), 3+1)  # +1 for help tool
-        print(r.tools)
         self.assertIn("go_to_pose", r.tools)
         self.assertIn("detect_object", r.tools)
         self.assertIn("speak", r.tools)
@@ -153,13 +164,82 @@ class TestToolRegistry(unittest.TestCase):
     def test_register_tool_from_file(self):
         # Register tools from test_tools.py
         self.registry.discover_tools_from_file(os.path.join(CURRENT_DIR, "resources", "test_tools.py"))
-        print(len(self.registry.tools))
-        self.assertEqual(len(self.registry.tools), 6+1)  # +1 for help tool
+        self.assertEqual(len(self.registry.tools), 6+1)  # +1 for help tool (3 existing + 3 new)
 
     def test_register_tool_from_nonexistent_file(self):
         r = self.ToolRegistry(embedder=self.Embedder())
         r.discover_tools_from_file("/path/does/not/exist.py")
         self.assertEqual(len(r.tools), 0+1)  # +1 for help tool
+
+    def test_register_composite_tool_solves_deps(self):
+        """Test that registering a composite tool correctly resolves its dependencies."""
+        # Check that the composite tool has no resolved deps before registration
+        self.assertEqual(len(self.registry.tools), 3+1)  # +1 for help tool
+        self.assertEqual(len(self.ComplexTool().dependencies), 3)
+        self.assertEqual(len(self.ComplexTool().resolved_deps), 0)
+        # Register the composite tool
+        self.registry.register_tool(self.ComplexTool())
+        self.assertEqual(len(self.registry.tools), 4+1)  # +1 for help tool
+        self.assertIn("complex_action", self.registry.tools)
+        self.assertEqual(len(self.registry.tools.get("complex_action").resolved_deps), 3)
+
+    def test_register_composite_tool_fails_reports_error(self):
+        """Test that registering a composite tool reports an error if there are no dependencies."""
+        import io
+        import re
+        buf = io.StringIO()
+        sys.stdout = buf
+        # Check that the composite tool has no resolved deps before registration
+        r = self.ToolRegistry(embedder=self.Embedder())
+        self.assertEqual(len(r.tools), 0+1)  # +1 for help tool
+        self.assertEqual(len(self.ComplexTool().dependencies), 3)
+        self.assertEqual(len(self.ComplexTool().resolved_deps), 0)
+        # Register the composite tool
+        r.register_tool(self.ComplexTool())
+        self.assertEqual(len(r.tools), 1+1)  # +1 for help tool
+        self.assertIn("complex_action", r.tools)
+        self.assertEqual(len(self.ComplexTool().resolved_deps), 0)
+        # Capture output to check for error messages
+        sys.stdout = sys.__stdout__  # Reset stdout
+        output = buf.getvalue()
+        output = re.sub(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "", output)  # Remove ANSI codes
+        self.assertIn("Dependency 'go_to_pose' for tool 'complex_action' not found", output)
+        self.assertIn("Dependency 'detect_object' for tool 'complex_action' not found", output)
+        self.assertIn("Dependency 'speak' for tool 'complex_action' not found", output)
+
+    def test_register_composite_tool_solves_deps_from_file(self):
+        """Test that registering a composite tool from file correctly resolves its dependencies."""
+        import io
+        import re
+        r = self.ToolRegistry(embedder=self.Embedder())
+        buf = io.StringIO()
+        sys.stdout = buf
+        r.discover_tools_from_file(os.path.join(CURRENT_DIR, "resources", "test_tools.py"))
+        r.discover_tools_from_file(os.path.join(CURRENT_DIR, "resources", "test_composite_tool.py"))
+        sys.stdout = sys.__stdout__  # Reset stdout
+        output = buf.getvalue()
+        output = re.sub(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "", output)  # Remove ANSI codes
+        self.assertNotIn("Dependency 'file_tool' for tool 'complex_file_action' not found", output)
+        self.assertNotIn("Dependency 'new_file_tool' for tool 'complex_file_action' not found", output)
+        self.assertNotIn("Dependency 'other_file_tool' for tool 'complex_file_action' not found", output)
+        self.assertEqual(len(r.tools), 4+1) # +1 for help tool
+
+    def test_register_composite_tool_fails_from_file(self):
+        """Test that registering a composite tool from file reports an error if there are no dependencies."""
+        import io
+        import re
+        buf = io.StringIO()
+        sys.stdout = buf
+        # Register tool from test_composite_tool.py and expect errors for missing deps
+        r = self.ToolRegistry(embedder=self.Embedder())
+        r.discover_tools_from_file(os.path.join(CURRENT_DIR, "resources", "test_composite_tool.py"))
+        sys.stdout = sys.__stdout__  # Reset stdout
+        output = buf.getvalue()
+        output = re.sub(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "", output)  # Remove ANSI codes
+        self.assertIn("Dependency 'file_tool' for tool 'complex_file_action' not found", output)
+        self.assertIn("Dependency 'new_file_tool' for tool 'complex_file_action' not found", output)
+        self.assertIn("Dependency 'other_file_tool' for tool 'complex_file_action' not found", output)
+        self.assertEqual(len(r.tools), 1+1)  # +1 for help tool
 
 
 if __name__ == "__main__":

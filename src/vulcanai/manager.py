@@ -31,13 +31,13 @@ class ToolManager:
         self.executor = PlanExecutor(self.registry, logger=(logger or VulcanAILogger().log_executor))
         self.bb = Blackboard()
 
-    def register_tool(self, tool):
+    def register_tool(self, tool, solve_deps: bool = True):
         """
         Wrapper for registering a single tool.
 
         :param tool: The tool class (ITool) to register.
         """
-        self.registry.register(tool)
+        self.registry.register_tool(tool, solve_deps=solve_deps)
 
     def register_tools_from_file(self, path: str):
         """
