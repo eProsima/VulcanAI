@@ -1,5 +1,17 @@
+# Editor files
 .vscode
-__pycache__/
-*.egg-info
-build/
+*.vim
+*.bak
+*.diff
+.project
 
+# Python files
+build
+build-*
+_build
+__pycache__/
+dist
+*.egg-info
+.caches
+pip-wheel-metadata
+.python-version
