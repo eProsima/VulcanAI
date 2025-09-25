@@ -75,21 +75,32 @@ class VulcanConsole:
         if cmd == "/help":
             help_msg = (
                 "Available commands:\n"
-                "/help  - Show this help message\n"
-                "/tools - List available tools\n"
-                "/plan  - Show the last generated plan\n"
-                "/bb    - Show the last blackboard state\n"
-                "/clear - Clear the console screen\n"
-                "exit   - Exit the console\n"
+                "/help           - Show this help message\n"
+                "/tools          - List available tools\n"
+                "/change_k <int> - Change the 'k' value for the top_k algorithm selection\n"
+                "/plan           - Show the last generated plan\n"
+                "/rerun          - Rerun the last plan\n"
+                "/bb             - Show the last blackboard state\n"
+                "/clear          - Clear the console screen\n"
+                "exit            - Exit the console\n"
                 "Query any other text to process it with the LLM and execute the plan generated."
             )
             self.print(help_msg)
 
         elif cmd == "/tools":
-            help_msg = "\nAvailable tools:\n"
+            help_msg = f"\nAvailable tools (current index k={self.manager.k}):\n"
             for tool in self.manager.registry.tools.values():
                 help_msg += f"- {tool.name}: {tool.description}\n"
             self.print(help_msg)
+
+        elif cmd.startswith("/change_k"):
+            parts = cmd.split()
+            if len(parts) != 2 or not parts[1].isdigit():
+                self.print(f"[error]Usage: /change_k <int>[/error] - Actual k is {self.manager.k}")
+                return
+            new_k = int(parts[1])
+            self.manager.k = new_k
+            self.print(f"[console]Changed k to {new_k}[/console]")
 
         elif cmd == "/plan":
             if self.last_plan:
@@ -97,6 +108,15 @@ class VulcanConsole:
                 console.print(self.last_plan)
             else:
                 self.print("No plan has been generated yet.")
+
+        elif cmd == "/rerun":
+            if self.last_plan:
+                self.print("Rerunning last plan...")
+                result = self.manager.executor.run(self.last_plan, self.manager.bb)
+                self.last_bb = result.get("blackboard", None)
+                self.print(f"Output of rerun: {result.get('blackboard', {None})}")
+            else:
+                self.print("No plan to rerun.")
 
         elif cmd == "/bb":
             if self.last_bb:
