@@ -27,12 +27,12 @@ class PlanManager(ToolManager):
         Override the template generation method to allow multiple PlanNodes and Steps.
         """
         template = """
-You are a planner assistant controlling a robot.
+You are a planner assistant controlling a robotic system.
 Your job is to take a user request and generate a valid execution plan,
 containing one or more steps grouped into one or more PlanNodes.
 Use PlanNodes to group steps that need to be executed together, either in sequence or in parallel, to
 achieve sub-goals.
-
+{user_context}
 ## Available tools:
 {tools_text}
 

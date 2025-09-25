@@ -30,6 +30,7 @@ class ToolManager:
         # self.validator = PlanValidator(registry)
         self.executor = PlanExecutor(self.registry, logger=(logger or VulcanAILogger().log_executor))
         self.bb = Blackboard()
+        self.user_context = ""
 
     def register_tool(self, tool, solve_deps: bool = True):
         """
@@ -55,6 +56,14 @@ class ToolManager:
         """
         self.registry.discover_tools_from_entry_points(group)
 
+    def add_user_context(self, context: str):
+        """
+        Add additional context to be included in the prompt.
+
+        :param context: The context string to add.
+        """
+        self.user_context = context
+
     def handle_user_request(self, user_text: str, context: Dict[str, Any]) -> Dict[str, Any]:
         """
         Given a natural language request, ask LLM to pick ONE tool and args.
@@ -78,6 +87,17 @@ class ToolManager:
         result = self.executor.run(plan, self.bb)
         return {"plan": plan, **result}
 
+    def _parse_user_context(self) -> str:
+        """
+        Parse the user context into a string format suitable for the prompt.
+
+        :param context: The user context in string format.
+        :return: A formatted string representing the user context.
+        """
+        if not self.user_context:
+            return ""
+        return f"\n## User context:\n{self.user_context}\n"
+
     def _build_prompt(self, user_text: str, ctx: Dict[str, Any]) -> Tuple[str, str]:
         """
         Create a simple prompt listing available tools and asking for one.
@@ -91,22 +111,22 @@ class ToolManager:
         tool_descriptions = []
         for tool in tools:
             tool_descriptions.append(
-                f"- **{tool.name}**: {tool.description}\n"
+                f"- *{tool.name}*: {tool.description}\n"
                 f"  Inputs: {tool.input_schema}\n"
                 f"  Outputs: {tool.output_schema}\n"
             )
         tools_text = "\n".join(tool_descriptions)
-
+        user_context = self._parse_user_context()
         user_prompt = "User request:\n" + user_text
 
-        return self._get_prompt_template().format(tools_text=tools_text), user_prompt
+        return self._get_prompt_template().format(tools_text=tools_text, user_context=user_context), user_prompt
 
     def _get_prompt_template(self) -> str:
         template = """
-You are a planner assistant controlling a robot.
+You are a planner assistant controlling a robotic system.
 Your job is to take a user request and generate a valid execution plan, containing only ONE step.
 Be sure to understand the text received and select the best action command from the available options.
-
+{user_context}
 ## Available tools:
 {tools_text}
 
