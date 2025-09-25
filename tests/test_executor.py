@@ -72,6 +72,7 @@ class TestPlanExecutor(unittest.TestCase):
             output_schema = {"arrived": "bool"}
             version = "0.1"
             def run(self, **kwargs):
+                print(f"Run method of NavTool called with args: {kwargs}")
                 return {"arrived": True}
         class DetectTool(self.AtomicTool):
             name = "detect_object"

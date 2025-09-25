@@ -40,7 +40,7 @@ class VulcanAILogger:
         if error:
             msg = f"[error][EXECUTOR] [ERROR][/error] {msg}"
         elif tool:
-            VulcanAILogger().log_tool(msg, tool_name=tool_name)
+            self.log_tool(msg, tool_name=tool_name)
             return
         else:
             msg = f"[executor][EXECUTOR][/executor] {msg}"

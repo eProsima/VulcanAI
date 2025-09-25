@@ -97,7 +97,7 @@ class PlanExecutor:
 
         if node.kind == "PARALLEL":
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                futures = [executor.submit(self._run_step, step, bb) for step in node.steps]
+                futures = [executor.submit(self._run_step, step, bb, parallel=True) for step in node.steps]
                 results = [f.result() for f in futures]
             return all(results)
 
@@ -105,7 +105,7 @@ class PlanExecutor:
         self.logger(f"Unknown PlanNode kind {node.kind}, skipping", error=True)
         return True
 
-    def _run_step(self, step: Step, bb: Blackboard) -> bool:
+    def _run_step(self, step: Step, bb: Blackboard, parallel: bool = False) -> bool:
         # Evaluate Step-level condition
         if step.condition and not self._safe_eval(step.condition, bb):
             self.logger(f"Skipping step [italic]'{step.tool}'[/italic] due to condition={step.condition}")
@@ -117,7 +117,7 @@ class PlanExecutor:
         attempts = step.retry + 1 if step.retry else 1
         for i in range(attempts):
             # Call the tool
-            ok, out = self._call_tool(step.tool, args, timeout_ms=step.timeout_ms, bb=bb)
+            ok, out = self._call_tool(step.tool, args, timeout_ms=step.timeout_ms, bb=bb, parallel=parallel)
             # Save output to blackboard
             bb[step.tool] = out
             # Check if the step succeeded
@@ -194,7 +194,12 @@ class PlanExecutor:
                 val = val.get(key, None) if isinstance(val, dict) else None
         return val
 
-    def _call_tool(self, tool_name: str, args: List[ArgValue], timeout_ms: int = None, bb: Blackboard = None) -> Tuple[bool, Any]:
+    def _call_tool(self,
+                   tool_name: str,
+                   args: List[ArgValue],
+                   timeout_ms: int = None,
+                   bb: Blackboard = None,
+                   parallel: bool = False) -> Tuple[bool, Any]:
         """Invoke a registered tool."""
         tool = self.registry.tools.get(tool_name)
         if not tool:
@@ -206,17 +211,28 @@ class PlanExecutor:
         tool.bb = bb
 
         start = time.time()
-        buff = io.StringIO()
+        self.logger(f"Invoking [italic]'{tool_name}'[/italic] with args: [italic]'{arg_dict}'[/italic]")
+        tool_log = ""
         try:
-            self.logger(f"Invoking [italic]'{tool_name}'[/italic] with args: [italic]'{arg_dict}'[/italic]")
-            with contextlib.redirect_stdout(buff):
-                if timeout_ms:
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            if timeout_ms:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    if parallel:
                         future = executor.submit(tool.run, **arg_dict)
                         result = future.result(timeout=timeout_ms / 1000)
-                else:
+                    else:
+                        buff = io.StringIO()
+                        with contextlib.redirect_stdout(buff):
+                            future = executor.submit(tool.run, **arg_dict)
+                            result = future.result(timeout=timeout_ms / 1000)
+                        tool_log = buff.getvalue().strip()
+            else:
+                if parallel:
                     result = tool.run(**arg_dict)
-            tool_log = buff.getvalue().strip()
+                else:
+                    buff = io.StringIO()
+                    with contextlib.redirect_stdout(buff):
+                        result = tool.run(**arg_dict)
+                    tool_log = buff.getvalue().strip()
             if tool_log:
                 self.logger(f"{tool_log}", tool=True, tool_name=tool_name)
             elapsed = (time.time() - start) * 1000
