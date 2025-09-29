@@ -11,6 +11,7 @@ license = { file = "LICENSE" }
 keywords = ["Robotics", "LLM", "VLM", "VLA", "Vulcanexus", "ROS2"]
 requires-python = ">=3.10, <4"
 dependencies = [
+    "google-genai==1.39.0",
     "numpy==2.2.6",
     "openai==1.108.0",
     "prompt_toolkit==3.0.52",
