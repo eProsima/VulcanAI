@@ -41,12 +41,12 @@ class Step(BaseModel):
     retry: int = 0
 
 
-class PlanNode(BaseModel):
+class PlanBase(BaseModel):
     """
-    A node that defines a plan which is composed of one or more steps and
+    A base class that defines a plan which is composed of one or more steps and
     has execution control parameters.
     """
-    # Sequence or parallel execution of children
+    # SEQUENCE or PARALLEL execution of children
     kind: Kind
     # Child nodes
     steps: List[Step] = Field(default_factory=list)
@@ -55,7 +55,13 @@ class PlanNode(BaseModel):
     success_criteria: Optional[str] = None
     timeout_ms: Optional[int] = None
     retry: int = 0
-    on_fail: Optional["PlanNode"] = None
+
+
+class PlanNode(PlanBase):
+    """
+    Final plan node with optional failure handling.
+    """
+    on_fail: Optional["PlanBase"] = None
 
 
 class GlobalPlan(BaseModel):

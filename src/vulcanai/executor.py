@@ -20,7 +20,7 @@ import time
 from typing import Dict, Any, Tuple, List
 
 from vulcanai.logger import VulcanAILogger
-from vulcanai.plan_types import GlobalPlan, PlanNode, Step, ArgValue
+from vulcanai.plan_types import GlobalPlan, PlanBase, Step, ArgValue
 
 
 class Blackboard(dict):
@@ -50,7 +50,7 @@ class PlanExecutor:
                 break
         return {"success": ok, "blackboard": bb}
 
-    def _run_plan_node(self, node: PlanNode, bb: Blackboard) -> bool:
+    def _run_plan_node(self, node: PlanBase, bb: Blackboard) -> bool:
         """Run a PlanNode with execution control parameters."""
         # Evaluate PlanNode-level condition
         if node.condition and not self._safe_eval(node.condition, bb):
@@ -67,14 +67,12 @@ class PlanExecutor:
 
         if node.on_fail:
             self.logger(f"Executing on_fail branch for PlanNode {node.kind}")
-            # Prevent nested on_fail to avoid infinite loops
-            node.on_fail.on_fail = None
             # Execute the on_fail branch but ignore its result and return False
             self._run_plan_node(node.on_fail, bb)
 
         return False
 
-    def _execute_plan_node_with_timeout(self, node: PlanNode, bb: Blackboard) -> bool:
+    def _execute_plan_node_with_timeout(self, node: PlanBase, bb: Blackboard) -> bool:
         """Check if timeout needs to be considered for executing the PlanNode logic."""
         if node.timeout_ms:
             try:
@@ -87,7 +85,7 @@ class PlanExecutor:
         else:
             return self._execute_plan_node(node, bb)
 
-    def _execute_plan_node(self, node: PlanNode, bb: Blackboard) -> bool:
+    def _execute_plan_node(self, node: PlanBase, bb: Blackboard) -> bool:
         """Execute a PlanNode, which can be SEQUENCE or PARALLEL."""
         if node.kind == "SEQUENCE":
             for step in node.steps:
@@ -128,7 +126,7 @@ class PlanExecutor:
 
         return False
 
-    def _check_success(self, entity: Step | PlanNode, bb: Blackboard, is_step: bool = False) -> bool:
+    def _check_success(self, entity: Step | PlanBase, bb: Blackboard, is_step: bool = False) -> bool:
         """Evaluate success criteria expression."""
         if not entity.success_criteria:
             # No criteria means any finishing is success

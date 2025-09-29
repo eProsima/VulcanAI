@@ -37,17 +37,14 @@ class TestPlanExecutor(unittest.TestCase):
         # Keep references
         self.AtomicTool = tools_mod.AtomicTool
         self.ToolRegistry = registry_mod.ToolRegistry
-        GlobalPlan = plan_types_mod.GlobalPlan
-        PlanNode = plan_types_mod.PlanNode
-        Step = plan_types_mod.Step
-        ArgValue = plan_types_mod.ArgValue
         self.PlanExecutor = executor_mod.PlanExecutor
 
         # Expose for tests
-        self.GlobalPlan = GlobalPlan
-        self.PlanNode = PlanNode
-        self.Step = Step
-        self.Arg = ArgValue
+        self.GlobalPlan = plan_types_mod.GlobalPlan
+        self.PlanNode = plan_types_mod.PlanNode
+        self.PlanBase = plan_types_mod.PlanBase
+        self.Step = plan_types_mod.Step
+        self.Arg = plan_types_mod.ArgValue
 
         # Local dummy embedder
         class LocalDummyEmbedder:
@@ -596,7 +593,7 @@ class TestPlanExecutor(unittest.TestCase):
                         self.Step(tool="criteria_tool", args=[]),
                     ],
                     success_criteria="{{bb.criteria_tool.value}} >= 10",
-                    on_fail=self.PlanNode(
+                    on_fail=self.PlanBase(
                         kind="SEQUENCE",
                         steps=[
                             self.Step(tool="speak", args=[self.Arg(key="text", val="The criteria tool failed.")]),
