@@ -140,7 +140,16 @@ class TestPlanExecutor(unittest.TestCase):
                 return {"value": self.return_value}
         # This tool can be instantiated directly to allow modifying returned value
         self.CriteriaTool = CriteriaTool
+        class AddTool(self.AtomicTool):
+            name = "add"
+            description = "Adds two numbers together."
+            input_schema = [("a", "float"), ("b", "float")]
+            output_schema = {"result": "float"}
 
+            def run(self, a: float, b: float):
+                return {"result": a + b}
+
+        self.registry.register_tool(AddTool())
         self.registry.register_tool(NavTool())
         self.registry.register_tool(DetectTool())
         self.registry.register_tool(SpeakTool())
@@ -662,6 +671,29 @@ class TestPlanExecutor(unittest.TestCase):
         self.assertIn("speak", bb)
         self.assertTrue(bb["speak"]["spoken"])
         self.assertEqual(bb["speak"]["spoken_text"], "VulcanAI")
+
+    def test_types_substitution_is_respected(self):
+        """Test that when a bb substitution is used, the types are respected."""
+        plan = self.GlobalPlan(
+            plan=[
+                self.PlanNode(
+                    kind="SEQUENCE",
+                    steps=[
+                        self.Step(tool="criteria_tool", args=[]),  # Outputs 5
+                        self.Step(tool="add", args=[self.Arg(key="a", val='{{bb.criteria_tool.value}}'), self.Arg(key="b", val=3.5)]),
+                    ],
+                )
+            ],
+        )
+
+        criteria_tool = self.CriteriaTool(return_value=5)
+        self.registry.register_tool(criteria_tool)
+        result = self.exec.run(plan, {})
+        self.assertTrue(result["success"])
+        bb = result["blackboard"]
+        self.assertIn("add", bb)
+        self.assertEqual(bb["add"]["result"], 8.5)
+        self.assertTrue(isinstance(bb["add"]["result"], float))
 
 
 if __name__ == "__main__":

@@ -23,6 +23,15 @@ from vulcanai.logger import VulcanAILogger
 from vulcanai.plan_types import GlobalPlan, PlanBase, Step, ArgValue
 
 
+TYPE_CAST = {
+    "float": float,
+    "int": int,
+    "bool": lambda v: v if isinstance(v, bool)
+                      else str(v).strip().lower() in ("1","true","yes","on"),
+    "str": str,
+}
+
+
 class Blackboard(dict):
     """Shared memory for passing outputs between steps."""
     pass
@@ -110,7 +119,9 @@ class PlanExecutor:
             return True
 
         # Bind args with blackboard placeholders
-        args = self._bind_args(step.args, bb)
+        tool = self.registry.tools.get(step.tool)
+        input_schema = tool.input_schema if tool else []
+        args = self._bind_args(step.args, input_schema, bb)
 
         attempts = step.retry + 1 if step.retry else 1
         for i in range(attempts):
@@ -160,14 +171,15 @@ class PlanExecutor:
                     expr = expr.replace(f"{{{{{match}}}}}", str(val))
             return expr
         except Exception as e:
-            self.logger(f"Blackboard substitution failed: {expr} ({e})")
+            self.logger(f"Blackboard substitution failed: {expr} ({e})", error=True)
             return expr
 
-    def _bind_args(self, args: List[ArgValue], bb: Blackboard) -> List[ArgValue]:
+    def _bind_args(self, args: List[ArgValue], schema: List[Tuple[str, str]], bb: Blackboard) -> List[ArgValue]:
         """Replace {{bb.key}} placeholders with actual values."""
         bound = []
         for arg in args:
-            arg.val = self._make_bb_subs(arg.val, bb)
+            bound_arg = self._make_bb_subs(arg.val, bb)
+            arg.val = self._coerce_to_schema(schema, arg.key, bound_arg)
             bound.append(arg)
         return bound
 
@@ -191,6 +203,15 @@ class PlanExecutor:
             else:
                 val = val.get(key, None) if isinstance(val, dict) else None
         return val
+
+    def _coerce_to_schema(self, schema: List[Tuple[str, str]], key: str, arg: str) -> Any:
+        spec = dict(schema)
+        t = spec.get(key, "str")
+        try:
+            out = TYPE_CAST[t](arg)
+        except Exception:
+            out = arg
+        return out
 
     def _call_tool(self,
                    tool_name: str,
