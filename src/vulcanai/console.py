@@ -37,18 +37,23 @@ class VulcanConsole:
                 if user_input.strip().lower() in ("exit", "quit"):
                     break
 
+                # Internal commands start with /<command>
                 if user_input.startswith("/"):
                     self.handle_command(user_input)
                     continue
 
+                # Query LLM
                 with Progress(
                     SpinnerColumn(spinner_name="dots2"),
                     TextColumn("[blue]Querying LLM...[/blue]"),
                     console=console,
                 ) as progress:
                     task = progress.add_task("llm", start=False)
-                    result = self.manager.handle_user_request(user_input, context={})
+                    plan = self.manager.get_plan_from_user_request(user_input, context={})
                     progress.remove_task(task)
+
+                # Execute plan
+                result = self.manager.execute_plan(plan)
 
                 self.last_plan = result.get("plan", None)
                 self.last_bb = result.get("blackboard", None)
