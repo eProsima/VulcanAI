@@ -96,8 +96,7 @@ class LLMAgent:
         self.logger(f"GPT response time: {end - start:.3f} seconds")
         input_tokens = completion.usage.prompt_tokens
         output_tokens = completion.usage.completion_tokens
-        price = (0.05 * input_tokens + 0.4 * output_tokens) / 1000000
-        self.logger(f"Prompt tokens: {input_tokens}, Completion tokens: {output_tokens}. Price: {price} €")
+        self.logger(f"Prompt tokens: {input_tokens}, Completion tokens: {output_tokens}")
 
         return plan
 
