@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import argparse
 from prompt_toolkit import PromptSession
 from rich.progress import Progress, SpinnerColumn, TextColumn
 import os
@@ -19,11 +20,14 @@ import os
 from vulcanai.logger import console
 
 class VulcanConsole:
-    def __init__(self):
+    def __init__(self, model: str = "gpt-5-nano", k: int = 7):
         self.manager = None
         self.session = PromptSession()
         self.last_plan = None
         self.last_bb = None
+
+        self.model = model
+        self.k = k
 
         self.init_manager()
 
@@ -71,9 +75,8 @@ class VulcanConsole:
         from vulcanai.manager_plan import PlanManager
 
         console.print("[console]Initializing Manager...[/console]")
-        model = "gpt-5-nano"
-        self.manager = PlanManager(model=model, k=7)
-        self.print(f"Manager initialized with model '{model}'.")
+        self.manager = PlanManager(model=self.model, k=self.k)
+        self.print(f"Manager initialized with model '{self.model}'.")
 
     def handle_command(self, cmd: str):
         """Procesa comandos internos :tools, :plan, :bb, :clear"""
@@ -142,7 +145,32 @@ class VulcanConsole:
 
 
 def main():
-    console = VulcanConsole()
+    parser = argparse.ArgumentParser(description="VulcanAI Interactive Console")
+    parser.add_argument(
+        "--model", type=str, default="gpt-5-nano",
+        help="LLM model to used in the agent (ej: gpt-5-nano, gemini-2.0-flash, etc.)"
+    )
+    parser.add_argument(
+        "--register-from-file", type=str, nargs="*", default=[],
+        help="Register tools from a python file (or multiple files)"
+    )
+    parser.add_argument(
+        "--register-from-entry-point", type=str, nargs="*", default=[],
+        help="Register tools from a python entry-point (or multiple entry-points)"
+    )
+    parser.add_argument(
+        "-k", type=int, default=7,
+        help="Maximum number of tools to pass to the LLM"
+    )
+
+    args = parser.parse_args()
+    console = VulcanConsole(model=args.model, k=args.k)
+    if args.register_from_file:
+        for file in args.register_from_file:
+            console.manager.register_tools_from_file(file)
+    if args.register_from_entry_point:
+        for entry_point in args.register_from_entry_point:
+            console.manager.register_tools_from_entry_points(entry_point)
     console.run()
 
 
