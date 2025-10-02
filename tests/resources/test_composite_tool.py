@@ -1,7 +1,7 @@
 
-from vulcanai.tool_registry import vulcanai_tool
-from vulcanai.tools import CompositeTool
-from vulcanai.plan_types import ArgValue
+from vulcanai import vulcanai_tool
+from vulcanai import CompositeTool
+from vulcanai import ArgValue
 
 # Register dummy composite tool
 @vulcanai_tool

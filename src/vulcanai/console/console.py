@@ -17,7 +17,7 @@ from prompt_toolkit import PromptSession
 from rich.progress import Progress, SpinnerColumn, TextColumn
 import os
 
-from vulcanai.logger import console
+from vulcanai.console.logger import console
 
 class VulcanConsole:
     def __init__(self, model: str = "gpt-5-nano", k: int = 7):
@@ -85,8 +85,7 @@ class VulcanConsole:
                 break
 
     def init_manager(self):
-        from vulcanai.manager_plan import PlanManager
-
+        from vulcanai.core.manager_plan import PlanManager
         console.print("[console]Initializing Manager...[/console]")
         self.manager = PlanManager(model=self.model, k=self.k)
         self.print(f"Manager initialized with model '{self.model}'.")

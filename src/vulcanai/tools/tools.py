@@ -15,8 +15,6 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Tuple
 
-from vulcanai.plan_types import ArgValue
-
 
 class ITool(ABC):
     """

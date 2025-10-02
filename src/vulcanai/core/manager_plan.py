@@ -14,8 +14,8 @@
 
 from typing import Optional
 
-from vulcanai.tool_registry import ToolRegistry
-from vulcanai.manager import ToolManager
+from vulcanai.tools.tool_registry import ToolRegistry
+from vulcanai.core.manager import ToolManager
 
 class PlanManager(ToolManager):
     """Extension of ToolManager to target complex plan generation."""

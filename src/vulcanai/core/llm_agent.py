@@ -18,8 +18,8 @@ import os
 import time
 from enum import Enum
 
-from vulcanai.logger import VulcanAILogger
-from vulcanai.plan_types import GlobalPlan
+from vulcanai.console.logger import VulcanAILogger
+from vulcanai.core.plan_types import GlobalPlan
 
 
 class LLMBrand(str, Enum):

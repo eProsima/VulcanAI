@@ -19,8 +19,8 @@ import re
 import time
 from typing import Dict, Any, Tuple, List
 
-from vulcanai.logger import VulcanAILogger
-from vulcanai.plan_types import GlobalPlan, PlanBase, Step, ArgValue
+from vulcanai.console.logger import VulcanAILogger
+from vulcanai.core.plan_types import GlobalPlan, PlanBase, Step, ArgValue
 
 
 TYPE_CAST = {
@@ -154,9 +154,9 @@ class PlanExecutor:
         """Evaluate a simple expression against bb."""
         try:
             if expr and isinstance(expr, str):
-                expr = self._make_bb_subs(expr, bb)
+                sub_expr = self._make_bb_subs(expr, bb)
                 # Eval does not correctly evaluate dot notation with nested dicts
-                return bool(eval(expr))
+                return bool(eval(sub_expr))
         except Exception as e:
             self.logger(f"Condition evaluation failed: {expr} ({e})")
         return False

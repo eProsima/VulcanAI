@@ -1,7 +1,7 @@
 
-from vulcanai.tool_registry import vulcanai_tool
-from vulcanai.tools import AtomicTool
-from vulcanai.plan_types import ArgValue
+from vulcanai import vulcanai_tool
+from vulcanai import AtomicTool
+from vulcanai import ArgValue
 
 # Register dummy tools
 @vulcanai_tool

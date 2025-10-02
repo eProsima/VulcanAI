@@ -14,11 +14,11 @@
 
 from typing import Any, Dict, Optional, Tuple
 
-from vulcanai.executor import Blackboard, PlanExecutor
-from vulcanai.llm_agent import LLMAgent
-from vulcanai.logger import VulcanAILogger
-from vulcanai.plan_types import GlobalPlan
-from vulcanai.tool_registry import ToolRegistry
+from vulcanai.core.executor import Blackboard, PlanExecutor
+from vulcanai.core.llm_agent import LLMAgent
+from vulcanai.console.logger import VulcanAILogger
+from vulcanai.core.plan_types import GlobalPlan
+from vulcanai.tools.tool_registry import ToolRegistry
 
 
 class ToolManager:

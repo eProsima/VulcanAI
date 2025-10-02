@@ -29,10 +29,10 @@ if SRC_DIR not in sys.path:
 class TestPlanExecutor(unittest.TestCase):
     def setUp(self):
         # Import package modules dynamically
-        tools_mod = importlib.import_module("vulcanai.tools")
-        registry_mod = importlib.import_module("vulcanai.tool_registry")
-        plan_types_mod = importlib.import_module("vulcanai.plan_types")
-        executor_mod = importlib.import_module("vulcanai.executor")
+        tools_mod = importlib.import_module("vulcanai.tools.tools")
+        registry_mod = importlib.import_module("vulcanai.tools.tool_registry")
+        plan_types_mod = importlib.import_module("vulcanai.core.plan_types")
+        executor_mod = importlib.import_module("vulcanai.core.executor")
 
         # Keep references
         self.AtomicTool = tools_mod.AtomicTool

@@ -28,9 +28,9 @@ if SRC_DIR not in sys.path:
 class TestToolRegistry(unittest.TestCase):
     def setUp(self):
         # Import package modules dynamically to avoid static import issues
-        tool_registry_mod = importlib.import_module("vulcanai.tool_registry")
-        tools_mod = importlib.import_module("vulcanai.tools")
-        plan_types_mod = importlib.import_module("vulcanai.plan_types")
+        tool_registry_mod = importlib.import_module("vulcanai.tools.tool_registry")
+        tools_mod = importlib.import_module("vulcanai.tools.tools")
+        plan_types_mod = importlib.import_module("vulcanai.core.plan_types")
 
         # Keep references we need
         self.ToolRegistry = tool_registry_mod.ToolRegistry

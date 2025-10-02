@@ -20,10 +20,9 @@ from pathlib import Path
 from types import ModuleType
 from typing import Dict, Tuple, Type
 
-from vulcanai.embedder import SBERTEmbedder
-from vulcanai.logger import VulcanAILogger
-from vulcanai.plan_types import ArgValue
-from vulcanai.tools import ITool, CompositeTool
+from vulcanai.tools.embedder import SBERTEmbedder
+from vulcanai.console.logger import VulcanAILogger
+from vulcanai.tools.tools import ITool, CompositeTool
 
 
 def vulcanai_tool(cls: Type[ITool]):

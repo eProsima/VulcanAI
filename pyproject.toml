@@ -29,4 +29,4 @@ dependencies = [
 where = ["src"]
 
 [project.scripts]
-vulcanai-console = "vulcanai.console:main"
+vulcanai-console = "vulcanai.console.console:main"
