@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import base64
+import mimetypes
 import os
 import time
 from enum import Enum
@@ -34,14 +36,14 @@ class LLMAgent:
         self.logger = logger or VulcanAILogger().log_manager
         self._load_model(model)
 
-    def inference(self, system_context: str, user_text: str) -> GlobalPlan:
+    def inference(self, system_context: str, user_text: str, images: list[str]) -> GlobalPlan:
         """Perform inference using the selected LLM model."""
         if self.llm is None:
             raise RuntimeError("LLM model was not loaded correctly.")
         if self.llm_brand == LLMBrand.gpt:
-            plan: GlobalPlan = self._gpt_inference(system_context, user_text)
+            plan: GlobalPlan = self._gpt_inference(system_context, user_text, images)
         elif self.llm_brand == LLMBrand.gemini:
-            plan: GlobalPlan = self._gemini_inference(system_context, user_text)
+            plan: GlobalPlan = self._gemini_inference(system_context, user_text, images)
         else:
             raise NotImplementedError(f"LLM brand '{self.llm_brand.value}' not supported.")
 
@@ -76,13 +78,28 @@ class LLMAgent:
         else:
             raise NotImplementedError(f"LLM brand {self.llm_brand} not supported.")
 
-    def _gpt_inference(self, system_prompt: str, user_prompt: str) -> GlobalPlan:
+    def _gpt_inference(self, system_prompt: str, user_prompt: str, images: list[str]) -> GlobalPlan:
         start = time.time()
+        user_content = [{"type": "text", "text": user_prompt}]
+        # Add images as base64 if any
+        if images:
+            for image_path in images:
+                if image_path.startswith("http"):
+                    user_content.append({"type": "image_url", "image_url": {"url": image_path}})
+                else:
+                    base64_image = self._encode_image(image_path)
+                    mime = mimetypes.guess_type(image_path)[0] or "image/png"
+                    user_content.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{mime};base64,{base64_image}",
+                        },
+                    })
         completion = self.llm.chat.completions.parse(
             model=self.model,
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
+                {"role": "user", "content": user_content}
             ],
             response_format=GlobalPlan,
         )
@@ -100,13 +117,31 @@ class LLMAgent:
 
         return plan
 
-    def _gemini_inference(self, system_prompt: str, user_prompt: str) -> GlobalPlan:
+    def _gemini_inference(self, system_prompt: str, user_prompt: str, images: list[str]) -> GlobalPlan:
         from google.genai import types as gtypes
         start = time.time()
+        user_content = [gtypes.Part.from_text(text=user_prompt)]
+        # Add images as base64 if any
+        if images:
+            for image_path in images:
+                if image_path.startswith("http"):
+                    import requests
+                    img = requests.get(image_path)
+                    if img.status_code != 200:
+                        self.logger(f"Failed to fetch image from URL: {image_path}", error=True)
+                        continue
+                    user_content.append(gtypes.Part.from_bytes(data=img.content, mime_type=img.headers.get("Content-Type", "image/png")))
+                else:
+                    img_bytes = self._read_image(image_path)
+                    mime = mimetypes.guess_type(image_path)[0] or "image/png"
+                    user_content.append(gtypes.Part.from_bytes(
+                        data=img_bytes,
+                        mime_type=mime,
+                    ))
 
         contents = [gtypes.Content(
                 role="user",
-                parts=[gtypes.Part.from_text(text=user_prompt),]
+                parts=user_content
         )]
         cfg = gtypes.GenerateContentConfig(
             response_mime_type="application/json",
@@ -151,3 +186,10 @@ class LLMAgent:
             self.logger(f"Prompt tokens: {usage.prompt_token_count}, Completion tokens: {usage.candidates_token_count}")
 
         return plan
+
+    def _read_image(self, image_path: str) -> bytes:
+        with open(image_path, "rb") as image_file:
+            return image_file.read()
+
+    def _encode_image(self, image_path: str) -> str:
+        return base64.b64encode(self._read_image(image_path)).decode("utf-8")

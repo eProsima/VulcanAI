@@ -46,18 +46,31 @@ class VulcanConsole:
                     self.handle_command(user_input)
                     continue
 
+                # Check for image input. Must be always at the end of the input
+                images = []
+                if "--image=" in user_input:
+                    images = self.get_images(user_input)
+
                 # Query LLM
-                with Progress(
-                    SpinnerColumn(spinner_name="dots2"),
-                    TextColumn("[blue]Querying LLM...[/blue]"),
-                    console=console,
-                ) as progress:
-                    task = progress.add_task("llm", start=False)
-                    plan = self.manager.get_plan_from_user_request(user_input, context={})
-                    progress.remove_task(task)
+                try:
+                    with Progress(
+                        SpinnerColumn(spinner_name="dots2"),
+                        TextColumn("[blue]Querying LLM...[/blue]"),
+                        console=console,
+                    ) as progress:
+                        task = progress.add_task("llm", start=False)
+                        plan = self.manager.get_plan_from_user_request(user_input, context={"images": images})
+                        progress.remove_task(task)
+                except Exception as e:
+                    self.print(f"[error]Error generating plan: {e}[/error]")
+                    continue
 
                 # Execute plan
-                result = self.manager.execute_plan(plan)
+                try:
+                    result = self.manager.execute_plan(plan)
+                except Exception as e:
+                    self.print(f"[error]Error executing plan: {e}[/error]")
+                    continue
 
                 self.last_plan = result.get("plan", None)
                 self.last_bb = result.get("blackboard", None)
@@ -92,6 +105,8 @@ class VulcanConsole:
                 "/clear          - Clear the console screen\n"
                 "exit            - Exit the console\n"
                 "Query any other text to process it with the LLM and execute the plan generated."
+                "Add --image=<path> to include images in the query. It can be used multiple times to add more images."
+                " Example: '<user_prompt> --image=/path/to/image1 --image=/path/to/image2'"
             )
             self.print(help_msg)
 
@@ -142,6 +157,15 @@ class VulcanConsole:
 
     def print(self, msg: str):
         console.print(f"[console]{msg}[/console]")
+
+    def get_images(self, user_input: str):
+        parts = user_input.split()
+        images = []
+
+        for part in parts:
+            if part.startswith("--image="):
+                images.append(part[len("--image="):])
+        return images
 
 
 def main():

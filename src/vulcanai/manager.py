@@ -87,13 +87,14 @@ class ToolManager:
 
         return ret
 
-    def get_plan_from_user_request(self, user_text: str, context: Dict[str, Any]) -> GlobalPlan:
+    def get_plan_from_user_request(self, user_text: str, context: Dict[str, Any] = None) -> GlobalPlan:
         """
         Given a natural language request, ask LLM to generate a plan.
 
         :param user_text: The user request in natural language.
         :param context: Additional context that may help the LLM to choose the best tool.
         :return: A dictionary with the execution result, including the plan used and the final blackboard state.
+        :raises Exception: If there is an error during LLM inference.
         """
         # Build prompt with available tools
         system_prompt, user_prompt = self._build_prompt(user_text, context)
@@ -101,8 +102,12 @@ class ToolManager:
         if not system_prompt or not user_prompt:
             return {}
 
+        if context and "images" in context:
+            # Images should be a list of paths
+            images = context["images"]
+
         # Query LLM
-        plan = self.llm.inference(system_prompt, user_prompt)
+        plan = self.llm.inference(system_prompt, user_prompt, images)
         self.logger(f"Plan received:\n{plan}")
         return plan
 
