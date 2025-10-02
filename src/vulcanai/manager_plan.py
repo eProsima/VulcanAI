@@ -19,8 +19,8 @@ from vulcanai.manager import ToolManager
 
 class PlanManager(ToolManager):
     """Extension of ToolManager to target complex plan generation."""
-    def __init__(self, model: str, registry: Optional[ToolRegistry]=None, k: int=5, logger=None):
-        super().__init__(model, registry, k, logger)
+    def __init__(self, model: str, registry: Optional[ToolRegistry]=None, k: int=5, hist_depth: int = 3, logger=None):
+        super().__init__(model, registry, k, hist_depth, logger)
 
     def _get_prompt_template(self) -> str:
         """

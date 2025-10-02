@@ -99,6 +99,8 @@ class VulcanConsole:
                 "/help           - Show this help message\n"
                 "/tools          - List available tools\n"
                 "/change_k <int> - Change the 'k' value for the top_k algorithm selection\n"
+                "/history <int>  - Change the history depth or show the current value if no <int> is provided\n"
+                "/show_history   - Show the current history\n"
                 "/plan           - Show the last generated plan\n"
                 "/rerun          - Rerun the last plan\n"
                 "/bb             - Show the last blackboard state\n"
@@ -123,7 +125,27 @@ class VulcanConsole:
                 return
             new_k = int(parts[1])
             self.manager.k = new_k
-            self.print(f"[console]Changed k to {new_k}[/console]")
+            self.print(f"Changed k to {new_k}")
+
+        elif cmd.startswith("/history"):
+            parts = cmd.split()
+            if len(parts) == 1:
+                self.print(f"Current history depth is {self.manager.history_depth}")
+                return
+            if len(parts) != 2 or not parts[1].isdigit():
+                self.print(f"[error]Usage: /history <int>[/error] - Actual history depth is {self.manager.history_depth}")
+                return
+            new_hist = int(parts[1])
+            self.manager.update_history_depth(new_hist)
+
+        elif cmd == "/show_history":
+            if not self.manager.history:
+                self.print("No history available.")
+                return
+            help_msg = "\nCurrent history (oldest first):\n"
+            for i, (user_text, plan_summary) in enumerate(self.manager.history):
+                help_msg += f"{i+1}. User: {user_text}\n   Plan summary: {plan_summary}\n"
+            self.print(help_msg)
 
         elif cmd == "/plan":
             if self.last_plan:

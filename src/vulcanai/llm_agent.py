@@ -36,14 +36,14 @@ class LLMAgent:
         self.logger = logger or VulcanAILogger().log_manager
         self._load_model(model)
 
-    def inference(self, system_context: str, user_text: str, images: list[str]) -> GlobalPlan:
+    def inference(self, system_context: str, user_text: str, images: list[str], history: list[tuple[str, str]]) -> GlobalPlan:
         """Perform inference using the selected LLM model."""
         if self.llm is None:
             raise RuntimeError("LLM model was not loaded correctly.")
         if self.llm_brand == LLMBrand.gpt:
-            plan: GlobalPlan = self._gpt_inference(system_context, user_text, images)
+            plan: GlobalPlan = self._gpt_inference(system_context, user_text, images, history)
         elif self.llm_brand == LLMBrand.gemini:
-            plan: GlobalPlan = self._gemini_inference(system_context, user_text, images)
+            plan: GlobalPlan = self._gemini_inference(system_context, user_text, images, history)
         else:
             raise NotImplementedError(f"LLM brand '{self.llm_brand.value}' not supported.")
 
@@ -78,7 +78,7 @@ class LLMAgent:
         else:
             raise NotImplementedError(f"LLM brand {self.llm_brand} not supported.")
 
-    def _gpt_inference(self, system_prompt: str, user_prompt: str, images: list[str]) -> GlobalPlan:
+    def _gpt_inference(self, system_prompt: str, user_prompt: str, images: list[str], history: list[tuple[str, str]]) -> GlobalPlan:
         start = time.time()
         user_content = [{"type": "text", "text": user_prompt}]
         # Add images as base64 if any
@@ -95,12 +95,17 @@ class LLMAgent:
                             "url": f"data:{mime};base64,{base64_image}",
                         },
                     })
+        # Create messages with history if any
+        messages = [{"role": "system", "content": system_prompt}]
+        if history:
+            for user_text, plan_summary in history:
+                messages.append({"role": "user", "content": user_text})
+                messages.append({"role": "assistant", "content": f"Action plan: {plan_summary}"})
+        messages.append({"role": "user", "content": user_content})
+
         completion = self.llm.chat.completions.parse(
             model=self.model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content}
-            ],
+            messages=messages,
             response_format=GlobalPlan,
         )
         plan = None
@@ -117,7 +122,7 @@ class LLMAgent:
 
         return plan
 
-    def _gemini_inference(self, system_prompt: str, user_prompt: str, images: list[str]) -> GlobalPlan:
+    def _gemini_inference(self, system_prompt: str, user_prompt: str, images: list[str], history: list[tuple[str, str]]) -> GlobalPlan:
         from google.genai import types as gtypes
         start = time.time()
         user_content = [gtypes.Part.from_text(text=user_prompt)]
@@ -138,11 +143,13 @@ class LLMAgent:
                         data=img_bytes,
                         mime_type=mime,
                     ))
-
-        contents = [gtypes.Content(
-                role="user",
-                parts=user_content
-        )]
+        # Create contents with history if any
+        contents = []
+        if history:
+            for user_text, plan_summary in history:
+                contents.append(gtypes.Content(role="user", parts=[gtypes.Part.from_text(text=user_text)]))
+                contents.append(gtypes.Content(role="assistant", parts=[gtypes.Part.from_text(text=f"Action plan: {plan_summary}")]))
+        contents.append(gtypes.Content(role="user", parts=user_content))
         cfg = gtypes.GenerateContentConfig(
             response_mime_type="application/json",
             response_schema=GlobalPlan,
@@ -155,7 +162,6 @@ class LLMAgent:
             contents=contents,
             config=cfg,
         )
-
         plan = None
         try:
             plan = response.parsed

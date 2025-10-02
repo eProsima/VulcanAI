@@ -23,7 +23,7 @@ from vulcanai.tool_registry import ToolRegistry
 
 class ToolManager:
     """Manages the LLM Agent and calls the executor with the LLM output."""
-    def __init__(self, model: str, registry: Optional[ToolRegistry]=None, k: int=10, logger=None):
+    def __init__(self, model: str, registry: Optional[ToolRegistry]=None, k: int=10, hist_depth: int = 3, logger=None):
         self.logger = logger or VulcanAILogger().log_manager
         self.llm = LLMAgent(model, self.logger)
         self.k = k
@@ -32,6 +32,10 @@ class ToolManager:
         self.executor = PlanExecutor(self.registry, logger=(logger or VulcanAILogger().log_executor))
         self.bb = Blackboard()
         self.user_context = ""
+        # History is saved as a list of Tuples of user requests and plan summaries
+        self.history = []
+        # How many previous interactions to include in the prompt as history
+        self.history_depth = hist_depth
 
     def register_tool(self, tool, solve_deps: bool = True):
         """
@@ -107,8 +111,11 @@ class ToolManager:
             images = context["images"]
 
         # Query LLM
-        plan = self.llm.inference(system_prompt, user_prompt, images)
+        plan = self.llm.inference(system_prompt, user_prompt, images, self.history)
         self.logger(f"Plan received:\n{plan}")
+        # Save to history
+        if plan:
+            self._add_to_history(user_prompt, plan.summary)
         return plan
 
     def execute_plan(self, plan: GlobalPlan) -> Dict[str, Any]:
@@ -154,6 +161,30 @@ class ToolManager:
         user_prompt = "User request:\n" + user_text
 
         return self._get_prompt_template().format(tools_text=tools_text, user_context=user_context), user_prompt
+
+    def _add_to_history(self, user_text: str, plan_summary: str):
+        """Add a new interaction to the history and trim if necessary."""
+        self.history.append((user_text, plan_summary))
+        # Keep only the last `history_depth` interactions
+        if len(self.history) > self.history_depth:
+            if self.history_depth <= 0:
+                self.history = []
+            else:
+                self.history = self.history[-self.history_depth:]
+
+    def update_history_depth(self, new_depth: int):
+        """
+        Update the history depth and trim the history if necessary.
+
+        :param new_depth: The new history depth.
+        """
+        self.history_depth = max(0, int(new_depth))
+        self.logger(f"Updated history depth to {new_depth}")
+        if len(self.history) > self.history_depth:
+            if self.history_depth <= 0:
+                self.history = []
+            else:
+                self.history = self.history[-self.history_depth:]
 
     def _get_prompt_template(self) -> str:
         template = """
