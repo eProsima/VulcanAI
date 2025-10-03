@@ -75,7 +75,7 @@ class ToolRegistry:
     """Holds all known tools and performs vector search over metadata."""
     def __init__(self, embedder=None, logger=None):
         # Logging function
-        self.logger = logger or VulcanAILogger().log_registry
+        self.logger = logger or VulcanAILogger.log_registry
         # Dictionary of tool name -> tool instance
         self.tools: Dict[str, ITool] = {}
         # Embedding model for tool metadata

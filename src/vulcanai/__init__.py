@@ -30,6 +30,7 @@ _EXPORTS = {
     "Step": "vulcanai.core.plan_types:Step",
     "PlanNode": "vulcanai.core.plan_types:PlanNode",
     "GlobalPlan": "vulcanai.core.plan_types:GlobalPlan",
+    "PlanValidator": "vulcanai.core.validator:PlanValidator",
     # Console
     "VulcanConsole": "vulcanai.console.console:VulcanConsole",
     "VulcanAILogger": "vulcanai.console.logger:VulcanAILogger",

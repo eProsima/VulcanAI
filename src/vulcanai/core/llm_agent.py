@@ -33,7 +33,7 @@ class LLMAgent:
         self.model = model
         self.llm_brand: LLMBrand = self._detect_llm_brand(model)
         self.llm = None
-        self.logger = logger or VulcanAILogger().log_manager
+        self.logger = logger or VulcanAILogger.log_manager
         self._load_model(model)
 
     def inference(self, system_context: str, user_text: str, images: list[str], history: list[tuple[str, str]]) -> GlobalPlan:

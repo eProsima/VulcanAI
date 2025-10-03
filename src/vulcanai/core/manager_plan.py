@@ -14,13 +14,22 @@
 
 from typing import Optional
 
-from vulcanai.tools.tool_registry import ToolRegistry
 from vulcanai.core.manager import ToolManager
+from vulcanai.core.validator import PlanValidator
+from vulcanai.tools.tool_registry import ToolRegistry
 
 class PlanManager(ToolManager):
-    """Extension of ToolManager to target complex plan generation."""
-    def __init__(self, model: str, registry: Optional[ToolRegistry]=None, k: int=5, hist_depth: int = 3, logger=None):
-        super().__init__(model, registry, k, hist_depth, logger)
+    """Manager to target complex plan generation, involving multiples plans and steps."""
+    def __init__(
+            self,
+            model: str,
+            registry: Optional[ToolRegistry]=None,
+            validator: Optional[PlanValidator]=None,
+            k: int=5,
+            hist_depth: int = 3,
+            logger=None
+        ):
+        super().__init__(model, registry=registry, validator=validator, k=k, hist_depth=hist_depth, logger=logger)
 
     def _get_prompt_template(self) -> str:
         """
