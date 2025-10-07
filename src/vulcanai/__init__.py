@@ -34,6 +34,9 @@ _EXPORTS = {
     # Console
     "VulcanConsole": "vulcanai.console.console:VulcanConsole",
     "VulcanAILogger": "vulcanai.console.logger:VulcanAILogger",
+    # Models
+    "OpenAIModel": "vulcanai.models.openai:OpenAIModel",
+    "GeminiModel": "vulcanai.models.gemini:GeminiModel",
 }
 
 __all__ = list(_EXPORTS.keys())
