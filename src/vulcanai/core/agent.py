@@ -22,16 +22,16 @@ from vulcanai.console.logger import VulcanAILogger
 from vulcanai.core.plan_types import GlobalPlan
 
 
-class LLMBrand(str, Enum):
+class Brand(str, Enum):
     gpt = "gpt"
     gemini = "gemini"
 
 
-class LLMAgent:
+class Agent:
     """Interface to operate the LLM."""
     def __init__(self, model: str, logger=None):
         self.model = model
-        self.llm_brand: LLMBrand = self._detect_llm_brand(model)
+        self.llm_brand: Brand = self._detect_llm_brand(model)
         self.llm = None
         self.logger = logger or VulcanAILogger.log_manager
         self._load_model(model)
@@ -40,26 +40,26 @@ class LLMAgent:
         """Perform inference using the selected LLM model."""
         if self.llm is None:
             raise RuntimeError("LLM model was not loaded correctly.")
-        if self.llm_brand == LLMBrand.gpt:
+        if self.llm_brand == Brand.gpt:
             plan: GlobalPlan = self._gpt_inference(system_context, user_text, images, history)
-        elif self.llm_brand == LLMBrand.gemini:
+        elif self.llm_brand == Brand.gemini:
             plan: GlobalPlan = self._gemini_inference(system_context, user_text, images, history)
         else:
             raise NotImplementedError(f"LLM brand '{self.llm_brand.value}' not supported.")
 
         return plan
 
-    def _detect_llm_brand(self, model: str) -> LLMBrand:
+    def _detect_llm_brand(self, model: str) -> Brand:
         m = model.lower()
         if m.startswith(("gpt-", "o")):
-            return LLMBrand.gpt
+            return Brand.gpt
         if m.startswith(("gemini-", "gemma-")):
-            return LLMBrand.gemini
+            return Brand.gemini
         else:
             raise NotImplementedError(f"LLM model {model} not supported.")
 
     def _load_model(self, model: str):
-        if self.llm_brand == LLMBrand.gpt:
+        if self.llm_brand == Brand.gpt:
             from openai import OpenAI
             self.logger(f"Using OpenAI API with model: {model}")
             try:
@@ -67,7 +67,7 @@ class LLMAgent:
             except Exception as e:
                 self.logger(f"Missing OpenAI API Key: {e}", error=True)
             return
-        if self.llm_brand == LLMBrand.gemini:
+        if self.llm_brand == Brand.gemini:
             from google import genai
             self.logger(f"Using Gemini API with model: {model}")
             try:

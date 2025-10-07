@@ -23,7 +23,7 @@ _EXPORTS = {
     # Core
     "ToolManager": "vulcanai.core.manager:ToolManager",
     "PlanManager": "vulcanai.core.manager_plan:PlanManager",
-    "LLMAgent": "vulcanai.core.llm_agent:LLMAgent",
+    "Agent": "vulcanai.core.agent:Agent",
     "PlanExecutor": "vulcanai.core.executor:PlanExecutor",
     "Blackboard": "vulcanai.core.executor:Blackboard",
     "ArgValue": "vulcanai.core.plan_types:ArgValue",

@@ -16,7 +16,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from vulcanai.console.logger import VulcanAILogger
 from vulcanai.core.executor import Blackboard, PlanExecutor
-from vulcanai.core.llm_agent import LLMAgent
+from vulcanai.core.agent import Agent
 from vulcanai.core.plan_types import GlobalPlan
 from vulcanai.core.validator import PlanValidator
 from vulcanai.tools.tool_registry import ToolRegistry
@@ -34,7 +34,7 @@ class ToolManager:
         logger=None
     ):
         self.logger = logger or VulcanAILogger.log_manager
-        self.llm = LLMAgent(model, self.logger)
+        self.llm = Agent(model, self.logger)
         self.k = k
         self.registry = registry or ToolRegistry(logger=(logger or VulcanAILogger.log_registry))
         self.validator = validator
