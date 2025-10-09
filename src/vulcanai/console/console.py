@@ -91,7 +91,7 @@ class VulcanConsole:
         self.print(f"Manager initialized with model '{self.model}'.")
 
     def handle_command(self, cmd: str):
-        """Procesa comandos internos :tools, :plan, :bb, :clear"""
+        """Process internal console commands."""
         if cmd == "/help":
             help_msg = (
                 "Available commands:\n"
