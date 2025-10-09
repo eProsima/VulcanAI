@@ -1,7 +1,5 @@
 
-from vulcanai import vulcanai_tool
-from vulcanai import AtomicTool
-from vulcanai import ArgValue
+from vulcanai import AtomicTool, ValidationTool, vulcanai_tool
 
 # Register dummy tools
 @vulcanai_tool
@@ -33,6 +31,16 @@ class OtherFileTool(AtomicTool):
     output_schema = {"spoken": "bool"}
     version = "0.1"
     def run(self, **kwargs): return {"spoken": True}
+
+@vulcanai_tool
+class AnotherValidationTool(ValidationTool):
+    name = "another_validation_tool"
+    description = "Irrelevant"
+    tags = ["None"]
+    input_schema = []
+    output_schema = {"valid": "bool"}
+    version = "0.1"
+    def run(self, **kwargs): return {"valid": True}
 
 class NoDecoratorTool(AtomicTool):
     name = "no_decorator_tool"

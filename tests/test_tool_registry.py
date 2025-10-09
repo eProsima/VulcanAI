@@ -36,6 +36,7 @@ class TestToolRegistry(unittest.TestCase):
         self.ToolRegistry = tool_registry_mod.ToolRegistry
         self.AtomicTool = tools_mod.AtomicTool
         self.CompositeTool = tools_mod.CompositeTool
+        self.ValidationTool = tools_mod.ValidationTool
         self.Arg = plan_types_mod.ArgValue
 
         # Lightweight embedder matching expected API
@@ -88,11 +89,22 @@ class TestToolRegistry(unittest.TestCase):
             def run(self, **kwargs):
                 return {"result": True}
 
+        class TestValidationTool(self.ValidationTool):
+            name = "test_validation"
+            description = "A test validation tool"
+            tags = ["validation"]
+            input_schema = [("param", "string")]
+            output_schema = {"result": "bool"}
+            version = "0.1"
+            def run(self, **kwargs):
+                return {"result": True}
+
         # Save for use
         self.NavTool = NavTool
         self.DetectTool = DetectTool
         self.SpeakTool = SpeakTool
         self.ComplexTool = ComplexTool
+        self.TestValidationTool = TestValidationTool
 
         # Build registry with dummy embedder and register tools
         self.registry = self.ToolRegistry(embedder=self.Embedder())
@@ -105,9 +117,22 @@ class TestToolRegistry(unittest.TestCase):
         res = self.registry.top_k("go to the room", k=2)
         self.assertEqual(len(res), 2+1)  # +1 for help tool
 
+    def test_top_k_returns_expected_count_validation(self):
+        """Test that top_k returns up to k tools even if there are more non-validation tools registered."""
+        self.registry.register_tool(self.TestValidationTool())
+        res = self.registry.top_k("go to the room", k=2, validation=True)
+        self.assertEqual(len(res), 1)
+
     def test_top_k_returns_registered_instances(self):
         """Test that top_k returns only registered tool instances."""
         res = self.registry.top_k("detect", k=5)
+        names = {t.name for t in res}
+        for n in names:
+            self.assertIn(n, self.registry.tools)
+
+    def test_top_k_returns_registered_instances_validation(self):
+        """Test that top_k returns only registered tool instances."""
+        res = self.registry.top_k("detect", k=5, validation=True)
         names = {t.name for t in res}
         for n in names:
             self.assertIn(n, self.registry.tools)
@@ -160,11 +185,15 @@ class TestToolRegistry(unittest.TestCase):
         self.assertIn("detect_object", r.tools)
         self.assertIn("speak", r.tools)
         self.assertNotIn("nonexistent_tool", r.tools)
+        r.register_tool(self.TestValidationTool())
+        self.assertEqual(len(r.tools), 4+1)
+        self.assertIn("test_validation", r.tools)
 
     def test_register_tool_from_file(self):
         # Register tools from test_tools.py
         self.registry.discover_tools_from_file(os.path.join(CURRENT_DIR, "resources", "test_tools.py"))
-        self.assertEqual(len(self.registry.tools), 6+1)  # +1 for help tool (3 existing + 3 new)
+        self.assertEqual(len(self.registry.tools), 7+1)  # +1 for help tool (3 existing + 4 new)
+        self.assertEqual(len(self.registry._index), 7)   # (3 existing + 4 new)
 
     def test_register_tool_from_nonexistent_file(self):
         r = self.ToolRegistry(embedder=self.Embedder())
@@ -222,7 +251,7 @@ class TestToolRegistry(unittest.TestCase):
         self.assertNotIn("Dependency 'file_tool' for tool 'complex_file_action' not found", output)
         self.assertNotIn("Dependency 'new_file_tool' for tool 'complex_file_action' not found", output)
         self.assertNotIn("Dependency 'other_file_tool' for tool 'complex_file_action' not found", output)
-        self.assertEqual(len(r.tools), 4+1) # +1 for help tool
+        self.assertEqual(len(r.tools), 5+1) # +1 for help tool
 
     def test_register_composite_tool_fails_from_file(self):
         """Test that registering a composite tool from file reports an error if there are no dependencies."""
@@ -240,6 +269,16 @@ class TestToolRegistry(unittest.TestCase):
         self.assertIn("Dependency 'new_file_tool' for tool 'complex_file_action' not found", output)
         self.assertIn("Dependency 'other_file_tool' for tool 'complex_file_action' not found", output)
         self.assertEqual(len(r.tools), 1+1)  # +1 for help tool
+
+    def test_register_validation_tool(self):
+        """Test that validation tools can be registered and are present in the registry."""
+        r = self.ToolRegistry(embedder=self.Embedder())
+        self.assertEqual(len(r.tools), 0+1)  # +1 for help tool
+        self.assertEqual(len(r._index), 0)
+        r.register_tool(self.TestValidationTool())
+        self.assertEqual(len(r.tools), 1+1)  # +1 for help tool
+        self.assertEqual(len(r._index), 1)
+        self.assertIn("test_validation", r.validation_tools)
 
 
 if __name__ == "__main__":

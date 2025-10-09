@@ -31,6 +31,8 @@ class ITool(ABC):
     # Only used for documentation and LLM prompt generation.
     input_schema: List[Tuple[str, str]] = []  # List of (key, type) pairs, simulating a ArgValue list
     output_schema: Dict[str, str] = {}
+    # Validation tool
+    is_validation_tool: bool = False
     # Tool version
     version: str = "0.1.0"
     # Enable ROS 2 dynamic discovery of this tool
@@ -62,3 +64,14 @@ class CompositeTool(ITool):
     def __init__(self):
         super().__init__()
         self.resolved_deps = {}
+
+class ValidationTool(ITool):
+    """
+    Atomic Validation tool with a single capability.
+
+    As a general rule, Validation tools are responsible of the feedback system used to check if the final goal has been achieved.
+    They must return retrieved data following the output schema, to ensure the LLM can parse it correctly.
+    If data is not returned, the framework will not be able to update the blackboard with the new information and the
+    generated prompt might contain outdated information.
+    """
+    is_validation_tool: bool = True

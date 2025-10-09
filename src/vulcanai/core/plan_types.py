@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from pydantic import BaseModel, Field
-from typing import List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 
 Kind = Literal["SEQUENCE","PARALLEL"]
@@ -25,7 +25,7 @@ class ArgValue(BaseModel):
     val: Union[str, int, float, bool]
 
 
-class Step(BaseModel):
+class StepBase(BaseModel):
     """Atomic execution unit bound to a ITool."""
     # Associated tool
     tool: str = None
@@ -34,6 +34,10 @@ class Step(BaseModel):
         default_factory=list,
         description="List of key-value pairs representing tool arguments",
     )
+
+
+class Step(StepBase):
+    """Final atomic execution unit bound to a ITool with execution control."""
     # Execution control
     condition: Optional[str] = None
     success_criteria: Optional[str] = None
@@ -99,4 +103,27 @@ class GlobalPlan(BaseModel):
                     lines.append(f"      Timeout: {step.timeout_ms} ms")
                 if step.success_criteria:
                     lines.append(f"      Success Criteria: {step.success_criteria}")
+        return "\n".join(lines)
+
+class GoalSpec(BaseModel):
+    """User goal to be achieved."""
+    summary: str
+    # List of simple boolean predicates over the blackboard (e.g., "{{bb.navigation.at_target}} == true")
+    success_predicates: List[str] = Field(default_factory=list)
+    # Tools used to verify if the goal has been achieved, described as (tool_name, [args])
+    verify_tools: List[StepBase] = Field(default_factory=list)
+    # Optional early-stop conditions (e.g., "{{bb.safety.stop}} == true")
+    stop_conditions: List[str] = Field(default_factory=list)
+
+    def __str__(self) -> str:
+        lines = []
+        if self.summary:
+            lines.append(f"- [bold]Goal Summary[/bold]: {self.summary}\n")
+
+        for i, pred in enumerate(self.success_predicates, 1):
+            lines.append(f"- Success Predicate {i}: {pred}")
+        for i, tool in enumerate(self.verify_tools, 1):
+            lines.append(f"- Verify Tool {i}: {tool.tool}({tool.args})")
+        for i, cond in enumerate(self.stop_conditions, 1):
+            lines.append(f"- Stop Condition {i}: {cond}")
         return "\n".join(lines)

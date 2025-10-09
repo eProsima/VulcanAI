@@ -18,7 +18,7 @@ import sys
 from importlib.metadata import entry_points
 from pathlib import Path
 from types import ModuleType
-from typing import Dict, Tuple, Type
+from typing import Dict, List, Tuple, Type
 
 from vulcanai.tools.embedder import SBERTEmbedder
 from vulcanai.console.logger import VulcanAILogger
@@ -87,6 +87,8 @@ class ToolRegistry:
         # Add help_tool to registry but not to index
         self.help_tool = HelpTool()
         self.tools[self.help_tool.name] = self.help_tool
+        # Validation tools list to retrieve validation tools separately
+        self.validation_tools: List[str] = []
 
     def register_tool(self, tool: ITool, solve_deps: bool = True):
         """Register a single tool instance."""
@@ -94,6 +96,8 @@ class ToolRegistry:
         if tool.name in self.tools:
             return
         self.tools[tool.name] = tool
+        if tool.is_validation_tool:
+            self.validation_tools.append(tool.name)
         emb = self.embedder.embed(self._doc(tool))
         self._index.append((tool.name, emb))
         self.logger(f"Registered tool: {tool.name}")
@@ -165,19 +169,44 @@ class ToolRegistry:
         # NOTE: Implement a small client that calls tool_info and constructs a proxy
         ...
 
-    def top_k(self, query: str, k: int = 5) -> list[ITool]:
+    def top_k(self, query: str, k: int = 5, validation: bool = False) -> list[ITool]:
         """Return top-k tools most relevant to the query."""
         if not self._index:
             self.logger("No tools registered.", error=True)
             return []
 
-        # If k > number of tools, return all
+        # Filter tools based on validation flag
+        all_names: set = set(self.tools.keys())
+        val_names: set = set(self.validation_tools or [])
+        # Keep only names that actually exist in tools
+        val_names &= all_names
+        nonval_names: set = all_names - val_names
+
+        active_names: set = val_names if validation else nonval_names
+        if not active_names:
+            # If there is no tool for the requested category, be explicit and return []
+            self.logger(
+                f"No matching tools for the requested mode ({'validation' if validation else 'action'}).", error=True
+            )
+            return []
+
+        # If k > number of ALL tools, return required tools
         if k > len(self._index):
-            return list(self.tools.values())
+            return [self.tools[name] for name in active_names]
+
+        filtered_index = [(name, vec) for (name, vec) in self._index if name in active_names]
+        if not filtered_index:
+            # Index might be stale; log and return []
+            self.logger("Index has no entries for the selected tool subset.", error=True)
+            return []
+
+        # If k > number of required tools, return required tools
+        if k > len(filtered_index):
+            return [self.tools[name] for name in active_names]
 
         q_vec = self.embedder.embed(query)
         scores = []
-        for name, vec in self._index:
+        for name, vec in filtered_index:
             scores.append((self.embedder.similarity(q_vec, vec), name))
 
         # Sort by similarity
