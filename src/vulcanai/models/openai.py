@@ -17,7 +17,7 @@ import mimetypes
 import time
 from openai import OpenAI
 
-from vulcanai.core.plan_types import GlobalPlan
+from vulcanai.core.plan_types import GlobalPlan, GoalSpec
 from vulcanai.models.model import IModel
 
 
@@ -88,7 +88,36 @@ class OpenAIModel(IModel):
             self,
             system_prompt: str,
             user_prompt: str,
-            images: list[str],
             history: list[tuple[str, str]]
-    ):
-        pass
+    ) -> GoalSpec:
+        """ Override goal inference method. """
+
+        start = time.time()
+        # Create messages with history if any
+        messages = [{"role": "system", "content": system_prompt}]
+        if history:
+            for user_text, plan_summary in history:
+                messages.append({"role": "user", "content": user_text})
+                messages.append({"role": "assistant", "content": f"Action plan: {plan_summary}"})
+        messages.append({"role": "user", "content": user_prompt})
+
+        self.logger(f"[DEBUG] Sending messages to GPT for goal: {messages}")
+
+        completion = self.model.chat.completions.parse(
+            model=self.model_name,
+            messages=messages,
+            response_format=GoalSpec,
+        )
+        goal = None
+        try:
+            goal = completion.choices[0].message.parsed
+        except Exception as e:
+            self.logger(f"Failed to get parsed goal from GPT response: {e}", error=True)
+
+        end = time.time()
+        self.logger(f"GPT response time: {end - start:.3f} seconds")
+        input_tokens = completion.usage.prompt_tokens
+        output_tokens = completion.usage.completion_tokens
+        self.logger(f"Prompt tokens: {input_tokens}, Completion tokens: {output_tokens}")
+
+        return goal
