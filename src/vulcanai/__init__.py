@@ -18,11 +18,13 @@ _EXPORTS = {
     # Tools
     "AtomicTool": "vulcanai.tools.tools:AtomicTool",
     "CompositeTool": "vulcanai.tools.tools:CompositeTool",
+    "ValidationTool": "vulcanai.tools.tools:ValidationTool",
     "vulcanai_tool": "vulcanai.tools.tool_registry:vulcanai_tool",
     "ToolRegistry": "vulcanai.tools.tool_registry:ToolRegistry",
     # Core
     "ToolManager": "vulcanai.core.manager:ToolManager",
     "PlanManager": "vulcanai.core.manager_plan:PlanManager",
+    "IteratorManager": "vulcanai.core.manager_iterator:IteratorManager",
     "Agent": "vulcanai.core.agent:Agent",
     "PlanExecutor": "vulcanai.core.executor:PlanExecutor",
     "Blackboard": "vulcanai.core.executor:Blackboard",
