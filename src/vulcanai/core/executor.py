@@ -17,7 +17,7 @@ import contextlib
 import io
 import re
 import time
-from typing import Dict, Any, Tuple, List
+from typing import Dict, Any, Optional, Set, Tuple, List
 
 from vulcanai.console.logger import VulcanAILogger
 from vulcanai.core.plan_types import GlobalPlan, PlanBase, Step, ArgValue
@@ -34,8 +34,25 @@ TYPE_CAST = {
 
 class Blackboard(dict):
     """Shared memory for passing outputs between steps."""
-    pass
 
+    def text_snapshot(self, keys: Optional[List[str]] = None) -> str:
+        """
+        Return a string representing the blackboard.
+
+        :param keys: Optional list of keys to include. If None, include all.
+        :return: A string representation of the blackboard entries.
+        """
+        snapshot = {}
+        keyset: Set[str] = set(keys) if keys is not None else set(self.keys())
+        filtered = {k: self.get(k) for k in keyset if k in self}
+
+        for k, v in filtered.items():
+            if isinstance(v, (str, int, float, bool, list, dict, type(None))):
+                snapshot[k] = v
+            else:
+                snapshot[k] = f"<{type(v).__name__}>"
+
+        return str(snapshot)
 
 class PlanExecutor:
     """Executes a validated GlobalPlan with blackboard and execution control parameters."""
@@ -62,7 +79,7 @@ class PlanExecutor:
     def _run_plan_node(self, node: PlanBase, bb: Blackboard) -> bool:
         """Run a PlanNode with execution control parameters."""
         # Evaluate PlanNode-level condition
-        if node.condition and not self._safe_eval(node.condition, bb):
+        if node.condition and not self.safe_eval(node.condition, bb):
             self.logger(f"Skipping PlanNode {node.kind} due to not fulfilled condition={node.condition}")
             return True
 
@@ -114,7 +131,7 @@ class PlanExecutor:
 
     def _run_step(self, step: Step, bb: Blackboard, parallel: bool = False) -> bool:
         # Evaluate Step-level condition
-        if step.condition and not self._safe_eval(step.condition, bb):
+        if step.condition and not self.safe_eval(step.condition, bb):
             self.logger(f"Skipping step [italic]'{step.tool}'[/italic] due to condition={step.condition}")
             return True
 
@@ -143,14 +160,14 @@ class PlanExecutor:
             # No criteria means any finishing is success
             return True
         log_value = entity.tool if is_step else entity.kind
-        if self._safe_eval(entity.success_criteria, bb):
+        if self.safe_eval(entity.success_criteria, bb):
             self.logger(f"Entity '{log_value}' succeeded with criteria={entity.success_criteria}")
             return True
         else:
             self.logger(f"Entity '{log_value}' failed with criteria={entity.success_criteria}")
         return False
 
-    def _safe_eval(self, expr: str, bb: Blackboard) -> bool:
+    def safe_eval(self, expr: str, bb: Blackboard) -> bool:
         """Evaluate a simple expression against bb."""
         try:
             if expr and isinstance(expr, str):

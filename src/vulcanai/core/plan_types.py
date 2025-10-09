@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from pydantic import BaseModel, Field
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import List, Literal, Optional, Union
 
 
 Kind = Literal["SEQUENCE","PARALLEL"]
@@ -105,25 +105,39 @@ class GlobalPlan(BaseModel):
                     lines.append(f"      Success Criteria: {step.success_criteria}")
         return "\n".join(lines)
 
+
 class GoalSpec(BaseModel):
-    """User goal to be achieved."""
+    """Specification defining the user goal to be achieved."""
     summary: str
+    # Mode used for goal verification:
+    # - [Perceptual] mode uses AI to verify if the goal has been achieved based on evidence (e.g., images) or blackboard data.
+    # - [Objective] mode uses deterministic predicates based on validation tools results to verify if the goal has been achieved.
+    mode: Literal["perceptual", "objective"] = "objective"
     # List of simple boolean predicates over the blackboard (e.g., "{{bb.navigation.at_target}} == true")
     success_predicates: List[str] = Field(default_factory=list)
-    # Tools used to verify if the goal has been achieved, described as (tool_name, [args])
+    # Tools called every iteration to verify if the goal has been achieved, described as (tool_name, [args])
     verify_tools: List[StepBase] = Field(default_factory=list)
-    # Optional early-stop conditions (e.g., "{{bb.safety.stop}} == true")
-    stop_conditions: List[str] = Field(default_factory=list)
+    # List of bb keys that the LLM should verify or give importance to verify if the goal was achieved
+    evidence_bb_keys: List[str] = Field(default_factory=list)
 
     def __str__(self) -> str:
         lines = []
         if self.summary:
-            lines.append(f"- [bold]Goal Summary[/bold]: {self.summary}\n")
+            lines.append(f"- [bold]Goal Summary[/bold]: {self.summary}")
+        if self.mode:
+            lines.append(f"- Verification Mode: {self.mode}")
 
         for i, pred in enumerate(self.success_predicates, 1):
             lines.append(f"- Success Predicate {i}: {pred}")
         for i, tool in enumerate(self.verify_tools, 1):
             lines.append(f"- Verify Tool {i}: {tool.tool}({tool.args})")
-        for i, cond in enumerate(self.stop_conditions, 1):
-            lines.append(f"- Stop Condition {i}: {cond}")
+        if self.evidence_bb_keys:
+            lines.append(f"- Evidence BB Keys: {self.evidence_bb_keys}")
         return "\n".join(lines)
+
+
+class AIValidation(BaseModel):
+    """AI-based validation result."""
+    success: bool
+    confidence: float
+    explanation: Optional[str] = None

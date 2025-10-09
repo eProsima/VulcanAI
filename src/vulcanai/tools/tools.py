@@ -57,9 +57,9 @@ class CompositeTool(ITool):
     It reuses existing tools and their capabilities, which must be listed as dependencies.
     """
     # Names of tools this composite tool depends on
-    dependencies: list[str] = []
+    dependencies: List[str] = []
     # Resolved tool instances (injected at execution time)
-    resolved_deps: dict[str, "ITool"]
+    resolved_deps: Dict[str, "ITool"]
 
     def __init__(self):
         super().__init__()
@@ -75,3 +75,5 @@ class ValidationTool(ITool):
     generated prompt might contain outdated information.
     """
     is_validation_tool: bool = True
+    # If True, the tool must provide images as its output under the key 'images' in format List[str]
+    provide_images: bool = False

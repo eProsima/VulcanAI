@@ -122,6 +122,7 @@ class ToolManager:
         if not system_prompt or not user_prompt:
             return {}
 
+        images = []
         if context and "images" in context:
             # Images should be a list of paths
             images = context["images"]
