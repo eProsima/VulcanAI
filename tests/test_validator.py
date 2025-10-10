@@ -3,7 +3,6 @@ import importlib
 import numpy as np
 import os
 import sys
-import time
 import types
 import unittest
 
@@ -98,10 +97,27 @@ class TestPlanValidator(unittest.TestCase):
             def run(self, **kwargs):
                 return {"spoken": True, "spoken_text": kwargs.get("text", "")}
 
+        class TypesTool(self.AtomicTool):
+            name = "types"
+            description = "Get the types of the non-string input arguments"
+            tags = ["type", "input"]
+            input_schema = [
+                ("int", "int"),
+                ("integer", "integer"),
+                ("float", "float"),
+                ("bool", "bool"),
+                ("boolean", "boolean"),
+            ]
+            output_schema = {"types": "bool"}
+            version = "0.1"
+            def run(self, **kwargs):
+                return {"types": True}
+
         self.registry.register_tool(EmptyTool())
         self.registry.register_tool(DetectTool())
         self.registry.register_tool(NavTool())
         self.registry.register_tool(SpeakTool())
+        self.registry.register_tool(TypesTool())
 
         self.validator = self.Validator(self.registry)
 
@@ -286,6 +302,137 @@ class TestPlanValidator(unittest.TestCase):
         except Exception as e:
             fail = True
             self.assertIn("Blackboard reference in argument", str(e))
+        self.assertTrue(fail, "Validator did not catch non-existing key error")
+
+    def test_validator_correct_types(self):
+        plan = self.GlobalPlan(
+            summary="Check types of arguments",
+            plan=[
+                self.PlanNode(
+                    kind="SEQUENCE",
+                    steps=[
+                        self.Step(tool="types", args=[
+                            self.Arg(key="int", val=4),
+                            self.Arg(key="integer", val=2),
+                            self.Arg(key="float", val=4.2),
+                            self.Arg(key="bool", val=True),
+                            self.Arg(key="boolean", val=False),
+                            ]
+                        ),
+                    ],
+                )
+            ],
+        )
+        try:
+            self.validator.validate(plan)
+        except Exception as e:
+            self.fail("Test 'test_validator_correct_types' should not fail")
+
+        # Cast of int to float is accepted, not the other way around
+        plan.plan[0].steps[0].args[2] = self.Arg(key="float", val=4)  # Pass a int instead of float
+        try:
+            self.validator.validate(plan)
+        except Exception as e:
+            self.fail("Test 'test_validator_correct_types' should not fail for int->float cast")
+
+        # Non-string types can accept string bb references
+        plan.plan[0].steps[0].args[2] = self.Arg(key="float", val="{{bb.tool.float_value}}")
+        try:
+            self.validator.validate(plan)
+        except Exception as e:
+            self.fail("Test 'test_validator_correct_types' should not fail for bb reference in string format")
+
+    def test_validator_wrong_types(self):
+        plan = self.GlobalPlan(
+            summary="Navigate to a location",
+            plan=[
+                self.PlanNode(
+                    kind="SEQUENCE",
+                    steps=[
+                        self.Step(tool="types", args=[
+                            self.Arg(key="int", val="4"),
+                            # Add only one wrong type on each test, rest should be correct
+                            self.Arg(key="integer", val=2),
+                            self.Arg(key="float", val=4.2),
+                            self.Arg(key="bool", val=True),
+                            self.Arg(key="boolean", val=False),
+                            ]
+                        ),
+                    ],
+                )
+            ],
+        )
+        try:
+            fail = False
+            self.validator.validate(plan)
+        except Exception as e:
+            fail = True
+            self.assertIn(f"Argument 'int' of tool 'types' expects type", str(e))
+        self.assertTrue(fail, "Validator did not catch non-existing key error")
+
+        plan.plan[0].steps[0].args[0] = self.Arg(key="int", val=4.2)
+        try:
+            fail = False
+            self.validator.validate(plan)
+        except Exception as e:
+            fail = True
+            self.assertIn(f"Argument 'int' of tool 'types' expects type", str(e))
+        self.assertTrue(fail, "Validator did not catch non-existing key error")
+
+        plan.plan[0].steps[0] = self.Step(tool="types", args=[
+                                    self.Arg(key="int", val=4),
+                                    self.Arg(key="integer", val="2"),
+                                    self.Arg(key="float", val=4.2),
+                                    self.Arg(key="bool", val=True),
+                                    self.Arg(key="boolean", val=False)])
+        try:
+            fail = False
+            self.validator.validate(plan)
+        except Exception as e:
+            fail = True
+            self.assertIn(f"Argument 'integer' of tool 'types' expects type", str(e))
+        self.assertTrue(fail, "Validator did not catch non-existing key error")
+
+        plan.plan[0].steps[0] = self.Step(tool="types", args=[
+                                    self.Arg(key="int", val=4),
+                                    self.Arg(key="integer", val=2),
+                                    self.Arg(key="float", val="42.0"),
+                                    self.Arg(key="bool", val=True),
+                                    self.Arg(key="boolean", val=False)])
+        try:
+            fail = False
+            self.validator.validate(plan)
+        except Exception as e:
+            fail = True
+            self.assertIn(f"Argument 'float' of tool 'types' expects type", str(e))
+        self.assertTrue(fail, "Validator did not catch non-existing key error")
+
+        plan.plan[0].steps[0] = self.Step(tool="types", args=[
+                                    self.Arg(key="int", val=4),
+                                    self.Arg(key="integer", val=2),
+                                    self.Arg(key="float", val=42.0),
+                                    self.Arg(key="bool", val="true"),
+                                    self.Arg(key="boolean", val=False)])
+        try:
+            fail = False
+            self.validator.validate(plan)
+        except Exception as e:
+            fail = True
+            self.assertIn(f"Argument 'bool' of tool 'types' expects type", str(e))
+        self.assertTrue(fail, "Validator did not catch non-existing key error")
+
+        plan.plan[0].steps[0] = self.Step(tool="types", args=[
+                                    self.Arg(key="int", val=4),
+                                    self.Arg(key="integer", val=2),
+                                    self.Arg(key="float", val=42.0),
+                                    self.Arg(key="bool", val=True),
+                                    self.Arg(key="boolean", val="false")])
+        try:
+            fail = False
+            self.validator.validate(plan)
+        except Exception as e:
+            fail = True
+            self.assertIn(f"Argument 'boolean' of tool 'types' expects type", str(e))
         self.assertTrue(fail, "Validator did not catch non-existing key error")
 
 
