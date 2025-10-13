@@ -13,44 +13,26 @@
 # limitations under the License.
 
 from importlib import import_module
+from types import ModuleType
 
-_EXPORTS = {
-    # Tools
-    "AtomicTool": "vulcanai.tools.tools:AtomicTool",
-    "CompositeTool": "vulcanai.tools.tools:CompositeTool",
-    "ValidationTool": "vulcanai.tools.tools:ValidationTool",
-    "vulcanai_tool": "vulcanai.tools.tool_registry:vulcanai_tool",
-    "ToolRegistry": "vulcanai.tools.tool_registry:ToolRegistry",
-    # Core
-    "ToolManager": "vulcanai.core.manager:ToolManager",
-    "PlanManager": "vulcanai.core.manager_plan:PlanManager",
-    "IteratorManager": "vulcanai.core.manager_iterator:IteratorManager",
-    "Agent": "vulcanai.core.agent:Agent",
-    "PlanExecutor": "vulcanai.core.executor:PlanExecutor",
-    "Blackboard": "vulcanai.core.executor:Blackboard",
-    "ArgValue": "vulcanai.core.plan_types:ArgValue",
-    "Step": "vulcanai.core.plan_types:Step",
-    "PlanNode": "vulcanai.core.plan_types:PlanNode",
-    "GlobalPlan": "vulcanai.core.plan_types:GlobalPlan",
-    "PlanValidator": "vulcanai.core.validator:PlanValidator",
-    # Console
-    "VulcanConsole": "vulcanai.console.console:VulcanConsole",
-    "VulcanAILogger": "vulcanai.console.logger:VulcanAILogger",
-    # Models
-    "OpenAIModel": "vulcanai.models.openai:OpenAIModel",
-    "GeminiModel": "vulcanai.models.gemini:GeminiModel",
+_SUBPACKAGES = ("core", "tools", "console", "models")
+_submods: dict[str, ModuleType] = {
+    name: import_module(f"{__name__}.{name}") for name in _SUBPACKAGES
 }
 
-__all__ = list(_EXPORTS.keys())
+__all__ = sorted({sym for m in _submods.values() for sym in getattr(m, "__all__", ())})
+
+_MODULE_INDEX: dict[str, ModuleType] = {}
+for pkg in _SUBPACKAGES:
+    mod = _submods[pkg]
+    for sym in getattr(mod, "__all__", ()):
+        _MODULE_INDEX.setdefault(sym, mod)
 
 def __getattr__(name: str):
-    target = _EXPORTS.get(name)
-    if not target:
+    mod = _MODULE_INDEX.get(name)
+    if not mod:
         raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
-    module_name, attr_name = target.split(':')
-    module = import_module(module_name)
-    return getattr(module, attr_name)
+    return getattr(mod, name)
 
-def __dir__() -> list[str]:
-    """Make dir() show the public API."""
+def __dir__():
     return sorted(list(globals().keys()) + __all__)
