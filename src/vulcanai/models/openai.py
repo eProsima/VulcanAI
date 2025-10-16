@@ -13,12 +13,16 @@
 # limitations under the License.
 
 
+from openai import OpenAI
+from typing import Any, Dict, Iterable, Optional, Type, TypeVar
 import mimetypes
 import time
-from openai import OpenAI
 
-from vulcanai.core.plan_types import GlobalPlan, GoalSpec
+from vulcanai.core.plan_types import AIValidation, GlobalPlan, GoalSpec
 from vulcanai.models.model import IModel
+
+# Generic type variable for response classes
+T = TypeVar('T', GlobalPlan, GoalSpec, AIValidation)
 
 
 class OpenAIModel(IModel):
@@ -38,86 +42,162 @@ class OpenAIModel(IModel):
             user_prompt: str,
             images: list[str],
             history: list[tuple[str, str]]
-    ) -> GlobalPlan:
-        """ Override plan inference method. """
+    ) -> Optional[GlobalPlan]:
+        """
+        Call the generic inference with GlobalPlan as response type.
 
-        start = time.time()
-        user_content = [{"type": "text", "text": user_prompt}]
-        # Add images as base64 if any
-        if images:
-            for image_path in images:
-                if image_path.startswith("http"):
-                    user_content.append({"type": "image_url", "image_url": {"url": image_path}})
-                else:
-                    base64_image = self._encode_image(image_path)
-                    mime = mimetypes.guess_type(image_path)[0] or "image/png"
-                    user_content.append({
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:{mime};base64,{base64_image}",
-                        },
-                    })
-        # Create messages with history if any
-        messages = [{"role": "system", "content": system_prompt}]
-        if history:
-            for user_text, plan_summary in history:
-                messages.append({"role": "user", "content": user_text})
-                messages.append({"role": "assistant", "content": f"Action plan: {plan_summary}"})
-        messages.append({"role": "user", "content": user_content})
-
-        completion = self.model.chat.completions.parse(
-            model=self.model_name,
-            messages=messages,
-            response_format=GlobalPlan,
+        :param system_prompt: System message.
+        :param user_prompt: User message.
+        :param images: Optional image paths or URLs.
+        :param history: Optional (user_text, plan_summary) tuples to reconstruct conversational context.
+        :return: Parsed response object of type GlobalPlan, or None on error.
+        """
+        return self._inference(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            response_cls=GlobalPlan,
+            images=images,
+            history=history
         )
-        plan = None
-        try:
-            plan = completion.choices[0].message.parsed
-        except Exception as e:
-            self.logger(f"Failed to get parsed plan from GPT response: {e}", error=True)
-
-        end = time.time()
-        self.logger(f"GPT response time: {end - start:.3f} seconds")
-        input_tokens = completion.usage.prompt_tokens
-        output_tokens = completion.usage.completion_tokens
-        self.logger(f"Prompt tokens: {input_tokens}, Completion tokens: {output_tokens}")
-
-        return plan
 
     def goal_inference(
-            self,
-            system_prompt: str,
-            user_prompt: str,
-            history: list[tuple[str, str]]
-    ) -> GoalSpec:
-        """ Override goal inference method. """
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        history: list[tuple[str, str]]
+    ) -> Optional[GoalSpec]:
+        """
+        Call the generic inference with GoalSpec as response type (no images).
 
+        :param system_prompt: System message.
+        :param user_prompt: User message.
+        :param history: Optional (user_text, plan_summary) tuples to reconstruct conversational context.
+        :return: Parsed response object of type GoalSpec, or None on error.
+        """
+        return self._inference(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            response_cls=GoalSpec,
+            images=None,
+            history=history
+        )
+
+    def validation_inference(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        images: list[str],
+        history: list[tuple[str, str]]
+    ) -> Optional[AIValidation]:
+        """
+        Call the generic inference with AIValidation as response type (no history).
+
+        :param system_prompt: System message.
+        :param user_prompt: User message.
+        :param images: Optional image paths or URLs.
+        :return: Parsed response object of type AIValidation, or None on error.
+        """
+        return self._inference(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            response_cls=AIValidation,
+            images=images,
+            history=history
+        )
+
+    def _inference(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        response_cls: Type[T],
+        images: Optional[Iterable[str]] = None,
+        history: Optional[list[tuple[str, str]]] = None,
+    ) -> Optional[T]:
+        """
+        Generic inference template function that parameterizes the response class.
+
+        :param system_prompt: System message.
+        :param user_prompt: User message.
+        :param response_cls: Target structured output type (e.g., GlobalPlan, GoalSpec, AIValidation).
+        :param images: Optional image paths or URLs; included as image_url content parts.
+        :param history: Optional (user_text, plan_summary) tuples to reconstruct conversational context.
+        :return: Parsed response object of type T, or None on error.
+        """
         start = time.time()
-        # Create messages with history if any
-        messages = [{"role": "system", "content": system_prompt}]
+
+        # Build user content (text + optional images)
+        user_content = self._build_user_content(user_prompt, images)
+
+        # Build messages (system + optional history + current user)
+        messages = self._build_messages(system_prompt, user_content, history)
+
+        self.logger(f"[DEBUG] Sending messages to GPT for: {messages[0]} - User prompt: {user_prompt}")
+
+        # Call OpenAI with response_format bound to the desired schema/class
+        try:
+            completion = self.model.chat.completions.parse(
+                model=self.model_name,
+                messages=messages,
+                response_format=response_cls,
+            )
+        except Exception as e:
+            self.logger(f"OpenAI API error: {e}", error=True)
+            return None
+
+        # Extract parsed object safely
+        parsed: Optional[T] = None
+        try:
+            parsed = completion.choices[0].message.parsed
+        except Exception as e:
+            self.logger(f"Failed to parse response into {response_cls.__name__}: {e}", error=True)
+
+        end = time.time()
+        self.logger(f"GPT response time: {end - start:.3f} seconds")
+        try:
+            input_tokens = completion.usage.prompt_tokens
+            output_tokens = completion.usage.completion_tokens
+            self.logger(f"Prompt tokens: {input_tokens}, Completion tokens: {output_tokens}")
+        except Exception:
+            pass
+
+        return parsed
+
+    def _build_user_content(self, user_text: str, images: Optional[Iterable[str]]) -> list[Dict[str, Any]]:
+        """Compose user content list with text first and optional images as image_url parts."""
+        content: list[Dict[str, Any]] = [{"type": "text", "text": user_text}]
+        if images:
+            for image_path in images:
+                if isinstance(image_path, str) and image_path.startswith("http"):
+                    content.append({"type": "image_url", "image_url": {"url": image_path}})
+                else:
+                    try:
+                        base64_image = self._encode_image(image_path)
+                        mime = mimetypes.guess_type(image_path)[0] or "image/png"
+                        content.append({
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{mime};base64,{base64_image}"},
+                        })
+                    except Exception as e:
+                        # Fail soft on a single bad image but continue with others
+                        self.logger(f"Image '{image_path}' could not be encoded: {e}", error=True)
+        return content
+
+    def _build_messages(
+        self,
+        system_prompt: str,
+        user_content: list[Dict[str, Any]],
+        history: Optional[list[tuple[str, str]]],
+    ) -> list[Dict[str, Any]]:
+        """Construct the messages array with system + optional history + current user content."""
+        messages: list[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
+
+        # Replay short history as (user, assistant) turns
         if history:
             for user_text, plan_summary in history:
                 messages.append({"role": "user", "content": user_text})
                 messages.append({"role": "assistant", "content": f"Action plan: {plan_summary}"})
-        messages.append({"role": "user", "content": user_prompt})
 
-        self.logger(f"[DEBUG] Sending messages to GPT for goal: {messages}")
-
-        completion = self.model.chat.completions.parse(
-            model=self.model_name,
-            messages=messages,
-            response_format=GoalSpec,
-        )
-        goal = None
-        try:
-            goal = completion.choices[0].message.parsed
-        except Exception as e:
-            self.logger(f"Failed to get parsed goal from GPT response: {e}", error=True)
-
-        end = time.time()
-        self.logger(f"GPT response time: {end - start:.3f} seconds")
-        input_tokens = completion.usage.prompt_tokens
-        output_tokens = completion.usage.completion_tokens
-        self.logger(f"Prompt tokens: {input_tokens}, Completion tokens: {output_tokens}")
-
-        return goal
+        # Append current user turn (text + images)
+        messages.append({"role": "user", "content": user_content})
+        return messages

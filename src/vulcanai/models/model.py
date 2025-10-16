@@ -13,10 +13,13 @@
 # limitations under the License.
 
 import base64
-from typing import Any
+from typing import Any, Optional, TypeVar
 from abc import ABC, abstractmethod
 
-from vulcanai.core.plan_types import GlobalPlan
+from vulcanai.core.plan_types import AIValidation, GlobalPlan, GoalSpec
+
+
+T = TypeVar('T', GlobalPlan, GoalSpec, AIValidation)
 
 
 class IModel(ABC):
@@ -30,12 +33,22 @@ class IModel(ABC):
 
     @abstractmethod
     def plan_inference(self, **kwargs) -> GlobalPlan:
-        """Generate plan."""
+        """Generate a GlobalPlan from user input."""
         ...
 
     @abstractmethod
-    def goal_inference(self, **kwargs):
-        """Generate goal."""
+    def goal_inference(self, **kwargs) -> GoalSpec:
+        """Generate a GoalSpec from user input."""
+        ...
+
+    @abstractmethod
+    def validation_inference(self, **kwargs) -> AIValidation:
+        """Generate an AIValidation to verify if the user's goal has been achieved."""
+        ...
+
+    @abstractmethod
+    def _inference(self, **kwargs) -> Optional[T]:
+        """Generate an AIValidation to verify if the user's goal has been achieved."""
         ...
 
     def _read_image(self, image_path: str) -> bytes:
