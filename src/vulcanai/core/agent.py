@@ -134,3 +134,14 @@ class Agent:
 
         else:
             raise NotImplementedError(f"LLM brand {self.brand} not supported.")
+
+    def set_hooks(self, hooks) -> None:
+        """Set hooks for LLM activity."""
+        if self.model:
+            try:
+                self.model.hooks = hooks
+                self.logger("LLM hooks set.")
+            except Exception as e:
+                self.logger(f"Failed to set LLM hooks: {e}", error=True)
+        else:
+            self.logger("LLM model not initialized, cannot set hooks.", error=True)

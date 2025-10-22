@@ -12,24 +12,70 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from threading import Lock
 import argparse
-from prompt_toolkit import PromptSession
-from rich.progress import Progress, SpinnerColumn, TextColumn
 import os
 
+from prompt_toolkit import PromptSession
+from rich.progress import Progress, SpinnerColumn, TextColumn
+from vulcanai.models.model import IModelHooks
 from vulcanai.console.logger import console
 
+
+class SpinnerHook(IModelHooks):
+    """
+    Single entrant spinner controller for console.
+    - Starts the spinner on the first LLM request.
+    - Stops the spinner when LLM request is over.
+    """
+    def __init__(self, console):
+        self.console = console
+        self._lock = Lock()
+
+    def on_request_start(self) -> None:
+        with self._lock:
+            # First request => create spinner
+            self._progress = Progress(
+                SpinnerColumn(spinner_name="dots2"),
+                TextColumn("[blue]Querying LLM...[/blue]"),
+                console=self.console,
+                transient=True,
+            )
+            self._progress.start()
+            self._task_id = self._progress.add_task("llm", start=True)
+
+    def on_request_end(self) -> None:
+        with self._lock:
+            if self._progress is not None:
+                # Last request finished => stop spinner
+                try:
+                    if self._task_id is not None:
+                        self._progress.remove_task(self._task_id)
+                except Exception:
+                    pass
+                self._progress.stop()
+                self._progress = None
+                self._task_id = None
+
+
 class VulcanConsole:
-    def __init__(self, model: str = "gpt-5-nano", k: int = 7):
+    def __init__(self, model: str = "gpt-5-nano", k: int = 7, iterative: bool = False):
         self.manager = None
         self.session = PromptSession()
         self.last_plan = None
         self.last_bb = None
+        self.hooks = SpinnerHook(console)
 
         self.model = model
         self.k = k
 
-        self.init_manager()
+        self.init_manager(iterative)
+
+        # Override hooks with spinner controller
+        try:
+            self.manager.llm.set_hooks(self.hooks)
+        except Exception:
+            pass
 
     def run(self):
         self.print("VulcanAI Interactive Console")
@@ -51,25 +97,11 @@ class VulcanConsole:
                 if "--image=" in user_input:
                     images = self.get_images(user_input)
 
-                # Query LLM
+                # Handle user request
                 try:
-                    with Progress(
-                        SpinnerColumn(spinner_name="dots2"),
-                        TextColumn("[blue]Querying LLM...[/blue]"),
-                        console=console,
-                    ) as progress:
-                        task = progress.add_task("llm", start=False)
-                        plan = self.manager.get_plan_from_user_request(user_input, context={"images": images})
-                        progress.remove_task(task)
+                    result = self.manager.handle_user_request(user_input, context={"images": images})
                 except Exception as e:
-                    self.print(f"[error]Error generating plan: {e}[/error]")
-                    continue
-
-                # Execute plan
-                try:
-                    result = self.manager.execute_plan(plan)
-                except Exception as e:
-                    self.print(f"[error]Error executing plan: {e}[/error]")
+                    self.print(f"[error]Error handling request:[/error] {e}")
                     continue
 
                 self.last_plan = result.get("plan", None)
@@ -84,10 +116,13 @@ class VulcanConsole:
                 console.print("[yellow]Exiting...[/yellow]")
                 break
 
-    def init_manager(self):
-        from vulcanai.core.manager_plan import PlanManager
-        console.print("[console]Initializing Manager...[/console]")
-        self.manager = PlanManager(model=self.model, k=self.k)
+    def init_manager(self, iterative: bool = False):
+        if iterative:
+            from vulcanai.core.manager_iterator import IterativeManager as ConsoleManager
+        else:
+            from vulcanai.core.manager_plan import PlanManager as ConsoleManager
+        console.print(f"[console]Initializing Manager '{ConsoleManager.__name__}'...[/console]")
+        self.manager = ConsoleManager(model=self.model, k=self.k)
         self.print(f"Manager initialized with model '{self.model}'.")
 
     def handle_command(self, cmd: str):
@@ -207,9 +242,13 @@ def main():
         "-k", type=int, default=7,
         help="Maximum number of tools to pass to the LLM"
     )
+    parser.add_argument(
+        "-i", "--iterative", action="store_true", default=False,
+        help="Enable Iterative Manager (default: off)"
+    )
 
     args = parser.parse_args()
-    console = VulcanConsole(model=args.model, k=args.k)
+    console = VulcanConsole(model=args.model, k=args.k, iterative=args.iterative)
     if args.register_from_file:
         for file in args.register_from_file:
             console.manager.register_tools_from_file(file)

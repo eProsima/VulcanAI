@@ -19,7 +19,7 @@ import mimetypes
 import time
 
 from vulcanai.core.plan_types import AIValidation, GlobalPlan, GoalSpec
-from vulcanai.models.model import IModel
+from vulcanai.models.model import IModel, IModelHooks
 
 # Generic type variable for response classes
 T = TypeVar('T', GlobalPlan, GoalSpec, AIValidation)
@@ -27,10 +27,11 @@ T = TypeVar('T', GlobalPlan, GoalSpec, AIValidation)
 
 class OpenAIModel(IModel):
     """ Wrapper for OpenAI models. """
-    def __init__(self, model_name: str, logger=None):
+    def __init__(self, model_name: str, logger=None, hooks: Optional[IModelHooks] = None):
         super().__init__()
         self.logger = logger
         self.model_name = model_name
+        self.hooks = hooks
         try:
             self.model = OpenAI()
         except Exception as e:
@@ -134,6 +135,12 @@ class OpenAIModel(IModel):
 
         self.logger(f"[DEBUG] Sending messages to GPT for: {messages[0]} - User prompt: {user_prompt}")
 
+        # Notify hooks of request start
+        try:
+            self.hooks.on_request_start()
+        except Exception as e:
+            pass
+
         # Call OpenAI with response_format bound to the desired schema/class
         try:
             completion = self.model.chat.completions.parse(
@@ -144,6 +151,12 @@ class OpenAIModel(IModel):
         except Exception as e:
             self.logger(f"OpenAI API error: {e}", error=True)
             return None
+        finally:
+            # Notify hooks of request end
+            try:
+                self.hooks.on_request_end()
+            except Exception as e:
+                pass
 
         # Extract parsed object safely
         parsed: Optional[T] = None

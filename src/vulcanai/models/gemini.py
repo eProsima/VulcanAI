@@ -21,17 +21,18 @@ import os
 import time
 
 from vulcanai.core.plan_types import AIValidation, GlobalPlan, GoalSpec
-from vulcanai.models.model import IModel
+from vulcanai.models.model import IModel, IModelHooks
 
 T = TypeVar('T', GlobalPlan, GoalSpec, AIValidation)
 
 
 class GeminiModel(IModel):
     """ Wrapper for most of Google models, Gemini mainly. """
-    def __init__(self, model_name:str, logger=None):
+    def __init__(self, model_name:str, logger=None, hooks: Optional[IModelHooks] = None):
         super().__init__()
         self.logger = logger
         self.model_name = model_name
+        self.hooks = hooks
         try:
             self.model = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
         except Exception as e:
@@ -143,6 +144,12 @@ class GeminiModel(IModel):
 
         self.logger(f"[DEBUG] Sending messages to Gemini for: {messages}")
 
+        # Notify hooks of request start
+        try:
+            self.hooks.on_request_start()
+        except Exception as e:
+            pass
+
         response = self.model.models.generate_content(
             model=self.model_name,
             contents=messages,
@@ -153,6 +160,12 @@ class GeminiModel(IModel):
             parsed_response = response.parsed
         except Exception as e:
             self.logger(f"Failed to get parsed goal from Gemini response, falling back to text: {e}", error=True)
+        finally:
+            # Notify hooks of request end
+            try:
+                self.hooks.on_request_end()
+            except Exception as e:
+                pass
 
         # Fallback to get GoalSpec from text if the parsed field is not available
         if parsed_response is None:

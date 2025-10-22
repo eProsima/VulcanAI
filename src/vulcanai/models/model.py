@@ -30,6 +30,8 @@ class IModel(ABC):
     model_name: str = ""
     # Logger function
     logger: Any = None
+    # Optional hooks for LLM activity
+    hooks: Any = None
 
     @abstractmethod
     def plan_inference(self, **kwargs) -> GlobalPlan:
@@ -57,3 +59,11 @@ class IModel(ABC):
 
     def _encode_image(self, image_path: str) -> str:
         return base64.b64encode(self._read_image(image_path)).decode("utf-8")
+
+
+class IModelHooks(ABC):
+    """No-op base hooks for LLM activity."""
+    def on_request_start(self) -> None:
+        pass
+    def on_request_end(self) -> None:
+        pass
