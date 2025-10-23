@@ -38,75 +38,6 @@ class GeminiModel(IModel):
         except Exception as e:
             self.logger(f"Missing Gemini API Key: {e}", error=True)
 
-    def plan_inference(
-            self,
-            system_prompt: str,
-            user_prompt: str,
-            images: list[str],
-            history: list[tuple[str, str]]
-    ) -> GlobalPlan:
-        """
-        Call the generic inference with GlobalPlan as response type.
-
-        :param system_prompt: System message.
-        :param user_prompt: User message.
-        :param images: Optional image paths or URLs.
-        :param history: Optional (user_text, plan_summary) tuples to reconstruct conversational context.
-        :return: Parsed response object of type GlobalPlan, or None on error.
-        """
-        return self._inference(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            response_cls=GlobalPlan,
-            images=images,
-            history=history
-        )
-
-    def goal_inference(
-            self,
-            system_prompt: str,
-            user_prompt: str,
-            history: list[tuple[str, str]]
-    ) -> GoalSpec:
-        """
-        Call the generic inference with GoalSpec as response type (no images).
-
-        :param system_prompt: System message.
-        :param user_prompt: User message.
-        :param history: Optional (user_text, plan_summary) tuples to reconstruct conversational context.
-        :return: Parsed response object of type GoalSpec, or None on error.
-        """
-        return self._inference(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            response_cls=GoalSpec,
-            images=None,
-            history=history
-        )
-
-    def validation_inference(
-            self,
-            system_prompt: str,
-            user_prompt: str,
-            images: list[str],
-            history: list[tuple[str, str]]
-    ) -> AIValidation:
-        """
-        Call the generic inference with AIValidation as response type (no history).
-
-        :param system_prompt: System message.
-        :param user_prompt: User message.
-        :param images: Optional image paths or URLs.
-        :return: Parsed response object of type AIValidation, or None on error.
-        """
-        return self._inference(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            response_cls=AIValidation,
-            images=images,
-            history=history
-        )
-
     def _inference(
         self,
         *,
@@ -141,8 +72,6 @@ class GeminiModel(IModel):
             system_instruction=[system_prompt],
             candidate_count=1,
         )
-
-        self.logger(f"[DEBUG] Sending messages to Gemini for: {messages}")
 
         # Notify hooks of request start
         try:

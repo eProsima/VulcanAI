@@ -37,75 +37,6 @@ class OpenAIModel(IModel):
         except Exception as e:
             self.logger(f"Missing OpenAI API Key: {e}", error=True)
 
-    def plan_inference(
-            self,
-            system_prompt: str,
-            user_prompt: str,
-            images: list[str],
-            history: list[tuple[str, str]]
-    ) -> Optional[GlobalPlan]:
-        """
-        Call the generic inference with GlobalPlan as response type.
-
-        :param system_prompt: System message.
-        :param user_prompt: User message.
-        :param images: Optional image paths or URLs.
-        :param history: Optional (user_text, plan_summary) tuples to reconstruct conversational context.
-        :return: Parsed response object of type GlobalPlan, or None on error.
-        """
-        return self._inference(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            response_cls=GlobalPlan,
-            images=images,
-            history=history
-        )
-
-    def goal_inference(
-        self,
-        system_prompt: str,
-        user_prompt: str,
-        history: list[tuple[str, str]]
-    ) -> Optional[GoalSpec]:
-        """
-        Call the generic inference with GoalSpec as response type (no images).
-
-        :param system_prompt: System message.
-        :param user_prompt: User message.
-        :param history: Optional (user_text, plan_summary) tuples to reconstruct conversational context.
-        :return: Parsed response object of type GoalSpec, or None on error.
-        """
-        return self._inference(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            response_cls=GoalSpec,
-            images=None,
-            history=history
-        )
-
-    def validation_inference(
-        self,
-        system_prompt: str,
-        user_prompt: str,
-        images: list[str],
-        history: list[tuple[str, str]]
-    ) -> Optional[AIValidation]:
-        """
-        Call the generic inference with AIValidation as response type (no history).
-
-        :param system_prompt: System message.
-        :param user_prompt: User message.
-        :param images: Optional image paths or URLs.
-        :return: Parsed response object of type AIValidation, or None on error.
-        """
-        return self._inference(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            response_cls=AIValidation,
-            images=images,
-            history=history
-        )
-
     def _inference(
         self,
         *,
@@ -132,8 +63,6 @@ class OpenAIModel(IModel):
 
         # Build messages (system + optional history + current user)
         messages = self._build_messages(system_prompt, user_content, history)
-
-        self.logger(f"[DEBUG] Sending messages to GPT for: {messages[0]} - User prompt: {user_prompt}")
 
         # Notify hooks of request start
         try:

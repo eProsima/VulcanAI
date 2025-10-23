@@ -30,23 +30,77 @@ class IModel(ABC):
     model_name: str = ""
     # Logger function
     logger: Any = None
-    # Optional hooks for LLM activity
+    # Optional hooks for LLM/VLM activity
     hooks: Any = None
 
-    @abstractmethod
-    def plan_inference(self, **kwargs) -> GlobalPlan:
-        """Generate a GlobalPlan from user input."""
-        ...
+    def plan_inference(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        images: list[str],
+        history: list[tuple[str, str]]
+    ) -> Optional[GlobalPlan]:
+        """
+        Call the generic inference with GlobalPlan as response type.
 
-    @abstractmethod
-    def goal_inference(self, **kwargs) -> GoalSpec:
-        """Generate a GoalSpec from user input."""
-        ...
+        :param system_prompt: System message.
+        :param user_prompt: User message.
+        :param images: Optional image paths or URLs.
+        :param history: Optional (user_text, plan_summary) tuples to reconstruct conversational context.
+        :return: Parsed response object of type GlobalPlan, or None on error.
+        """
+        return self._inference(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            response_cls=GlobalPlan,
+            images=images,
+            history=history
+        )
 
-    @abstractmethod
-    def validation_inference(self, **kwargs) -> AIValidation:
-        """Generate an AIValidation to verify if the user's goal has been achieved."""
-        ...
+    def goal_inference(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        history: list[tuple[str, str]]
+    ) -> Optional[GoalSpec]:
+        """
+        Call the generic inference with GoalSpec as response type (no images).
+
+        :param system_prompt: System message.
+        :param user_prompt: User message.
+        :param history: Optional (user_text, plan_summary) tuples to reconstruct conversational context.
+        :return: Parsed response object of type GoalSpec, or None on error.
+        """
+        return self._inference(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            response_cls=GoalSpec,
+            images=None,
+            history=history
+        )
+
+    def validation_inference(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        images: list[str],
+        history: list[tuple[str, str]]
+    ) -> Optional[AIValidation]:
+        """
+        Call the generic inference with AIValidation as response type (no history).
+
+        :param system_prompt: System message.
+        :param user_prompt: User message.
+        :param images: Optional image paths or URLs.
+        :return: Parsed response object of type AIValidation, or None on error.
+        """
+        return self._inference(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            response_cls=AIValidation,
+            images=images,
+            history=history
+        )
 
     @abstractmethod
     def _inference(self, **kwargs) -> Optional[T]:
