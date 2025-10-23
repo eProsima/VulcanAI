@@ -66,6 +66,8 @@ class IterativeManager(ToolManager):
         self.iter = 0
         self._used_plans = set()
         self._timeline = []
+        if self.bb and self.bb.get("ai_validation", None):
+            self.bb.pop("ai_validation")
 
     def handle_user_request(self, user_text: str, context: Dict[str, Any]) -> Dict[str, Any]:
         """Override the user request handler to implement iterative planning."""
@@ -80,25 +82,29 @@ class IterativeManager(ToolManager):
             self.logger(f"Error getting goal from user request: {e}", error=True)
             return {"error": "Error getting goal from user request."}
 
+        skip_verification_step = False
         while self.iter < self.max_iters:
             self.iter += 1
             self.logger(f"--- Iteration {self.iter} ---")
             try:
                 # Check progress toward the goal and stop if achieved
-                if self._verify_progress():
+                if not skip_verification_step and self._verify_progress():
                     self._timeline.append({"iteration": self.iter, "event": TimelineEvent.GOAL_ACHIEVED.value})
                     break
+                skip_verification_step = False
 
                 # Get plan from LLM
                 plan = self.get_plan_from_user_request(user_text, context)
                 if not plan:
                     self.logger(f"Error getting plan from model", error=True)
                     self._timeline.append({"iteration": self.iter, "event": TimelineEvent.PLAN_GENERATION_FAILED.value})
+                    skip_verification_step = True
                     continue
                 plan_str = str(plan.plan)
                 if plan_str in self._used_plans:
                     self.logger("LLM produced a repeated plan. Stopping iterations.", error=True)
                     self._timeline.append({"iteration": self.iter, "event": TimelineEvent.PLAN_REPEATED.value})
+                    skip_verification_step = True
                     continue
                 self._used_plans.add(plan_str)
 
@@ -128,7 +134,7 @@ class IterativeManager(ToolManager):
 
                 # If execution was successful, return the result
                 if not ret.get("success", False):
-                    self.logger(f"Iteration {self.iter} failed. Re-planning...", error=True)
+                    self.logger(f"Iteration {self.iter} failed.", error=True)
 
             except Exception as e:
                 self.logger(f"Error handling user request: {e}", error=True)
@@ -166,6 +172,8 @@ class IterativeManager(ToolManager):
             for e in self._timeline[-self._timeline_events_printed:]:
                 if e.get('event', "") == TimelineEvent.PLAN_EXECUTED.value:
                     timeline_events += f"  - Iteration {e['iteration']}: {e['event']} - Plan: {e.get('plan', 'N/A')} - Result: {'Success' if e.get('result', False) else 'Failure'}\n"
+                elif e.get('event', "") == TimelineEvent.PLAN_NOT_VALID.value:
+                    timeline_events += f"  - Iteration {e['iteration']}: {e['event']} - Detail: {e.get('detail', 'N/A')}\n"
                 else:
                     timeline_events += f"  - Iteration {e['iteration']}: {e['event']}\n"
         else:
