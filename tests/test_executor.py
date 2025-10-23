@@ -225,6 +225,24 @@ class TestPlanExecutor(unittest.TestCase):
         self.assertIn("speak", bb)
         self.assertTrue(bb["speak"]["spoken"])
 
+    def test_none_string_condition_executes_step(self):
+        """Test that a step with a None string condition executes. As None should imply no condition applied."""
+        plan = self.GlobalPlan(
+            plan=[
+                self.PlanNode(
+                    kind="SEQUENCE",
+                    steps=[
+                        self.Step(tool="speak", args=[self.Arg(key="text", val="Hello")], condition="None"),
+                    ],
+                )
+            ]
+        )
+        result = self.exec.run(plan, {})
+        self.assertTrue(result["success"])
+        bb = result["blackboard"]
+        self.assertIn("speak", bb)
+        self.assertTrue(bb["speak"]["spoken"])
+
     def test_bb_condition_evaluation(self):
         """Test blackboard condition evaluation."""
         # Test with bb condition at the beggining of string condition and a False condition to skip

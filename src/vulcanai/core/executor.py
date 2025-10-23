@@ -171,6 +171,10 @@ class PlanExecutor:
         """Evaluate a simple expression against bb."""
         try:
             if expr and isinstance(expr, str):
+                # Some models might output 'None' as a string for no condition or success_criteria
+                # In both cases, we treat it as always true, as there is no condition to evaluate
+                if expr.strip().lower() == "none":
+                    return True
                 sub_expr = self._make_bb_subs(expr, bb)
                 # Eval does not correctly evaluate dot notation with nested dicts
                 return bool(eval(sub_expr))
