@@ -19,7 +19,7 @@ from .core import (
     ArgValue, Step, PlanNode, GlobalPlan, PlanValidator,
 )
 from .console import VulcanConsole, VulcanAILogger
-from .models import OpenAIModel, GeminiModel
+from .models import GeminiModel, OllamaModel, OpenAIModel
 from .tools import (
     AtomicTool, CompositeTool, ValidationTool, ToolRegistry, vulcanai_tool,
 )
@@ -43,6 +43,7 @@ __all__ = [
     "VulcanConsole",
     # Models
     "GeminiModel",
+    "OllamaModel",
     "OpenAIModel",
     # Tools
     "AtomicTool",

@@ -13,9 +13,11 @@
 # limitations under the License.
 
 from .gemini import GeminiModel
+from .ollama_model import OllamaModel
 from .openai import OpenAIModel
 
 __all__ = [
     "GeminiModel",
+    "OllamaModel",
     "OpenAIModel",
 ]

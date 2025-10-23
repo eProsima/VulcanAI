@@ -19,17 +19,18 @@ from vulcanai.core.plan_types import AIValidation, GlobalPlan, GoalSpec
 
 
 class Brand(str, Enum):
-    gpt = "gpt"
     gemini = "gemini"
+    gpt = "gpt"
+    ollama = "ollama"
 
 
 class Agent:
     """Interface to operate the LLM."""
     def __init__(self, model_name: str, logger=None):
-        self.brand: Brand = self._detect_brand(model_name)
+        self.brand, name = self._detect_brand(model_name)
         self.model = None
         self.logger = logger or VulcanAILogger.log_manager
-        self._load_model(model_name)
+        self._load_model(name)
 
     def inference(
             self,
@@ -112,12 +113,20 @@ class Agent:
 
         return validation
 
-    def _detect_brand(self, model_name: str) -> Brand:
+    def _detect_brand(self, model_name: str) -> tuple[Brand, str]:
+        """
+        Detect LLM brand from model name prefix.
+
+        :param model_name: Full model name with brand prefix.
+        :return: Tuple of (Brand enum, stripped model name).
+        """
         m = model_name.lower()
+        if m.startswith("ollama-"):
+            return Brand.ollama, model_name[len("ollama-"):]
         if m.startswith(("gpt-", "o")):
-            return Brand.gpt
+            return Brand.gpt, model_name
         if m.startswith(("gemini-", "gemma-")):
-            return Brand.gemini
+            return Brand.gemini, model_name
         else:
             raise NotImplementedError(f"Model {model_name} not supported.")
 
@@ -131,6 +140,11 @@ class Agent:
             from vulcanai.models.gemini import GeminiModel
             self.logger(f"Using Gemini API with model: {model_name}")
             self.model = GeminiModel(model_name, self.logger)
+
+        elif self.brand == Brand.ollama:
+            from vulcanai.models.ollama_model import OllamaModel
+            self.logger(f"Using Ollama API with model: {model_name}")
+            self.model = OllamaModel(model_name, self.logger)
 
         else:
             raise NotImplementedError(f"LLM brand {self.brand} not supported.")

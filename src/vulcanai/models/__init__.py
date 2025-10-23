@@ -15,8 +15,9 @@
 from importlib import import_module
 
 _EXPORTS = {
-    "OpenAIModel": ".openai:OpenAIModel",
     "GeminiModel": ".gemini:GeminiModel",
+    "OllamaModel": ".ollama_model:OllamaModel",
+    "OpenAIModel": ".openai:OpenAIModel",
 }
 
 __all__ = list(_EXPORTS.keys())
