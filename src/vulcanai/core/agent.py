@@ -32,7 +32,7 @@ class Agent:
         self.logger = logger or VulcanAILogger.log_manager
         self._load_model(name)
 
-    def inference(
+    def inference_plan(
             self,
             system_context: str,
             user_prompt: str,
@@ -93,7 +93,7 @@ class Agent:
             history: list[tuple[str, str]],
         ) -> AIValidation:
         """
-        Perform inference using the selected LLM model to generate a goal.
+        Perform inference using the selected LLM model to generate a validation.
 
         :param system_context: The system prompt or context for the LLM.
         :param user_prompt: The user's input or request.

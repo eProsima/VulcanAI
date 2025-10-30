@@ -108,10 +108,10 @@ class FakeRegistry:
 
 
 class MockAgent:
-    """Mock agent that records prompts passed to inference() and inference_goal()."""
+    """Mock agent that records prompts passed to inference_plan() and inference_goal()."""
     def __init__(self, plans=[], goal=None, validation=None, success_validation=0):
         """
-        :param plans: list[GlobalPlan] to return on successive inference() calls
+        :param plans: list[GlobalPlan] to return on successive inference_plan() calls
         :param goal:  GoalSpec to return on inference_goal() calls
         """
         self.plans = list(plans)
@@ -123,7 +123,7 @@ class MockAgent:
         # If >0, number of successive validation calls needed to return success=True. Any call before that returns success=False. First call is 0.
         self.success_validation = success_validation
 
-    def inference(self, system_prompt, user_prompt, images, history):
+    def inference_plan(self, system_prompt, user_prompt, images, history):
         self.inference_calls.append(
             {"system": system_prompt, "user": user_prompt, "images": list(images), "history": list(history)}
         )
@@ -243,7 +243,7 @@ def test_prompts_reflect_bb_updates_across_iterations(base_manager):
     result = mgr.handle_user_request("This is a test and this prompt is not relevant", context={})
     assert "timeline" in result
 
-    # Ensure inference() calls were made (we expect a goal generation and two iterations planning)
+    # Ensure inference_plan() calls were made (we expect a goal generation and two iterations planning)
     assert len(mgr.llm.goal_calls) == 1
     assert len(mgr.llm.inference_calls) == 2
 
@@ -294,7 +294,7 @@ def test_validation_tools_are_called_before_each_iteration(base_manager):
     result = mgr.handle_user_request("This is a test and this prompt is not relevant", context={})
     assert "timeline" in result
 
-    # Ensure inference() calls were made (we expect a goal generation and two iterations planning)
+    # Ensure inference_plan() calls were made (we expect a goal generation and two iterations planning)
     assert len(mgr.llm.goal_calls) == 1
     assert len(mgr.llm.inference_calls) == 2
     assert len(mgr.llm.validation_calls) == 0  # No calls in 'objective' mode
@@ -316,9 +316,9 @@ def test_validation_tools_are_called_before_each_iteration(base_manager):
 def test_validation_tools_providing_images_are_handled_in_perceptual(base_manager):
     """
     Test that validation tools that provide images are correctly handled and their images
-    are passed to the next inference() call if the goal mode is 'perceptual'.
+    are passed to the next inference_plan() call if the goal mode is 'perceptual'.
     1) The validation tool must be called before each iteration.
-    2) If the goal mode is 'perceptual', the images provided by the validation tool must be passed to the next inference() call.
+    2) If the goal mode is 'perceptual', the images provided by the validation tool must be passed to the next inference_plan() call.
     """
     mgr = base_manager
 
@@ -347,7 +347,7 @@ def test_validation_tools_providing_images_are_handled_in_perceptual(base_manage
     result = mgr.handle_user_request("This is a test and this prompt is not relevant", context={})
     assert "timeline" in result
 
-    # Ensure inference() calls were made (we expect a goal generation and two iterations planning)
+    # Ensure inference_plan() calls were made (we expect a goal generation and two iterations planning)
     assert len(mgr.llm.goal_calls) == 1
     assert len(mgr.llm.inference_calls) == 2
     assert len(mgr.llm.validation_calls) == 3
@@ -395,7 +395,7 @@ def test_iterative_manager_applies_timeout_to_all_steps(base_manager):
     result = mgr.handle_user_request("This is a test and this prompt is not relevant", context={})
     assert "timeline" in result
 
-    # Ensure inference() calls were made (we expect a goal generation and two iterations planning)
+    # Ensure inference_plan() calls were made (we expect a goal generation and two iterations planning)
     assert len(mgr.llm.goal_calls) == 1
     assert len(mgr.llm.inference_calls) == 2
 
