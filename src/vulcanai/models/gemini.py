@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 from google import genai
 from google.genai import types as gtypes
 from typing import Any, Dict, Iterable, Optional, Type, TypeVar
