@@ -14,9 +14,10 @@ It relies on the concept of tools to extend its capabilities and adapt to differ
 Tools are special components that provide specific functionalities to VulcanAI,
 allowing its agents to interact with the external world.
 </div>
+<br>
 
-
-
+> \[!IMPORTANT]\
+> VulcanAI is currently in active development and current version is in Beta stage. New features and improvements are being added regularly and API might suffer changes.
 
 ## VulcanAI Installation
 
@@ -34,7 +35,7 @@ before installing VulcanAI to avoid potential conflicts with other Python packag
 To create a virtual environment, run the following command:
 
 ```bash
-python3 -m venv vulcanai_venv
+python3 -m venv vulcanai_venv && \
 source vulcanai_venv/bin/activate
 ```
 
@@ -56,6 +57,8 @@ pip install eprosima-vulcanai
 
 This will install the latest stable version of VulcanAI and all its dependencies.
 
+> \[!WARNING]\
+> Pip installation will be available soon.
 
 ### Installation from source
 
@@ -64,8 +67,7 @@ If you prefer to install VulcanAI from source, follow these steps:
 1. Clone the repository in the desired location and navigate to it:
 
 ```bash
-git clone https://github.com/eProsima/VulcanAI.git VulcanAI
-cd VulcanAI
+git clone https://github.com/eProsima/VulcanAI.git VulcanAI && cd VulcanAI
 ```
 
 2. Install VulcanAI:
