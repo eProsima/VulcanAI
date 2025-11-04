@@ -1,7 +1,7 @@
 # VulcanAI
 
 <div align="justify">
-VulcanAI is a library that provides a framework to easily and flexibly create powerful AI applications. 
+VulcanAI is a library that provides a framework to easily and flexibly create powerful AI applications.
 Leveraging LLM capabilities, VulcanAI acts as an intelligent assistant,
 capable of understanding and executing complex tasks by decomposing them into manageable sub-tasks in any environment.
 VulcanAI excels at planning and reasoning, providing a deeper level of human-context understanding to robotic systems.
@@ -94,7 +94,7 @@ This section explains how to properly fix this to configure the environment to r
 
 To run VulcanAI with Vulcanexus, you need to have a Vulcanexus distribution installed in your system.
 You can follow the official Vulcanexus installation guide for
-[binaries](https://vulcanexus--256.org.readthedocs.build/en/256/rst/installation/linux_binary_installation.html#linux-binary-installation) 
+[binaries](https://vulcanexus--256.org.readthedocs.build/en/256/rst/installation/linux_binary_installation.html#linux-binary-installation)
 or [docker](https://vulcanexus--256.org.readthedocs.build/en/256/rst/installation/docker.html#docker-installation)
 
 Once you have a Vulcanexus distribution installed and a virtual environment for VulcanAI created,
