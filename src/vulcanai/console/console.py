@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 # Copyright 2025 Proyectos y Sistemas de Mantenimiento SL (eProsima).
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,6 +24,27 @@ from vulcanai.models.model import IModelHooks
 from vulcanai.console.logger import console
 
 
+from textual.app import App, ComposeResult
+from textual.widgets import Input, Log, Static
+from textual import events
+
+
+from rich.text import Text
+from rich.markup import escape
+
+from textual.containers import VerticalScroll
+
+import asyncio, time
+from typing import Callable
+
+
+class Prompt(Static):
+    """A tiny prompt label shown to the left of the input."""
+
+    def __init__(self, text: str = "> "):
+        super().__init__(text, id="prompt")
+
+
 class SpinnerHook(IModelHooks):
     """
     Single entrant spinner controller for console.
@@ -34,6 +57,8 @@ class SpinnerHook(IModelHooks):
 
     def on_request_start(self) -> None:
         with self._lock:
+            #self.console.call_from_thread(self.console.show_spinner)
+            # TODO. danip add spinner in textualize terminal
             # First request => create spinner
             self._progress = Progress(
                 SpinnerColumn(spinner_name="dots2"),
@@ -46,6 +71,7 @@ class SpinnerHook(IModelHooks):
 
     def on_request_end(self) -> None:
         with self._lock:
+            #self.console.call_from_thread(self.console.hide_spinner)
             if self._progress is not None:
                 # Last request finished => stop spinner
                 try:
@@ -58,8 +84,86 @@ class SpinnerHook(IModelHooks):
                 self._task_id = None
 
 
-class VulcanConsole:
-    def __init__(self, model: str = "gpt-5-nano", k: int = 7, iterative: bool = False):
+class VulcanConsole(App):
+
+    # Terminal style
+    """CSS =
+    Screen {
+        layout: vertical;
+    }
+
+    # Header at top, then the log grows, then input row at bottom
+    # A small prompt sits to the left of the input for terminal vibes
+
+    # Output area
+    # Make it fill remaining space and look terminal-ish
+    # Log already has a good style; just ensure it expands
+    # and wraps nicely.
+    Log#log {
+        height: 1fr;
+        border: solid rgb(0, 205, 0);
+        background: $boost;
+        padding: 1 2;
+        overflow-y: auto;
+    }
+
+    .input-row {
+        height: auto;
+        layout: horizontal;
+        padding: 0 1;
+        dock: bottom;
+        background: $panel;
+    }
+
+    # Prompt label
+    # Slightly dim to look like a shell prompt
+    # Input stretches to fill the row
+    # The Input gets a monospace look by default under Textual
+
+    # Prompt label style
+    # (Using Static for a simple label avoids extra dependencies.)
+
+    # Make the input larger for comfortable typing
+    Input#cmd {
+        width: 1fr;
+        padding: 0 1;
+    }
+
+    Static#prompt {
+        width: auto;
+        color: $text-muted;
+        content-align: left middle;
+    }
+
+    Static#hint {
+        height: auto;
+        color: $text-muted;
+        padding: 0 2;
+    }
+    """
+
+    CSS = """
+    #log { height: 1fr; }
+    #cmd { dock: bottom; }
+    """
+
+    """BINDINGS = [
+        ("ctrl+q", "app_quit", "Quit"),
+        ("ctrl+p", "clear", "Clear"),
+        ("f1", "help", "Help"),
+        ("ctrl+alt+c", "copy", "Copy Selection"),  # new: mirrors terminal habit
+    ]"""
+
+    BINDINGS = [
+        ("ctrl+c", "copy_to_clipboard", "Copy log to clipboard"),
+        ("y", "copy_log", "Copy log to clipboard"),
+        #("ctrl+l", "clear", "Clear the terminal"),
+    ]
+
+    def __init__(self, tools_from_entrypoints: str = "", user_context: str = "", main_node = None,
+                 model: str = "gpt-5-nano", k: int = 7, iterative: bool = False):
+        super().__init__() # textual lib
+
         self.manager = None
         self.session = PromptSession()
         self.last_plan = None
@@ -69,7 +173,58 @@ class VulcanConsole:
         self.model = model
         self.k = k
 
-        self.init_manager(iterative)
+        self.iterative = iterative
+        self.tools_from_entrypoints = tools_from_entrypoints
+        self.user_context = user_context
+        self.main_node = main_node
+
+        self.commands = None
+        self._tab_matches = []
+        self._tab_index = 0
+        self._log_lines = []
+
+        # terminal qol
+        self.history = []
+
+    async def on_mount(self) -> None:
+
+        self._set_input_enabled(False)
+
+        self._log("Starting VulcanAI...", log_color=1)
+
+        await asyncio.sleep(0)
+        asyncio.create_task(self._bootstrap())
+
+        """self.cmd_input.focus()"""
+
+        """
+        # Disable commands until we finish boot
+        #self._set_input_enabled(False)
+
+        self.init _manager(self.iterative)
+
+        # command registry: name -> handler
+        self.commands: Dict[str, Callable[[List[str]], None]] = {
+            "/help": self.cmd_help,
+            #"help": self.cmd_help,
+            #"h": self.cmd_help,
+            "/tools": self.cmd_tools,
+            "/change_k": self.cmd_change_k,
+            "/history": self.cmd_history_index,
+            "/show_history": self.cmd_show_history,
+            "/plan": self.cmd_plan,
+            "/rerun": self.cmd_rerun,
+            "/bb": self.cmd_blackboard_state,
+            "/clear": self.cmd_clear,
+            #"clear": self.cmd_clear,
+            "/exit": self.cmd_quit,
+            #"q": self.cmd_quit,
+            #"exit": self.cmd_quit,
+        }
+
+        # cycling through tab matches
+        self._tab_matches = []
+        self._tab_index = 0
 
         # Override hooks with spinner controller
         try:
@@ -77,11 +232,552 @@ class VulcanConsole:
         except Exception:
             pass
 
-    def run(self):
-        self.print("VulcanAI Interactive Console")
-        self.print("Type 'exit' to quit.\n")
+        if self.tools_from_entrypoints != "":
+            self.manager.register_tools_from_entry_points(self.tools_from_entrypoints)
 
-        while True:
+        self.manager.add_user_context(self.user_context)
+
+        # Add the shared node to the console manager blackboard to be used by tools
+        if self.main_node != None:
+            self.manager.bb["main_node"] = self.main_node"""
+
+    def compose(self) -> ComposeResult:
+        """yield Header(show_clock=True)
+        #yield Log(id="term", highlight=True)#, markup=True)
+        yield Log(id="log", highlight=True)
+        yield Static("Press [b]F1[/b] for help • [b]Ctrl+C[/b] to quit • [b]Tab[/b] to autocomplete", id="hint")
+        with Static(classes="input-row"):
+            yield Prompt("> ")
+            yield Input(placeholder="Type a command and press Enter…", id="cmd")
+        yield Footer()"""
+
+        """yield Static("", id="log")
+        yield Input(placeholder="> ", id="cmd")"""
+
+        with VerticalScroll(id="logview"):
+            yield Static("", id="logcontent")
+        yield Input(placeholder="> ", id="cmd")
+
+    async def _bootstrap(self) -> None:
+        """
+        Function used to print information in runtime execution of a function
+
+        TODO. danip update this function to allow queries information and add the spinner
+        """
+        def worker(log_cb: Callable[[str], None]) -> None:
+            self.init_manager(log_cb)
+
+            # add the commands
+            # command registry: name -> handler
+            self.commands = {
+                "/help": self.cmd_help,
+                #"help": self.cmd_help,
+                #"h": self.cmd_help,
+                "/tools": self.cmd_tools,
+                "/change_k": self.cmd_change_k,
+                "/history": self.cmd_history_index,
+                "/show_history": self.cmd_show_history,
+                "/plan": self.cmd_plan,
+                "/rerun": self.cmd_rerun,
+                "/bb": self.cmd_blackboard_state,
+                "/clear": self.cmd_clear,
+                #"clear": self.cmd_clear,
+                "/exit": self.cmd_quit,
+                #"q": self.cmd_quit,
+                #"exit": self.cmd_quit,
+            }
+
+            #log_cb("Added commands.")
+
+            # cycling through tab matches
+            self._tab_matches = []
+            self._tab_index = 0
+
+            # Override hooks with spinner controller
+            try:
+                self.manager.llm.set_hooks(self.hooks)
+            except Exception:
+                pass
+
+            #log_cb("Added hooks.")
+
+            if self.tools_from_entrypoints != "":
+                self.manager.register_tools_from_entry_points(self.tools_from_entrypoints)
+
+            #log_cb("Added tools.")
+
+            self.manager.add_user_context(self.user_context)
+
+            #log_cb("Added user_context.")
+
+            # Add the shared node to the console manager blackboard to be used by tools
+            if self.main_node != None:
+                self.manager.bb["main_node"] = self.main_node
+
+        def log_cb(msg: str) -> None:
+            """
+            Print the msg while executing a function
+            """
+            self.call_from_thread(self._log, msg)
+
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, lambda: worker(log_cb))
+
+        # TODO. danip. add the queries information
+        if True:
+            self._is_ready = True
+            self._set_input_enabled(True)
+            self._log("VulcanAI Interactive Console", log_color=2)
+            self._log("Type 'exit' to quit.\n", log_color=2)
+
+    # region Utilities
+
+    """@property
+    def term(self):
+        return self.query_one("#log", Log)
+
+    @property
+    def cmd_input(self):
+        return self.query_one("#cmd", Input)#, id="term")
+
+    def print_system(self, message: str):
+        #self.term.write(f"[bold cyan]system[/]: {message}")
+        self.term.write(f"{message}")
+
+        #self.term.write(Text.from_markup(f"[{green_hex}]system[/]: {escape(message)}"))
+        #self.term.write(Text.from_markup(f"{escape(message)}"))
+
+    def print_output(self, message: str):
+        self.term.write(message)"""
+
+    # endregion
+
+    # region Commands
+
+    def cmd_help(self, _) -> None:
+        table = "\n".join(
+            [
+                "Available commands:\n"
+                "/help           - Show this help message\n"
+                "/tools          - List available tools\n"
+                "/change_k <int> - Change the 'k' value for the top_k algorithm selection or show the current value if no <int> is provided\n"
+                "/history <int>  - Change the history depth or show the current value if no <int> is provided\n"
+                "/show_history   - Show the current history\n"
+                "/plan           - Show the last generated plan\n"
+                "/rerun          - Rerun the last plan\n"
+                "/bb             - Show the last blackboard state\n"
+                "/clear          - Clear the console screen\n"
+                "/exit            - Exit the console\n"
+                "Query any other text to process it with the LLM and execute the plan generated.\n"
+                "Add --image=<path> to include images in the query. It can be used multiple times to add more images.\n"
+                "Example: '<user_prompt> --image=/path/to/image1 --image=/path/to/image2'"
+            ]
+        )
+        self._log(table, log_color=2)
+
+    def cmd_tools(self, _) -> None:
+        help_msg = f"Available tools (current index k={self.manager.k}):\n"
+        for tool in self.manager.registry.tools.values():
+            help_msg += f"- {tool.name}: {tool.description}\n"
+        self._log(help_msg, log_color=2)
+
+    def cmd_change_k(self, args) -> None:
+        if len(args) == 0:
+            self._log(f"Current 'k' is {self.manager.k}", log_color=2)
+            return
+        if len(args) != 1 or not args[0].isdigit():
+            self._log(f"Usage: /change_k <int> - Actual 'k' is {self.manager.k}",
+                      log_type="error", log_color=2)
+            return
+
+        new_k = int(args[0])
+        self.manager.k = new_k
+        self.manager.update_k_index(new_k)
+
+    def cmd_history_index(self, args) -> None:
+        if len(args) == 0:
+            self._log(f"Current 'history depth' is {self.manager.history_depth}",
+                      log_color=2)
+            return
+        if len(args) != 1 or not args[0].isdigit():
+            self._log(f"Usage: /history <int> - Actual 'history depth' is {self.manager.history_depth}",
+                      log_type="error", log_color=2)
+            return
+
+        new_hist = int(args[0])
+        self.manager.update_history_depth(new_hist)
+
+    def cmd_show_history(self, _) -> None:
+        if not self.manager.history:
+            self._log("No history available.", log_color=2)
+            return
+
+        help_msg = "\nCurrent history (oldest first):\n"
+        for i, (user_text, plan_summary) in enumerate(self.manager.history):
+            help_msg += f"{i+1}. User: {user_text}\n   Plan summary: {plan_summary}\n"
+
+        self._log(help_msg, log_color=2)
+
+    def cmd_plan(self, _) -> None:
+        if self.last_plan:
+            self._log("Last generated plan:", log_color=2)
+            self._log(self.last_plan, log_color=2)
+        else:
+            self._log("No plan has been generated yet.", log_color=2)
+
+    def cmd_rerun(self, _) -> None:
+        if self.last_plan:
+            self._log("Rerunning last plan...", log_color=2)
+            result = self.manager.executor.run(self.last_plan, self.manager.bb)
+            self.last_bb = result.get("blackboard", None)
+            self._log(f"Output of rerun: {result.get('blackboard', {None})}", log_color=2)
+        else:
+            self._log("No plan to rerun.", log_color=2)
+
+    def cmd_blackboard_state(self, _) -> None:
+        if self.last_bb:
+            self._log("Last blackboard state:", log_color=2)
+            self._log(self.last_bb, log_color=2)
+        else:
+            self._log("No blackboard available.", log_color=2)
+
+    def cmd_clear(self, _) -> None:
+        self._log_lines.clear()
+        self.query_one("#logcontent", Static).update("")
+
+    def cmd_quit(self, _) -> None:
+        self.exit()
+
+    def cmd_echo(self, args) -> None:
+        self._log(" ".join(args))
+
+    # endregion
+
+    # region Logging
+
+    def _render_log(self) -> None:
+        """self.query_one("#log", Static).update("\n".join(self._log_lines))"""
+        log_static = self.query_one("#logcontent", Static)
+        log_static.update("\n".join(self._log_lines))
+
+        self.query_one("#logview", VerticalScroll).scroll_end(animate=False)
+
+    """def _render_log(self):
+        log = self.query_one("#log", Static)
+        # Allow Rich markup for colors and styles
+        log.update("\n".join(self._log_lines), markup=True)"""
+
+    def _log(self, line: str, log_type: str = "", log_color: int = -1) -> None:
+        msg = ""
+
+        color_type = ""
+
+        if log_type == "register":
+            msg = "[bold cyan]\[REGISTRY][/bold cyan] "
+        elif log_type == "manager":
+            msg = "[bold blue]\[MANAGER][/bold blue] "
+        elif log_type == "executor":
+            msg = "[bold light green]\[EXECUTOR][/bold light green] "
+        elif log_type == "validator":
+            msg = "[bold orange_red1]\[VALIDATOR][/bold orange_red1] "
+        elif log_type == "error":
+            msg = "[bold red]\[ERROR][/bold red] "
+
+        if log_color == 0:
+            color_type = "#FF0000"
+        elif log_color == 1:
+            color_type = "#4E9A06"
+        elif log_color == 2:
+            color_type = "#8F6296"
+        elif log_color == 3:
+            color_type = "#C49C00"
+        elif log_color == 4:
+            color_type = "#069899"
+        else:
+            color_type = "#FFFFFF"
+
+        msg += f"[{color_type}]{line}[/{color_type}]"
+        self._log_lines.append(msg)
+        self._render_log()
+
+    """def _log(self, line: str):
+        if "error" in line.lower():
+            line = f"[red]{line}[/red]"
+        elif "warn" in line.lower():
+            line = f"[yellow]{line}[/yellow]"
+        elif "success" in line.lower():
+            line = f"[green]{line}[/green]"
+        self._log_lines.append(line)
+        self._render_log()"""
+
+    # endregion
+
+    # region Input
+
+    def _set_input_enabled(self, enabled: bool) -> None:
+        cmd = self.query_one("#cmd", Input)
+        cmd.disabled = not enabled
+        if enabled:
+            self.set_focus(cmd)
+
+    async def on_input_submitted(self, event: Input.Submitted) -> None:
+        """
+        Enter key
+        """
+
+        if not self._is_ready:
+            return
+        cmd = event.value.strip()
+        if not cmd:
+            return
+
+        try:
+            if event.input.id != "cmd":
+                return
+            user_input = (event.value or "").strip()
+
+            # the the user_input in the history navigation list (used when the up, down keys are pressed)
+            self.history.append(user_input)
+            event.input.value = ""
+            event.input.focus()
+
+            # reset tab state
+            self._tab_matches = []
+            self._tab_index = 0
+
+            if not user_input:
+                self.cmd_input.focus()
+                return
+
+            # Terminal history inputs navigation
+            self._history_index = None
+
+            # echo what the user typed (keep this if you like the prompt arrow)
+            self._log(f"\[USER] >>> {cmd}")
+
+            # If it doesn't start with '/', just print it as output and stop here
+            if user_input.startswith("/"):
+                self.handle_command(user_input)
+                return
+
+            # Check for image input. Must be always at the end of the input
+            images = []
+            if "--image=" in user_input:
+                images = self.get_images(user_input)
+
+            # Handle user request
+            try:
+                result = self.manager.handle_user_request(user_input, context={"images": images})
+            except Exception as e:
+                #self.print(f"[error]Error handling request:[/error] {e}")
+                self._log(f"[error]Error handling request:[/error] {e}")
+                return
+
+            self.last_plan = result.get("plan", None)
+            self.last_bb = result.get("blackboard", None)
+
+            #self.print(f"Output of plan: {result.get('blackboard', {None})}")
+            self._log(f"Output of plan: {result.get('blackboard', {None})}")
+
+        except KeyboardInterrupt:
+            #console.print("[yellow]Exiting...[/yellow]")
+            self._log("[yellow]Exiting...[/yellow]")
+            return
+        except EOFError:
+            #console.print("[yellow]Exiting...[/yellow]")
+            self._log("[yellow]Exiting...[/yellow]")
+            return
+
+        """
+        self.print_output(user_input)
+        event.input.value = ""
+        event.input.focus()
+        return
+        """
+
+    def handle_command(self, user_input: str) -> None:
+        # Otherwise, parse as a command
+        parts = user_input.split()
+        cmd = parts[0].lower()
+        args = parts[1:]
+
+        handler = self.commands.get(cmd)
+        if handler is None:
+            # only complain for slash-commands
+            self._log(f"Unknown command: [b]{cmd}[/]. Type '/help'.", log_color=2)
+        else:
+            try:
+                handler(args)
+            except Exception as e:
+                self._log(f"Error: {e!r}", log_color=0)
+
+    async def on_key(self, event: events.Key) -> None:
+        """Handle Up/Down for history navigation."""
+        key = event.key
+        cmd_input = self.query_one("#cmd", Input)
+
+
+        if key in ("up", "down"):
+            # Only handle history navigation if input is focused
+            if self.focused is not cmd_input:
+                return
+
+            if not self.history:
+                return
+
+            # Initialize history index if not already set
+            if not hasattr(self, "_history_index") or self._history_index is None:
+                self._history_index = len(self.history)
+
+            if key == "up" and self._history_index > 0:
+                self._history_index -= 1
+            elif key == "down" and self._history_index < len(self.history):
+                self._history_index += 1
+            else:
+                return  # ignore if out of range
+
+            # Update input value based on history
+            if 0 <= self._history_index < len(self.history):
+                cmd_input.value = self.history[self._history_index]
+            else:
+                cmd_input.value = ""
+
+            # Move cursor to end
+            cmd_input.cursor_position = len(cmd_input.value)
+            event.stop()
+            return
+
+        # AUTOCOMPLETE: Tab
+        if key == "tab":
+            # Current text (don’t strip right-side spaces; keep user’s spacing)
+            raw = cmd_input.value or ""
+            # Leading spaces are not part of the command token
+            left = len(raw) - len(raw.lstrip())
+            value = raw[left:]
+
+            if len(value) <= 0:
+                return
+
+            # Split into head (first token) and the remainder
+            head, *rest = value.split(maxsplit=1)
+            remainder = rest[0] if rest else ""
+
+            # Nothing typed yet: list all commands
+            all_cmds = sorted(self.commands) if self.commands else []
+            if not all_cmds:
+                return
+
+            self._tab_matches = [c for c in all_cmds if c.startswith(head)] if head else all_cmds
+            self._tab_index = 0
+
+            matches = self._tab_matches
+            if not matches:
+                cmd_input.focus()
+                event.prevent_default()
+                event.stop()
+                return
+
+            # If multiple matches, check for a longer common prefix to insert first
+            if len(matches) > 1:
+                prefix = self._common_prefix(matches)
+                new_value = prefix
+            else:
+                # Single match: complete directly
+                new_value = matches[0]
+
+            # Rebuild the input value:
+            cmd_input.value = new_value
+            cmd_input.cursor_position = len(cmd_input.value)
+
+            cmd_input.focus()          # keep caret in the input
+            event.prevent_default()
+            event.stop()
+            return
+
+        if key == "ctrl+w":
+            value = cmd_input.value
+            cursor = cmd_input.cursor_position
+            i = cursor-1
+
+            while i > 0:
+                if(value[i] == ' '):
+                    break
+                i -= 1
+
+            cmd_input.value = value[:i] + value[cursor:]
+            cmd_input.cursor_position = i
+
+            cmd_input.focus()          # keep caret in the input
+            event.prevent_default()
+            event.stop()
+            return
+
+        if key in ("ctrl+delete", "escape") :
+            value = cmd_input.value
+            cursor = cmd_input.cursor_position
+            i = cursor-1
+            n = len(value)
+
+            while i < n:
+                if(value[i] == ' '): # TODO danip. mirar cuando tiene que borrar espacios en blanco
+                    break
+                i += 1
+
+            cmd_input.value = value[:cursor] + value[i:]
+            cmd_input.cursor_position = i
+
+            cmd_input.focus()          # keep caret in the input
+            event.prevent_default()
+            event.stop()
+            return
+
+        # Any other keypress resets tab cycle if the prefix changes
+        if len(key) == 1 or key in ("backspace", "delete"):
+            self._tab_matches = []
+            self._tab_index = 0
+
+    def _common_prefix(self, strings: str) -> str:
+        if not strings:
+            return ""
+
+        common_prefix = strings[0]
+        commands = strings[0]
+
+        for i in range(1, len(strings)):
+            commands += f" {strings[i]}"
+
+            tmp = ""
+            n = min(len(common_prefix), len(strings[i]))
+            j = 0
+
+            while j < n:
+                if common_prefix[j] != strings[i][j]:
+                    break
+                tmp += common_prefix[j]
+
+                j += 1
+
+            if j < n:
+                common_prefix = tmp
+
+        self._log(commands, log_color=2)
+
+        return common_prefix
+
+    # endregion
+
+    # region Actions (key bindings)
+
+
+    # endregion
+
+    def run_console(self) -> None:
+        #self.print("VulcanAI Interactive Console")
+        #self.print("Type 'exit' to quit.\n")
+
+        self.run()
+
+        """while True:
             try:
                 user_input = self.session.prompt("[USER] >>> ")
                 if user_input.strip().lower() in ("exit", "quit"):
@@ -114,107 +810,27 @@ class VulcanConsole:
                 break
             except EOFError:
                 console.print("[yellow]Exiting...[/yellow]")
-                break
+                break"""
 
-    def init_manager(self, iterative: bool = False):
-        if iterative:
+    def init_manager(self, log_cb: Callable[[str], None]) -> None:
+        if self.iterative:
             from vulcanai.core.manager_iterator import IterativeManager as ConsoleManager
         else:
             from vulcanai.core.manager_plan import PlanManager as ConsoleManager
-        console.print(f"[console]Initializing Manager '{ConsoleManager.__name__}'...[/console]")
-        self.manager = ConsoleManager(model=self.model, k=self.k)
-        self.print(f"Manager initialized with model '{self.model}'.")
 
-    def handle_command(self, cmd: str):
-        """Process internal console commands."""
-        if cmd == "/help":
-            help_msg = (
-                "Available commands:\n"
-                "/help           - Show this help message\n"
-                "/tools          - List available tools\n"
-                "/change_k <int> - Change the 'k' value for the top_k algorithm selection\n"
-                "/history <int>  - Change the history depth or show the current value if no <int> is provided\n"
-                "/show_history   - Show the current history\n"
-                "/plan           - Show the last generated plan\n"
-                "/rerun          - Rerun the last plan\n"
-                "/bb             - Show the last blackboard state\n"
-                "/clear          - Clear the console screen\n"
-                "exit            - Exit the console\n"
-                "Query any other text to process it with the LLM and execute the plan generated."
-                "Add --image=<path> to include images in the query. It can be used multiple times to add more images."
-                " Example: '<user_prompt> --image=/path/to/image1 --image=/path/to/image2'"
-            )
-            self.print(help_msg)
+        # TODO. use log_cb to print the log information
+        #console.print(f"[console]Initializing Manager '{ConsoleManager.__name__}'...[/console]")
+        self._log(f"Initializing Manager '{ConsoleManager.__name__}'...", log_color=2)
 
-        elif cmd == "/tools":
-            help_msg = f"\nAvailable tools (current index k={self.manager.k}):\n"
-            for tool in self.manager.registry.tools.values():
-                help_msg += f"- {tool.name}: {tool.description}\n"
-            self.print(help_msg)
-
-        elif cmd.startswith("/change_k"):
-            parts = cmd.split()
-            if len(parts) != 2 or not parts[1].isdigit():
-                self.print(f"[error]Usage: /change_k <int>[/error] - Actual k is {self.manager.k}")
-                return
-            new_k = int(parts[1])
-            self.manager.k = new_k
-            self.print(f"Changed k to {new_k}")
-
-        elif cmd.startswith("/history"):
-            parts = cmd.split()
-            if len(parts) == 1:
-                self.print(f"Current history depth is {self.manager.history_depth}")
-                return
-            if len(parts) != 2 or not parts[1].isdigit():
-                self.print(f"[error]Usage: /history <int>[/error] - Actual history depth is {self.manager.history_depth}")
-                return
-            new_hist = int(parts[1])
-            self.manager.update_history_depth(new_hist)
-
-        elif cmd == "/show_history":
-            if not self.manager.history:
-                self.print("No history available.")
-                return
-            help_msg = "\nCurrent history (oldest first):\n"
-            for i, (user_text, plan_summary) in enumerate(self.manager.history):
-                help_msg += f"{i+1}. User: {user_text}\n   Plan summary: {plan_summary}\n"
-            self.print(help_msg)
-
-        elif cmd == "/plan":
-            if self.last_plan:
-                self.print("Last generated plan:")
-                console.print(self.last_plan)
-            else:
-                self.print("No plan has been generated yet.")
-
-        elif cmd == "/rerun":
-            if self.last_plan:
-                self.print("Rerunning last plan...")
-                result = self.manager.executor.run(self.last_plan, self.manager.bb)
-                self.last_bb = result.get("blackboard", None)
-                self.print(f"Output of rerun: {result.get('blackboard', {None})}")
-            else:
-                self.print("No plan to rerun.")
-
-        elif cmd == "/bb":
-            if self.last_bb:
-                self.print("Last blackboard state:")
-                console.print(self.last_bb)
-            else:
-                self.print("No blackboard available.")
-
-        elif cmd == "/clear":
-            os.system("clear")
-
-        else:
-            self.print(f"[error]Unknown command {cmd}[/error]")
+        self.manager = ConsoleManager(model=self.model, k=self.k, logger=self._log)
+        #self.print(f"Manager initialized with model '{self.model}'.")
+        self._log(f"Manager initialized with model '{self.model}'", log_color=2)
 
 
-    def print(self, msg: str):
+    def print(self, msg: str) -> None:
         console.print(f"[console]{msg}[/console]")
 
-    def get_images(self, user_input: str):
+    def get_images(self, user_input: str) -> None:
         parts = user_input.split()
         images = []
 
@@ -224,7 +840,7 @@ class VulcanConsole:
         return images
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="VulcanAI Interactive Console")
     parser.add_argument(
         "--model", type=str, default="gpt-5-nano",
@@ -247,6 +863,7 @@ def main():
         help="Enable Iterative Manager (default: off)"
     )
 
+    # TODO. change
     args = parser.parse_args()
     console = VulcanConsole(model=args.model, k=args.k, iterative=args.iterative)
     if args.register_from_file:
@@ -255,7 +872,7 @@ def main():
     if args.register_from_entry_point:
         for entry_point in args.register_from_entry_point:
             console.manager.register_tools_from_entry_points(entry_point)
-    console.run()
+    console.run_console()
 
 
 if __name__ == "__main__":

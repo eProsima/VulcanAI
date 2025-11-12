@@ -36,7 +36,8 @@ class VulcanAILogger:
             msg = f"[error][MANAGER] [ERROR][/error] {msg}"
         else:
             msg = f"[manager][MANAGER][/manager] {msg}"
-        console.print(msg)
+        #console.print(msg)
+        console.print_system(msg)
 
     @staticmethod
     def log_executor(msg: str, error: bool = False, tool: bool = False, tool_name: str = ''):
@@ -47,7 +48,8 @@ class VulcanAILogger:
             return
         else:
             msg = f"[executor][EXECUTOR][/executor] {msg}"
-        console.print(msg)
+        #console.print(msg)
+        console.print_system(msg)
 
     @staticmethod
     def log_tool(msg: str, tool_name: str = '', error: bool = False):
@@ -59,7 +61,8 @@ class VulcanAILogger:
             msg = f"[error]{tag} [ERROR][/error]  {msg}"
         else:
             msg = f"[step]{tag}[/step] {msg}"
-        console.print(msg)
+        #console.print(msg)
+        console.print_system(msg)
 
     @staticmethod
     def log_registry(msg: str, error: bool = False):
@@ -67,13 +70,16 @@ class VulcanAILogger:
             msg = f"[error][REGISTRY] [ERROR][/error]  {msg}"
         else:
             msg = f"[tool][REGISTRY][/tool] {msg}"
-        console.print(msg)
+        #console.print(msg)
+        console.print_system(msg)
 
     @staticmethod
     def log_validator(msg: str):
         msg = f"[validator][VALIDATOR][/validator] {msg}"
-        console.print(msg)
+        #console.print(msg)
+        console.print_system(msg)
 
     @staticmethod
     def log_error(msg: str):
-        console.print(f"[error][ERROR][/error] {msg}")
+        #console.print(f"[error][ERROR][/error] {msg}")
+        console.print_system(f"[error][ERROR][/error] {msg}")

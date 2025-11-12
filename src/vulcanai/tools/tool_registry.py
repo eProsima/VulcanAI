@@ -75,7 +75,7 @@ class ToolRegistry:
     """Holds all known tools and performs vector search over metadata."""
     def __init__(self, embedder=None, logger=None):
         # Logging function
-        self.logger = logger or VulcanAILogger.log_registry
+        self.logger = logger #or VulcanAILogger.log_registry
         # Dictionary of tool name -> tool instance
         self.tools: Dict[str, ITool] = {}
         # Embedding model for tool metadata
@@ -100,7 +100,7 @@ class ToolRegistry:
             self.validation_tools.append(tool.name)
         emb = self.embedder.embed(self._doc(tool))
         self._index.append((tool.name, emb))
-        self.logger(f"Registered tool: {tool.name}")
+        self.logger(f"Registered tool: {tool.name}", log_type="register")
         self.help_tool.available_tools = self.tools
         if solve_deps:
             # Get class of tool
@@ -129,7 +129,8 @@ class ToolRegistry:
         for dep_name in tool.dependencies:
             dep_tool = self.tools.get(dep_name)
             if dep_tool is None:
-                self.logger(f"Dependency '{dep_name}' for tool '{tool.name}' not found.", error=True)
+                self.logger(f"Dependency '{dep_name}' for tool '{tool.name}' not found.",
+                            log_type="register", log_color=0) # error
             else:
                 tool.resolved_deps[dep_name] = dep_tool
 
@@ -148,8 +149,8 @@ class ToolRegistry:
             spec.loader.exec_module(module)
             self._loaded_modules.append(module)
         except Exception as e:
-            self.logger(f"Error loading tools from {path}: {e}", error=True)
-
+            self.logger(f"Error loading tools from {path}: {e}",
+                        log_type="register", log_color=0) # error
     def discover_tools_from_file(self, path: str):
         """Load tools from a Python file and register them."""
         self._load_tools_from_file(path)
@@ -172,7 +173,8 @@ class ToolRegistry:
     def top_k(self, query: str, k: int = 5, validation: bool = False) -> list[ITool]:
         """Return top-k tools most relevant to the query."""
         if not self._index:
-            self.logger("No tools registered.", error=True)
+            self.logger("No tools registered.",
+                        log_type="register", log_color=0) # error
             return []
 
         # Filter tools based on validation flag
@@ -186,7 +188,8 @@ class ToolRegistry:
         if not active_names:
             # If there is no tool for the requested category, be explicit and return []
             self.logger(
-                f"No matching tools for the requested mode ({'validation' if validation else 'action'}).", error=True
+                f"No matching tools for the requested mode ({'validation' if validation else 'action'}).",
+                log_type="register", log_color=0 # error
             )
             return []
 
@@ -197,7 +200,8 @@ class ToolRegistry:
         filtered_index = [(name, vec) for (name, vec) in self._index if name in active_names]
         if not filtered_index:
             # Index might be stale; log and return []
-            self.logger("Index has no entries for the selected tool subset.", error=True)
+            self.logger("Index has no entries for the selected tool subset.",
+                        log_type="register", log_color=0) # error
             return []
 
         # If k > number of required tools, return required tools
