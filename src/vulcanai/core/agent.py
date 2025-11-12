@@ -29,10 +29,10 @@ class Agent:
     def __init__(self, model_name: str, logger=None):
         self.brand, name = self._detect_brand(model_name)
         self.model = None
-        self.logger = logger or VulcanAILogger.log_manager
+        self.logger = logger #or VulcanAILogger.log_manager
         self._load_model(name)
 
-    def inference_plan(
+    def inference(
             self,
             system_context: str,
             user_prompt: str,
@@ -93,7 +93,7 @@ class Agent:
             history: list[tuple[str, str]],
         ) -> AIValidation:
         """
-        Perform inference using the selected LLM model to generate a validation.
+        Perform inference using the selected LLM model to generate a goal.
 
         :param system_context: The system prompt or context for the LLM.
         :param user_prompt: The user's input or request.
@@ -133,17 +133,17 @@ class Agent:
     def _load_model(self, model_name: str):
         if self.brand == Brand.gpt:
             from vulcanai.models.openai import OpenAIModel
-            self.logger(f"Using OpenAI API with model: {model_name}")
+            self.logger(f"Using OpenAI API with model: {model_name}", log_type="manager")
             self.model = OpenAIModel(model_name, self.logger)
 
         elif self.brand == Brand.gemini:
             from vulcanai.models.gemini import GeminiModel
-            self.logger(f"Using Gemini API with model: {model_name}")
+            self.logger(f"Using Gemini API with model: {model_name}", log_type="manager")
             self.model = GeminiModel(model_name, self.logger)
 
         elif self.brand == Brand.ollama:
             from vulcanai.models.ollama_model import OllamaModel
-            self.logger(f"Using Ollama API with model: {model_name}")
+            self.logger(f"Using Ollama API with model: {model_name}", log_type="manager")
             self.model = OllamaModel(model_name, self.logger)
 
         else:
@@ -154,8 +154,8 @@ class Agent:
         if self.model:
             try:
                 self.model.hooks = hooks
-                self.logger("LLM hooks set.")
+                self.logger("LLM hooks set.", log_type="manager")
             except Exception as e:
-                self.logger(f"Failed to set LLM hooks: {e}", error=True)
+                self.logger(f"Failed to set LLM hooks: {e}", log_type="manager", log_color=0) # error
         else:
-            self.logger("LLM model not initialized, cannot set hooks.", error=True)
+            self.logger("LLM model not initialized, cannot set hooks.", log_type="manager", log_color=0) # error
