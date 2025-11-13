@@ -23,19 +23,22 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from vulcanai.models.model import IModelHooks
 from vulcanai.console.logger import console
 
-
+from textual.screen import ModalScreen
 from textual.app import App, ComposeResult
-from textual.widgets import Input, Log, Static
+from textual.widgets import Input, Log, Static, Checkbox, Button, Label
 from textual import events
 
 
 from rich.text import Text
 from rich.markup import escape
 
-from textual.containers import VerticalScroll
+from textual import work
+
+from textual.containers import VerticalScroll, Horizontal, Vertical
 
 import asyncio, time
-from typing import Callable
+from typing import Callable, Iterable, Optional
+
 
 
 class Prompt(Static):
@@ -83,6 +86,62 @@ class SpinnerHook(IModelHooks):
                 self._progress = None
                 self._task_id = None
 
+
+# ---------- Modal checklist ----------
+class CheckListScreen(ModalScreen[list[str] | None]):
+    """A modal screen with the tools checkboxes and Submit/Cancel buttons."""
+
+    DEFAULT_CSS = """
+    CheckListScreen {
+        align: center middle;
+    }
+    .dialog {
+        width: 60%;
+        max-width: 90%;
+        border: round $accent;
+        padding: 1 2;
+        background: $panel;
+    }
+    .title {
+        text-align: center;
+        margin-bottom: 1;
+    }
+    .btns {
+        height: auto;
+        dock: bottom;
+        padding-top: 1;
+        content-align: right middle;
+    }
+    """
+
+
+    def __init__(self, lines: Iterable[str]) -> None:
+        super().__init__()
+        self._lines = list(lines)
+
+    def compose(self) -> ComposeResult:
+        with Vertical(classes="dialog"):
+            yield Label("Pick the lines you want to print", classes="title")
+            # Make one checkbox per provided line
+            for i, line in enumerate(self._lines, start=1):
+                yield Checkbox(line, value=True, id=f"cb{i}")
+            with Horizontal(classes="btns"):
+                yield Button("Cancel", variant="default", id="cancel")
+                yield Button("Submit", variant="primary", id="submit")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "submit":
+            boxes = list(self.query(Checkbox))
+            # Use the original strings instead of Checkbox.label (renderable)
+            selected = [self._lines[i] for i, cb in enumerate(boxes) if cb.value]
+            self.dismiss(selected)  # -> list[str]
+        elif event.button.id == "cancel":
+            self.dismiss(None)
+
+    def on_mount(self) -> None:
+        # Focus the first checkbox for keyboard toggling with space
+        first_cb = self.query_one(Checkbox)
+        self.set_focus(first_cb)
 
 class VulcanConsole(App):
 
@@ -274,6 +333,7 @@ class VulcanConsole(App):
                 #"help": self.cmd_help,
                 #"h": self.cmd_help,
                 "/tools": self.cmd_tools,
+                "/edit_tools": self.cmd_edit_tools,
                 "/change_k": self.cmd_change_k,
                 "/history": self.cmd_history_index,
                 "/show_history": self.cmd_show_history,
@@ -350,6 +410,24 @@ class VulcanConsole(App):
     def print_output(self, message: str):
         self.term.write(message)"""
 
+    @work  # runs in a worker so waiting won't freeze the UI
+    async def open_checklist(self, tools_list: list[str]) -> None:
+        """
+        Function used in '/edit_tools' command.
+        It creates a dialog with all the tools.
+        """
+        # create the checklist dialog
+        selected = await self.push_screen_wait(CheckListScreen(tools_list))
+
+        if selected is None:
+            self._log("Selection cancelled.", log_color=3)
+        elif not selected:
+            self._log("No items selected.", log_color=3)
+        else:
+            self._log("Submitting selected lines:", log_color=1)
+            for line in selected:
+                self._log(line, log_color=2)
+
     # endregion
 
     # region Commands
@@ -360,6 +438,7 @@ class VulcanConsole(App):
                 "Available commands:\n"
                 "/help           - Show this help message\n"
                 "/tools          - List available tools\n"
+                "/edit_tools     - Edit the list of available tools\n"
                 "/change_k <int> - Change the 'k' value for the top_k algorithm selection or show the current value if no <int> is provided\n"
                 "/history <int>  - Change the history depth or show the current value if no <int> is provided\n"
                 "/show_history   - Show the current history\n"
@@ -380,6 +459,13 @@ class VulcanConsole(App):
         for tool in self.manager.registry.tools.values():
             help_msg += f"- {tool.name}: {tool.description}\n"
         self._log(help_msg, log_color=2)
+
+    def cmd_edit_tools(self, _) -> None:
+        tools_list = []
+        for tool in self.manager.registry.tools.values():
+            tools_list.append(f"- {tool.name}")#: {tool.description}")
+
+        self.open_checklist(tools_list)
 
     def cmd_change_k(self, args) -> None:
         if len(args) == 0:
