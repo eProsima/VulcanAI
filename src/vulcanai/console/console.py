@@ -39,6 +39,8 @@ from textual.containers import VerticalScroll, Horizontal, Vertical
 import asyncio, time
 from typing import Callable, Iterable, Optional
 
+from textual.timer import Timer
+
 
 
 class Prompt(Static):
@@ -47,44 +49,68 @@ class Prompt(Static):
     def __init__(self, text: str = "> "):
         super().__init__(text, id="prompt")
 
+class SpinnerHook:
 
-class SpinnerHook(IModelHooks):
-    """
-    Single entrant spinner controller for console.
-    - Starts the spinner on the first LLM request.
-    - Stops the spinner when LLM request is over.
-    """
     def __init__(self, console):
+
         self.console = console
-        self._lock = Lock()
 
-    def on_request_start(self) -> None:
-        with self._lock:
-            #self.console.call_from_thread(self.console.show_spinner)
-            # TODO. danip add spinner in textualize terminal
-            # First request => create spinner
-            self._progress = Progress(
-                SpinnerColumn(spinner_name="dots2"),
-                TextColumn("[blue]Querying LLM...[/blue]"),
-                console=self.console,
-                transient=True,
-            )
-            self._progress.start()
-            self._task_id = self._progress.add_task("llm", start=True)
+        # spinner states
+        self.spinner_timer: Timer | None = None
+        self.spinner_frames = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"]
+        self.spinner_frame_index = 0
+        self.spinner_line_index: int | None = None
 
-    def on_request_end(self) -> None:
-        with self._lock:
-            #self.console.call_from_thread(self.console.hide_spinner)
-            if self._progress is not None:
-                # Last request finished => stop spinner
-                try:
-                    if self._task_id is not None:
-                        self._progress.remove_task(self._task_id)
-                except Exception:
-                    pass
-                self._progress.stop()
-                self._progress = None
-                self._task_id = None
+
+    def on_request_start(self, text: str = "Querying LLM...") -> None:
+        """
+        Create the spinner line at the end of the log and start updating it.
+        """
+
+        self.running_color = "blue"
+        self.end_color = "bold green"
+
+        if self.spinner_timer is not None:
+            return  # already running
+
+        # Add a new line for the spinner and remember its index
+        self.spinner_line_index = len(self.console._log_lines)
+        self.console._log_lines.append(f"[{self.running_color}]{text}[/{self.running_color}]")
+        self.spinner_frame_index = 0
+
+        # Update every 0.1s
+        self.spinner_timer = self.console.set_interval(0.1, self.update_spinner)
+        self.console._render_log()
+
+    def update_spinner(self) -> None:
+        """
+        Timer callback. Rotate the spinner frame on the stored last log line.
+        """
+
+        if self.spinner_line_index is None:
+            return
+
+        frame = self.spinner_frames[self.spinner_frame_index]
+        self.spinner_frame_index = (self.spinner_frame_index + 1) % len(self.spinner_frames)
+
+        # Update that specific line only
+        self.console._log_lines[self.spinner_line_index] = f"[{self.running_color}] Sleeping {frame} [/{self.running_color}]"
+        self.console._render_log()
+
+    def on_request_end(self, final_text: str | None = None) -> None:
+        """
+        Stop the spinner.
+        Optional, replace the line with final_text."""
+
+        if self.spinner_timer is not None:
+            self.spinner_timer.stop()
+            self.spinner_timer = None
+
+        if self.spinner_line_index is not None:
+            if final_text is not None:
+                self.console._log_lines[self.spinner_line_index] = f"[{self.end_color}]{final_text}[/{self.end_color}]"
+            self.spinner_line_index = None
+            self.console._render_log()
 
 
 # ---------- Modal checklist ----------
@@ -227,7 +253,7 @@ class VulcanConsole(App):
         self.session = PromptSession()
         self.last_plan = None
         self.last_bb = None
-        self.hooks = SpinnerHook(console)
+        self.hooks = SpinnerHook(self)
 
         self.model = model
         self.k = k
@@ -247,18 +273,18 @@ class VulcanConsole(App):
 
     async def on_mount(self) -> None:
 
-        self._set_input_enabled(False)
+        self.set_input_enabled(False)
 
         self._log("Starting VulcanAI...", log_color=1)
 
         await asyncio.sleep(0)
-        asyncio.create_task(self._bootstrap())
+        asyncio.create_task(self.bootstrap())
 
         """self.cmd_input.focus()"""
 
         """
         # Disable commands until we finish boot
-        #self._set_input_enabled(False)
+        #self.set_input_enabled(False)
 
         self.init _manager(self.iterative)
 
@@ -317,7 +343,7 @@ class VulcanConsole(App):
             yield Static("", id="logcontent")
         yield Input(placeholder="> ", id="cmd")
 
-    async def _bootstrap(self) -> None:
+    async def bootstrap(self) -> None:
         """
         Function used to print information in runtime execution of a function
 
@@ -386,7 +412,7 @@ class VulcanConsole(App):
         # TODO. danip. add the queries information
         if True:
             self._is_ready = True
-            self._set_input_enabled(True)
+            self.set_input_enabled(True)
             self._log("VulcanAI Interactive Console", log_color=2)
             self._log("Type 'exit' to quit.\n", log_color=2)
 
@@ -541,14 +567,14 @@ class VulcanConsole(App):
 
     # region Logging
 
-    def _render_log(self) -> None:
+    def render_log(self) -> None:
         """self.query_one("#log", Static).update("\n".join(self._log_lines))"""
         log_static = self.query_one("#logcontent", Static)
         log_static.update("\n".join(self._log_lines))
 
         self.query_one("#logview", VerticalScroll).scroll_end(animate=False)
 
-    """def _render_log(self):
+    """def render_log(self):
         log = self.query_one("#log", Static)
         # Allow Rich markup for colors and styles
         log.update("\n".join(self._log_lines), markup=True)"""
@@ -563,7 +589,7 @@ class VulcanConsole(App):
         elif log_type == "manager":
             msg = "[bold blue]\[MANAGER][/bold blue] "
         elif log_type == "executor":
-            msg = "[bold light green]\[EXECUTOR][/bold light green] "
+            msg = "[bold green]\[EXECUTOR][/bold green] "
         elif log_type == "validator":
             msg = "[bold orange_red1]\[VALIDATOR][/bold orange_red1] "
         elif log_type == "error":
@@ -584,7 +610,7 @@ class VulcanConsole(App):
 
         msg += f"[{color_type}]{line}[/{color_type}]"
         self._log_lines.append(msg)
-        self._render_log()
+        self.render_log()
 
     """def _log(self, line: str):
         if "error" in line.lower():
@@ -594,17 +620,54 @@ class VulcanConsole(App):
         elif "success" in line.lower():
             line = f"[green]{line}[/green]"
         self._log_lines.append(line)
-        self._render_log()"""
+        self.render_log()"""
 
     # endregion
 
     # region Input
 
-    def _set_input_enabled(self, enabled: bool) -> None:
+    def set_input_enabled(self, enabled: bool) -> None:
         cmd = self.query_one("#cmd", Input)
         cmd.disabled = not enabled
         if enabled:
             self.set_focus(cmd)
+
+    @work  # runs in a worker so waiting won't freeze the UI
+    async def handle_user_query(self, user_input) -> None:
+        """
+        Function used in '/edit_tools' command.
+        It creates a dialog with all the tools.
+        """
+        # create the checklist dialog
+        # Check for image input. Must be always at the end of the input
+
+        try:
+            images = []
+            if "--image=" in user_input:
+                images = self.get_images(user_input)
+
+            # Handle user request
+            try:
+                result = self.manager.handle_user_request(user_input, context={"images": images})
+            except Exception as e:
+                #self.print(f"[error]Error handling request:[/error] {e}")
+                self._log(f"[error]Error handling request:[/error] {e}")
+                return
+
+            self.last_plan = result.get("plan", None)
+            self.last_bb = result.get("blackboard", None)
+
+            #self.print(f"Output of plan: {result.get('blackboard', {None})}")
+            self._log(f"Output of plan: {result.get('blackboard', {None})}")
+
+        except KeyboardInterrupt:
+            #console.print("[yellow]Exiting...[/yellow]")
+            self._log("[yellow]Exiting...[/yellow]")
+            return
+        except EOFError:
+            #console.print("[yellow]Exiting...[/yellow]")
+            self._log("[yellow]Exiting...[/yellow]")
+            return
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         """
@@ -646,24 +709,7 @@ class VulcanConsole(App):
                 self.handle_command(user_input)
                 return
 
-            # Check for image input. Must be always at the end of the input
-            images = []
-            if "--image=" in user_input:
-                images = self.get_images(user_input)
-
-            # Handle user request
-            try:
-                result = self.manager.handle_user_request(user_input, context={"images": images})
-            except Exception as e:
-                #self.print(f"[error]Error handling request:[/error] {e}")
-                self._log(f"[error]Error handling request:[/error] {e}")
-                return
-
-            self.last_plan = result.get("plan", None)
-            self.last_bb = result.get("blackboard", None)
-
-            #self.print(f"Output of plan: {result.get('blackboard', {None})}")
-            self._log(f"Output of plan: {result.get('blackboard', {None})}")
+            self.handle_user_query(user_input)
 
         except KeyboardInterrupt:
             #console.print("[yellow]Exiting...[/yellow]")
@@ -765,7 +811,7 @@ class VulcanConsole(App):
 
             # If multiple matches, check for a longer common prefix to insert first
             if len(matches) > 1:
-                prefix = self._common_prefix(matches)
+                prefix = self.common_prefix(matches)
                 new_value = prefix
             else:
                 # Single match: complete directly
@@ -822,7 +868,7 @@ class VulcanConsole(App):
             self._tab_matches = []
             self._tab_index = 0
 
-    def _common_prefix(self, strings: str) -> str:
+    def common_prefix(self, strings: str) -> str:
         if not strings:
             return ""
 
