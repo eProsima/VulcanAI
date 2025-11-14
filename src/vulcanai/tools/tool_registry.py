@@ -76,8 +76,10 @@ class ToolRegistry:
     def __init__(self, embedder=None, logger=None):
         # Logging function
         self.logger = logger #or VulcanAILogger.log_registry
-        # Dictionary of tool name -> tool instance
+        # Dictionary of tools (name -> tool instance)
         self.tools: Dict[str, ITool] = {}
+        # Dictionary of deactivated_tools (name -> tool instance)
+        self.deactivated_tools: Dict[str, ITool] = {}
         # Embedding model for tool metadata
         self.embedder = embedder or SBERTEmbedder()
         # Simple in-memory index of (name, embedding)
@@ -106,6 +108,36 @@ class ToolRegistry:
             # Get class of tool
             if issubclass(type(tool), CompositeTool):
                 self._resolve_dependencies(tool)
+
+    def activate_tool(self, tool_name):
+        # check if the tool is already active
+        if tool_name in self.tools:
+            return
+        # check if the tool is deactivated
+        if tool_name not in self.deactivated_tools:
+            self.logger(f"Tool '{tool_name}' not found in the deactivated tools list.", error=True)
+            return
+
+        # add the tool to the active tools
+        self.tools[tool_name] = self.deactivated_tools[tool_name]
+
+        # removed the tool from the deactivated tools
+        del self.deactivated_tools[tool_name]
+
+    def deactivate_tool(self, tool_name):
+        # check if the tool is already deactivated
+        if tool_name in self.deactivated_tools:
+            return
+        # check if the tool is active
+        if tool_name not in self.tools:
+            self.logger(f"Tool '{tool_name}' not found int the active tools list.", error=True)
+            return
+
+        # add the tool to the deactivated tools
+        self.deactivated_tools[tool_name] = self.tools[tool_name]
+
+        # removed the tool from the active tools
+        del self.tools[tool_name]
 
     def register(self):
         """Register all loaded classes marked with @vulcanai_tool."""

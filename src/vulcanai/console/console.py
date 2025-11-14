@@ -141,16 +141,17 @@ class CheckListScreen(ModalScreen[list[str] | None]):
     """
 
 
-    def __init__(self, lines: Iterable[str]) -> None:
+    def __init__(self, lines: Iterable[str], active_tools_num: int=0) -> None:
         super().__init__()
         self._lines = list(lines)
+        self.active_tools_num = active_tools_num
 
     def compose(self) -> ComposeResult:
         with Vertical(classes="dialog"):
             yield Label("Pick the lines you want to print", classes="title")
             # Make one checkbox per provided line
             for i, line in enumerate(self._lines, start=1):
-                yield Checkbox(line, value=True, id=f"cb{i}")
+                yield Checkbox(line, value=i<=self.active_tools_num, id=f"cb{i}")#True, id=f"cb{i}")
             with Horizontal(classes="btns"):
                 yield Button("Cancel", variant="default", id="cancel")
                 yield Button("Submit", variant="primary", id="submit")
@@ -437,13 +438,13 @@ class VulcanConsole(App):
         self.term.write(message)"""
 
     @work  # runs in a worker so waiting won't freeze the UI
-    async def open_checklist(self, tools_list: list[str]) -> None:
+    async def open_checklist(self, tools_list: list[str], active_tools_num: int) -> None:
         """
         Function used in '/edit_tools' command.
         It creates a dialog with all the tools.
         """
         # create the checklist dialog
-        selected = await self.push_screen_wait(CheckListScreen(tools_list))
+        selected = await self.push_screen_wait(CheckListScreen(tools_list, active_tools_num))
 
         if selected is None:
             self._log("Selection cancelled.", log_color=3)
@@ -451,8 +452,14 @@ class VulcanConsole(App):
             self._log("No items selected.", log_color=3)
         else:
             self._log("Submitting selected lines:", log_color=1)
-            for line in selected:
-                self._log(line, log_color=2)
+
+            for tool_tmp in tools_list:
+                tool = tool_tmp[2:] # remove "- "
+                if tool_tmp in selected:
+                    self.manager.registry.activate_tool(tool)
+                else:
+                    self.manager.registry.deactivate_tool(tool)
+                    self._log(f"Deactivated tool '{tool}'", log_color=2)
 
     # endregion
 
@@ -491,7 +498,13 @@ class VulcanConsole(App):
         for tool in self.manager.registry.tools.values():
             tools_list.append(f"- {tool.name}")#: {tool.description}")
 
-        self.open_checklist(tools_list)
+        active_tools_num = len(tools_list)
+
+        # TODO. danip check
+        for deactivated_tool in self.manager.registry.deactivated_tools.values():
+            tools_list.append(f"- {deactivated_tool.name}")
+
+        self.open_checklist(tools_list, active_tools_num)
 
     def cmd_change_k(self, args) -> None:
         if len(args) == 0:
