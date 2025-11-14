@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
 from openai import OpenAI
 from typing import Any, Dict, Iterable, Optional, Type, TypeVar
 import mimetypes
@@ -26,11 +27,12 @@ T = TypeVar('T', GlobalPlan, GoalSpec, AIValidation)
 
 class OpenAIModel(IModel):
     """ Wrapper for OpenAI models. """
-    def __init__(self, model_name: str, logger=None, hooks: Optional[IModelHooks] = None):
+    def __init__(self, model_name: str, logger=None, hooks: Optional[IModelHooks] = None):#, console = None):
         super().__init__()
         self.logger = logger
         self.model_name = model_name
         self.hooks = hooks
+        #self.console = console
         try:
             self.model = OpenAI()
         except Exception as e:
@@ -64,10 +66,11 @@ class OpenAIModel(IModel):
         messages = self._build_messages(system_prompt, user_content, history)
 
         # Notify hooks of request start
-        try:
+        """try:
             self.hooks.on_request_start()
+            #self.console.call_from_thread(self.hooks.on_request_start)
         except Exception as e:
-            pass
+            pass"""
 
         # Call OpenAI with response_format bound to the desired schema/class
         try:
@@ -83,6 +86,7 @@ class OpenAIModel(IModel):
             # Notify hooks of request end
             try:
                 self.hooks.on_request_end()
+                #self.console.call_from_thread(self.hooks.on_request_end)
             except Exception as e:
                 pass
 

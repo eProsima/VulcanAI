@@ -73,10 +73,10 @@ class GeminiModel(IModel):
         )
 
         # Notify hooks of request start
-        try:
+        """try:
             self.hooks.on_request_start()
         except Exception as e:
-            pass
+            pass"""
 
         response = self.model.models.generate_content(
             model=self.model_name,

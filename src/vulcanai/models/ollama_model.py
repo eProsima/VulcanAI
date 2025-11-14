@@ -63,10 +63,10 @@ class OllamaModel(IModel):
         messages = self._build_messages(system_prompt, user_content, history)
 
         # Notify hooks of request start
-        try:
+        """try:
             self.hooks.on_request_start()
         except Exception as e:
-            pass
+            pass"""
 
         # Call Ollama with response_format bound to the desired schema/class
         try:

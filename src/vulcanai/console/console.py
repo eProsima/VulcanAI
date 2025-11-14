@@ -62,6 +62,12 @@ class SpinnerHook:
         self.spinner_line_index: int | None = None
 
 
+        #self.running_query = False
+        #self.create_spinner_timer()
+
+    async def create_spinner_timer(self):
+        self.spinner_timer = self.console.set_interval(0.1, self.update_spinner)
+
     def on_request_start(self, text: str = "Querying LLM...") -> None:
         """
         Create the spinner line at the end of the log and start updating it.
@@ -69,23 +75,31 @@ class SpinnerHook:
 
         self.running_color = "blue"
         self.end_color = "bold green"
+        self.text = text
 
         if self.spinner_timer is not None:
             return  # already running
 
         # Add a new line for the spinner and remember its index
         self.spinner_line_index = len(self.console._log_lines)
-        self.console._log_lines.append(f"[{self.running_color}]{text}[/{self.running_color}]")
+        self.console._log(f"[{self.running_color}]{text}[/{self.running_color}]")
+        #self.console._log_lines.append(f"[{self.running_color}]{text}[/{self.running_color}]")
         self.spinner_frame_index = 0
 
         # Update every 0.1s
         self.spinner_timer = self.console.set_interval(0.1, self.update_spinner)
-        self.console._render_log()
+        #self.call_from_thread(self.create_spinner_timer)
+        #self.running_query = True
+
+        self.console.render_log()
 
     def update_spinner(self) -> None:
         """
         Timer callback. Rotate the spinner frame on the stored last log line.
         """
+        #if self.running_query == False:
+        #    return
+
 
         if self.spinner_line_index is None:
             return
@@ -94,10 +108,11 @@ class SpinnerHook:
         self.spinner_frame_index = (self.spinner_frame_index + 1) % len(self.spinner_frames)
 
         # Update that specific line only
-        self.console._log_lines[self.spinner_line_index] = f"[{self.running_color}] Sleeping {frame} [/{self.running_color}]"
-        self.console._render_log()
+        self.console._log_lines[self.spinner_line_index] = f"[{self.running_color}]{self.text} {frame} [/{self.running_color}]"
+        #self.console._log(f"[{self.running_color}] Sleeping {frame} [/{self.running_color}]")
+        self.console.render_log()
 
-    def on_request_end(self, final_text: str | None = None) -> None:
+    def on_request_end(self) -> None:
         """
         Stop the spinner.
         Optional, replace the line with final_text."""
@@ -107,10 +122,9 @@ class SpinnerHook:
             self.spinner_timer = None
 
         if self.spinner_line_index is not None:
-            if final_text is not None:
-                self.console._log_lines[self.spinner_line_index] = f"[{self.end_color}]{final_text}[/{self.end_color}]"
+            self.console._log_lines[self.spinner_line_index] = f"[{self.end_color}]Query finished.[/{self.end_color}]"
             self.spinner_line_index = None
-            self.console._render_log()
+            self.console.render_log()
 
 
 # ---------- Modal checklist ----------
@@ -281,52 +295,6 @@ class VulcanConsole(App):
         await asyncio.sleep(0)
         asyncio.create_task(self.bootstrap())
 
-        """self.cmd_input.focus()"""
-
-        """
-        # Disable commands until we finish boot
-        #self.set_input_enabled(False)
-
-        self.init _manager(self.iterative)
-
-        # command registry: name -> handler
-        self.commands: Dict[str, Callable[[List[str]], None]] = {
-            "/help": self.cmd_help,
-            #"help": self.cmd_help,
-            #"h": self.cmd_help,
-            "/tools": self.cmd_tools,
-            "/change_k": self.cmd_change_k,
-            "/history": self.cmd_history_index,
-            "/show_history": self.cmd_show_history,
-            "/plan": self.cmd_plan,
-            "/rerun": self.cmd_rerun,
-            "/bb": self.cmd_blackboard_state,
-            "/clear": self.cmd_clear,
-            #"clear": self.cmd_clear,
-            "/exit": self.cmd_quit,
-            #"q": self.cmd_quit,
-            #"exit": self.cmd_quit,
-        }
-
-        # cycling through tab matches
-        self._tab_matches = []
-        self._tab_index = 0
-
-        # Override hooks with spinner controller
-        try:
-            self.manager.llm.set_hooks(self.hooks)
-        except Exception:
-            pass
-
-        if self.tools_from_entrypoints != "":
-            self.manager.register_tools_from_entry_points(self.tools_from_entrypoints)
-
-        self.manager.add_user_context(self.user_context)
-
-        # Add the shared node to the console manager blackboard to be used by tools
-        if self.main_node != None:
-            self.manager.bb["main_node"] = self.main_node"""
-
     def compose(self) -> ComposeResult:
         """yield Header(show_clock=True)
         #yield Log(id="term", highlight=True)#, markup=True)
@@ -344,78 +312,152 @@ class VulcanConsole(App):
             yield Static("", id="logcontent")
         yield Input(placeholder="> ", id="cmd")
 
-    async def bootstrap(self) -> None:
+    def log_cb(self, msg: str) -> None:
+        """
+        Print the msg while executing a function
+        """
+        self.call_from_thread(self._log, msg)
+
+    async def bootstrap(self, user_input: str="") -> None:
         """
         Function used to print information in runtime execution of a function
-
-        TODO. danip update this function to allow queries information and add the spinner
         """
-        def worker(log_cb: Callable[[str], None]) -> None:
-            self.init_manager(log_cb)
 
-            # add the commands
-            # command registry: name -> handler
-            self.commands = {
-                "/help": self.cmd_help,
-                #"help": self.cmd_help,
-                #"h": self.cmd_help,
-                "/tools": self.cmd_tools,
-                "/edit_tools": self.cmd_edit_tools,
-                "/change_k": self.cmd_change_k,
-                "/history": self.cmd_history_index,
-                "/show_history": self.cmd_show_history,
-                "/plan": self.cmd_plan,
-                "/rerun": self.cmd_rerun,
-                "/bb": self.cmd_blackboard_state,
-                "/clear": self.cmd_clear,
-                #"clear": self.cmd_clear,
-                "/exit": self.cmd_quit,
-                #"q": self.cmd_quit,
-                #"exit": self.cmd_quit,
-            }
+        def worker(log_cb: Callable[[str], None], user_input: str="") -> None:
+            
+            if user_input == "":
+                self.init_manager(log_cb)
 
-            #log_cb("Added commands.")
+                # add the commands
+                # command registry: name -> handler
+                self.commands = {
+                    "/help": self.cmd_help,
+                    "/tools": self.cmd_tools,
+                    "/edit_tools": self.cmd_edit_tools,
+                    "/change_k": self.cmd_change_k,
+                    "/history": self.cmd_history_index,
+                    "/show_history": self.cmd_show_history,
+                    "/plan": self.cmd_plan,
+                    "/rerun": self.cmd_rerun,
+                    "/bb": self.cmd_blackboard_state,
+                    "/clear": self.cmd_clear,
+                    "/exit": self.cmd_quit,
+                }
 
-            # cycling through tab matches
-            self._tab_matches = []
-            self._tab_index = 0
+                #log_cb("Added commands.")
 
-            # Override hooks with spinner controller
+                # cycling through tab matches
+                self._tab_matches = []
+                self._tab_index = 0
+
+                # Override hooks with spinner controller
+                try:
+                    self.manager.llm.set_hooks(self.hooks)
+                except Exception:
+                    pass
+
+                #log_cb("Added hooks.")
+
+                if self.tools_from_entrypoints != "":
+                    self.manager.register_tools_from_entry_points(self.tools_from_entrypoints)
+
+                #log_cb("Added tools.")
+
+                self.manager.add_user_context(self.user_context)
+
+                #log_cb("Added user_context.")
+
+                # Add the shared node to the console manager blackboard to be used by tools
+                if self.main_node != None:
+                    self.manager.bb["main_node"] = self.main_node
+            else:
+                self.set_input_enabled(False)
+
+                try:
+                    images = []
+                    if "--image=" in user_input:
+                        images = self.get_images(user_input)
+
+                    # Handle user request
+                    try:
+                        result = self.manager.handle_user_request(user_input, context={"images": images})
+                    except Exception as e:
+                        #self.print(f"[error]Error handling request:[/error] {e}")
+                        self._log(f"[error]Error handling request:[/error] {e}")
+                        return
+
+                    self.last_plan = result.get("plan", None)
+                    self.last_bb = result.get("blackboard", None)
+
+                    #self.print(f"Output of plan: {result.get('blackboard', {None})}")
+                    self._log(f"Output of plan: {result.get('blackboard', {None})}")
+
+                except KeyboardInterrupt:
+                    #console.print("[yellow]Exiting...[/yellow]")
+                    self._log("[yellow]Exiting...[/yellow]")
+                    return
+                except EOFError:
+                    #console.print("[yellow]Exiting...[/yellow]")
+                    self._log("[yellow]Exiting...[/yellow]")
+                    return
+
+        def handle_user_query(self, user_input) -> None:
+            """
+            Function used in '/edit_tools' command.
+            It creates a dialog with all the tools.
+            """
+            # create the checklist dialog
+            # Check for image input. Must be always at the end of the input
+            #user_input = "move trutle 1 unit forward."
+
             try:
-                self.manager.llm.set_hooks(self.hooks)
-            except Exception:
-                pass
+                self.set_input_enabled(False)
 
-            #log_cb("Added hooks.")
+                images = []
+                if "--image=" in user_input:
+                    images = self.get_images(user_input)
 
-            if self.tools_from_entrypoints != "":
-                self.manager.register_tools_from_entry_points(self.tools_from_entrypoints)
+                # Handle user request
+                try:
+                    result = self.manager.handle_user_request(user_input, context={"images": images})
+                except Exception as e:
+                    #self.print(f"[error]Error handling request:[/error] {e}")
+                    self._log(f"[error]Error handling request:[/error] {e}")
+                    return
 
-            #log_cb("Added tools.")
+                self.last_plan = result.get("plan", None)
+                self.last_bb = result.get("blackboard", None)
 
-            self.manager.add_user_context(self.user_context)
+                #self.print(f"Output of plan: {result.get('blackboard', {None})}")
+                self._log(f"Output of plan: {result.get('blackboard', {None})}")
 
-            #log_cb("Added user_context.")
+            except KeyboardInterrupt:
+                #console.print("[yellow]Exiting...[/yellow]")
+                self._log("[yellow]Exiting...[/yellow]")
+                return
+            except EOFError:
+                #console.print("[yellow]Exiting...[/yellow]")
+                self._log("[yellow]Exiting...[/yellow]")
+                return
 
-            # Add the shared node to the console manager blackboard to be used by tools
-            if self.main_node != None:
-                self.manager.bb["main_node"] = self.main_node
-
-        def log_cb(msg: str) -> None:
-            """
-            Print the msg while executing a function
-            """
-            self.call_from_thread(self._log, msg)
+        if user_input != "":
+            self.hooks.on_request_start()
 
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, lambda: worker(log_cb))
+        await loop.run_in_executor(None, lambda: worker(self.log_cb, user_input))
 
-        # TODO. danip. add the queries information
-        if True:
+        if user_input == "":
+            #await loop.run_in_executor(None, lambda: worker(log_cb, user_input))
+
             self._is_ready = True
             self.set_input_enabled(True)
             self._log("VulcanAI Interactive Console", log_color=2)
             self._log("Type 'exit' to quit.\n", log_color=2)
+        else:
+            self.set_input_enabled(True)
+
+            #await loop.run_in_executor(None, lambda: worker(log_cb))
+            #await loop.run_in_executor(None, lambda: handle_user_query())
 
     # region Utilities
 
@@ -500,7 +542,6 @@ class VulcanConsole(App):
 
         active_tools_num = len(tools_list)
 
-        # TODO. danip check
         for deactivated_tool in self.manager.registry.deactivated_tools.values():
             tools_list.append(f"- {deactivated_tool.name}")
 
@@ -645,12 +686,12 @@ class VulcanConsole(App):
         if enabled:
             self.set_focus(cmd)
 
-    @work  # runs in a worker so waiting won't freeze the UI
+    """@work  # runs in a worker so waiting won't freeze the UI
     async def handle_user_query(self, user_input) -> None:
-        """
+        #""
         Function used in '/edit_tools' command.
         It creates a dialog with all the tools.
-        """
+        #""
         # create the checklist dialog
         # Check for image input. Must be always at the end of the input
 
@@ -680,7 +721,7 @@ class VulcanConsole(App):
         except EOFError:
             #console.print("[yellow]Exiting...[/yellow]")
             self._log("[yellow]Exiting...[/yellow]")
-            return
+            return"""
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         """
@@ -722,7 +763,9 @@ class VulcanConsole(App):
                 self.handle_command(user_input)
                 return
 
-            self.handle_user_query(user_input)
+            #self.handle_user_query(user_input)
+            await asyncio.sleep(0)
+            asyncio.create_task(self.bootstrap(user_input))
 
         except KeyboardInterrupt:
             #console.print("[yellow]Exiting...[/yellow]")

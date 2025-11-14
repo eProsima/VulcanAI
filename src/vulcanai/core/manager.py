@@ -128,7 +128,7 @@ class ToolManager:
             images = context["images"]
 
         # Query LLM
-        plan = self.llm.inference(system_prompt, user_prompt, images, self.history)
+        plan = self.llm.inference_plan(system_prompt, user_prompt, images, self.history)
         self.logger(f"Plan received:\n{plan}", log_type="manager")
         # Save to history
         if plan:
