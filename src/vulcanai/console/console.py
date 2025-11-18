@@ -41,6 +41,33 @@ from typing import Callable, Iterable, Optional
 
 from textual.timer import Timer
 
+import sys
+
+
+class StreamToTextual:
+    """
+    Class used to redirect the stdout/stderr streams in the textual terminal
+    """
+
+    def __init__(self, app, stream_name: str = "stdout"):
+        self.app = app
+        self._real_stream = getattr(sys, stream_name)
+
+    def write(self, data: str):
+        if not data:
+            return
+
+        # optional: still write to real stdout/stderr
+        self._real_stream.write(data)
+        self._real_stream.flush()
+
+        if data.strip():
+            # Ensure update happens on the app thread
+            self.app.call_from_thread(self.app.append_log_text, data)
+
+    def flush(self):
+        self._real_stream.flush()
+
 
 
 class Prompt(Static):
@@ -289,6 +316,8 @@ class VulcanConsole(App):
     async def on_mount(self) -> None:
 
         self.set_input_enabled(False)
+        sys.stdout = StreamToTextual(self, "stdout")
+        sys.stderr = StreamToTextual(self, "stderr")
 
         self._log("Starting VulcanAI...", log_color=1)
 
@@ -312,6 +341,39 @@ class VulcanConsole(App):
             yield Static("", id="logcontent")
         yield Input(placeholder="> ", id="cmd")
 
+    def append_log_text(self, text: str) -> None:
+        """Append text to the logcontent Static."""
+        text = text.rstrip("\n")
+        if not text:
+            return
+
+        self._log_lines.append(text)
+        content = "\n".join(self._log_lines)
+
+        log_static = self.query_one("#logcontent", Static)
+        log_static.update(content)
+
+
+    def attach_ros_logger_to_console(self, node):
+        logger = node.get_logger()
+
+        def info_hook(msg, *args, **kwargs):
+            self.call_from_thread(self._log, f"[gray]\[ROS] \[INFO] {msg}[/gray]")
+            #return original_info(msg, *args, **kwargs)
+
+        def warn_hook(msg, *args, **kwargs):
+            self.call_from_thread(self._log, f"[gray]\[ROS] \[WARN] {msg}[/gray]")
+            #return original_warn(msg, *args, **kwargs)
+
+        def error_hook(msg, *args, **kwargs):
+            self.call_from_thread(self._log, f"[gray]\[ROS] \[ERROR] {msg}[/gray]")
+            #return original_error(msg, *args, **kwargs)
+
+        logger.info = info_hook
+        logger.warning = warn_hook
+        logger.error = error_hook
+
+
     def log_cb(self, msg: str) -> None:
         """
         Print the msg while executing a function
@@ -324,7 +386,7 @@ class VulcanConsole(App):
         """
 
         def worker(log_cb: Callable[[str], None], user_input: str="") -> None:
-            
+
             if user_input == "":
                 self.init_manager(log_cb)
 
@@ -370,6 +432,8 @@ class VulcanConsole(App):
                 # Add the shared node to the console manager blackboard to be used by tools
                 if self.main_node != None:
                     self.manager.bb["main_node"] = self.main_node
+                    self.attach_ros_logger_to_console(self.main_node)
+                    #attach_ros_logger_to_console(self, self.main_node)
             else:
                 self.set_input_enabled(False)
 
