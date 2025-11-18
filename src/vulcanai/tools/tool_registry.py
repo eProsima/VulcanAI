@@ -72,6 +72,9 @@ class HelpTool(ITool):
 
 
 class ToolRegistry:
+
+    class_color = "#068399"
+
     """Holds all known tools and performs vector search over metadata."""
     def __init__(self, embedder=None, logger=None):
         # Logging function
@@ -92,31 +95,36 @@ class ToolRegistry:
         # Validation tools list to retrieve validation tools separately
         self.validation_tools: List[str] = []
 
-    def register_tool(self, tool: ITool, solve_deps: bool = True):
+    def register_tool(self, tool: ITool, solve_deps: bool = True)  -> bool:
         """Register a single tool instance."""
         # Avoid duplicates
         if tool.name in self.tools:
-            return
+            return false
+
         self.tools[tool.name] = tool
         if tool.is_validation_tool:
             self.validation_tools.append(tool.name)
         emb = self.embedder.embed(self._doc(tool))
         self._index.append((tool.name, emb))
-        self.logger(f"Registered tool: {tool.name}", log_type="register")
+        self.logger(f"Registered tool: [{self.class_color}]{tool.name}[/{self.class_color}]", log_type="register")
         self.help_tool.available_tools = self.tools
         if solve_deps:
             # Get class of tool
             if issubclass(type(tool), CompositeTool):
                 self._resolve_dependencies(tool)
 
-    def activate_tool(self, tool_name):
+        return True
+
+    def activate_tool(self, tool_name) -> bool:
         # check if the tool is already active
         if tool_name in self.tools:
-            return
+            return False
         # check if the tool is deactivated
         if tool_name not in self.deactivated_tools:
-            self.logger(f"Tool '{tool_name}' not found in the deactivated tools list.", error=True)
-            return
+            self.logger(f"Tool [{self.class_color}]'{tool_name}'[/{self.class_color}] not found in the deactivated tools list.", error=True)
+            return False
+
+        self.logger(f"Tool [{self.class_color}]'{tool_name}'[/{self.class_color}] not found in the deactivated tools list.", error=True)
 
         # add the tool to the active tools
         self.tools[tool_name] = self.deactivated_tools[tool_name]
@@ -124,20 +132,24 @@ class ToolRegistry:
         # removed the tool from the deactivated tools
         del self.deactivated_tools[tool_name]
 
-    def deactivate_tool(self, tool_name):
+        return True
+
+    def deactivate_tool(self, tool_name) -> bool:
         # check if the tool is already deactivated
         if tool_name in self.deactivated_tools:
-            return
+            return False
         # check if the tool is active
         if tool_name not in self.tools:
             self.logger(f"Tool '{tool_name}' not found int the active tools list.", error=True)
-            return
+            return False
 
         # add the tool to the deactivated tools
         self.deactivated_tools[tool_name] = self.tools[tool_name]
 
         # removed the tool from the active tools
         del self.tools[tool_name]
+
+        return True
 
     def register(self):
         """Register all loaded classes marked with @vulcanai_tool."""

@@ -100,8 +100,8 @@ class SpinnerHook:
         Create the spinner line at the end of the log and start updating it.
         """
 
-        self.running_color = "blue"
-        self.end_color = "bold green"
+        self.color = "#0d87c0"
+        self.update_color = "#15B606"
         self.text = text
 
         if self.spinner_timer is not None:
@@ -109,7 +109,7 @@ class SpinnerHook:
 
         # Add a new line for the spinner and remember its index
         self.spinner_line_index = len(self.console._log_lines)
-        self.console._log(f"[{self.running_color}]{text}[/{self.running_color}]")
+        self.console._log(f"[{self.color}]{text}[/{self.color}]")
         #self.console._log_lines.append(f"[{self.running_color}]{text}[/{self.running_color}]")
         self.spinner_frame_index = 0
 
@@ -135,7 +135,7 @@ class SpinnerHook:
         self.spinner_frame_index = (self.spinner_frame_index + 1) % len(self.spinner_frames)
 
         # Update that specific line only
-        self.console._log_lines[self.spinner_line_index] = f"[{self.running_color}]{self.text} {frame} [/{self.running_color}]"
+        self.console._log_lines[self.spinner_line_index] = f"[{self.update_color}]{frame}[/{self.update_color}] [{self.color}]{self.text}[/{self.color}]"
         #self.console._log(f"[{self.running_color}] Sleeping {frame} [/{self.running_color}]")
         self.console.render_log()
 
@@ -149,7 +149,7 @@ class SpinnerHook:
             self.spinner_timer = None
 
         if self.spinner_line_index is not None:
-            self.console._log_lines[self.spinner_line_index] = f"[{self.end_color}]Query finished.[/{self.end_color}]"
+            self.console._log_lines[self.spinner_line_index] += f"[{self.update_color}] Query finished![/{self.update_color}]"
             self.spinner_line_index = None
             self.console.render_log()
 
@@ -319,7 +319,73 @@ class VulcanConsole(App):
         sys.stdout = StreamToTextual(self, "stdout")
         sys.stderr = StreamToTextual(self, "stderr")
 
-        self._log("Starting VulcanAI...", log_color=1)
+        # TODO
+        # https://patorjk.com/software/taag/#p=display&f=Small+Slant&t=VulcanAI&x=none&v=4&h=4&w=80&we=false
+#Standard
+        vulcanai_tittle_std = \
+"""
+ __     __     _                    _    ___
+ \ \   / /   _| | ___ __ _ _ __    / \  |_ _|
+  \ \ / / | | | |/ __/ _` | '_ \  / _ \  | |
+   \ V /| |_| | | (_| (_| | | | |/ ___ \ | |
+    \_/  \__,_|_|\___\__,_|_| |_/_/   \_\___|
+"""
+
+#slant
+        vulcanai_tittle_slant = \
+"""
+ _    __      __                 ___    ____
+| |  / /_  __/ /________  ____  /   |  /  _/
+| | / / / / / / ___/ __ `/ __ \/ /| |  / /
+| |/ / /_/ / / /__/ /_/ / / / / ___ |_/ /
+|___/\__,_/_/\___/\__,_/_/ /_/_/  |_/___/
+"""
+#small slant
+        vulcanai_tittle_small_slant = \
+"""
+  _   __     __              ___   ____
+ | | / /_ __/ /______ ____  / _ | /  _/
+ | |/ / // / / __/ _ `/ _ \/ __ |_/ /
+ |___/\_,_/_/\__/\_,_/_//_/_/ |_/___/
+"""
+
+#Doom
+        vulcanai_tittle_doom = \
+"""
+ _   _       _                  ___  _____
+| | | |     | |                / _ \|_   _|
+| | | |_   _| | ___ __ _ _ __ / /_\ \ | |
+| | | | | | | |/ __/ _` | '_ \|  _  | | |
+\ \_/ / |_| | | (_| (_| | | | | | | |_| |_
+ \___/ \__,_|_|\___\__,_|_| |_\_| |_/\___/
+"""
+# Small Block
+        vulcanai_tittle_block = \
+"""
+▌ ▌   ▜          ▞▀▖▜▘
+▚▗▘▌ ▌▐ ▞▀▖▝▀▖▛▀▖▙▄▌▐
+▝▞ ▌ ▌▐ ▌ ▖▞▀▌▌ ▌▌ ▌▐
+ ▘ ▝▀▘ ▘▝▀ ▝▀▘▘ ▘▘ ▘▀▘
+"""
+#Small
+        vulcanai_tittle_small = \
+"""
+ __   __    _                _   ___
+ \ \ / /  _| |__ __ _ _ _   /_\ |_ _|
+  \ V / || | / _/ _` | ' \ / _ \ | |
+   \_/ \_,_|_\__\__,_|_||_/_/ \_\___|
+"""
+
+        #self._log(f"{vulcanai_tittle_std}", log_color=1)
+        #self._log(f"")
+        self._log(f"{vulcanai_tittle_slant}", log_color=1)
+        #self._log(f"")
+        #self._log(f"{vulcanai_tittle_small_slant}", log_color=1)
+        #self._log(f"")
+        #self._log(f"{vulcanai_tittle_block}", log_color=1)
+        #self._log(f"")
+        #self._log(f"{vulcanai_tittle_small}", log_color=1)
+
 
         await asyncio.sleep(0)
         asyncio.create_task(self.bootstrap())
@@ -374,21 +440,15 @@ class VulcanConsole(App):
         logger.error = error_hook
 
 
-    def log_cb(self, msg: str) -> None:
-        """
-        Print the msg while executing a function
-        """
-        self.call_from_thread(self._log, msg)
-
     async def bootstrap(self, user_input: str="") -> None:
         """
         Function used to print information in runtime execution of a function
         """
 
-        def worker(log_cb: Callable[[str], None], user_input: str="") -> None:
+        def worker(user_input: str="") -> None:
 
             if user_input == "":
-                self.init_manager(log_cb)
+                self.init_manager()
 
                 # add the commands
                 # command registry: name -> handler
@@ -406,7 +466,6 @@ class VulcanConsole(App):
                     "/exit": self.cmd_quit,
                 }
 
-                #log_cb("Added commands.")
 
                 # cycling through tab matches
                 self._tab_matches = []
@@ -418,16 +477,13 @@ class VulcanConsole(App):
                 except Exception:
                     pass
 
-                #log_cb("Added hooks.")
 
                 if self.tools_from_entrypoints != "":
                     self.manager.register_tools_from_entry_points(self.tools_from_entrypoints)
 
-                #log_cb("Added tools.")
 
                 self.manager.add_user_context(self.user_context)
 
-                #log_cb("Added user_context.")
 
                 # Add the shared node to the console manager blackboard to be used by tools
                 if self.main_node != None:
@@ -454,7 +510,7 @@ class VulcanConsole(App):
                     self.last_bb = result.get("blackboard", None)
 
                     #self.print(f"Output of plan: {result.get('blackboard', {None})}")
-                    self._log(f"Output of plan: {result.get('blackboard', {None})}")
+                    self._log(f"Output of plan: {result.get('blackboard', {None})}", log_color=2)
 
                 except KeyboardInterrupt:
                     #console.print("[yellow]Exiting...[/yellow]")
@@ -465,63 +521,20 @@ class VulcanConsole(App):
                     self._log("[yellow]Exiting...[/yellow]")
                     return
 
-        def handle_user_query(self, user_input) -> None:
-            """
-            Function used in '/edit_tools' command.
-            It creates a dialog with all the tools.
-            """
-            # create the checklist dialog
-            # Check for image input. Must be always at the end of the input
-            #user_input = "move trutle 1 unit forward."
-
-            try:
-                self.set_input_enabled(False)
-
-                images = []
-                if "--image=" in user_input:
-                    images = self.get_images(user_input)
-
-                # Handle user request
-                try:
-                    result = self.manager.handle_user_request(user_input, context={"images": images})
-                except Exception as e:
-                    #self.print(f"[error]Error handling request:[/error] {e}")
-                    self._log(f"[error]Error handling request:[/error] {e}")
-                    return
-
-                self.last_plan = result.get("plan", None)
-                self.last_bb = result.get("blackboard", None)
-
-                #self.print(f"Output of plan: {result.get('blackboard', {None})}")
-                self._log(f"Output of plan: {result.get('blackboard', {None})}")
-
-            except KeyboardInterrupt:
-                #console.print("[yellow]Exiting...[/yellow]")
-                self._log("[yellow]Exiting...[/yellow]")
-                return
-            except EOFError:
-                #console.print("[yellow]Exiting...[/yellow]")
-                self._log("[yellow]Exiting...[/yellow]")
-                return
-
         if user_input != "":
             self.hooks.on_request_start()
 
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, lambda: worker(self.log_cb, user_input))
+        await loop.run_in_executor(None, lambda: worker(user_input))
 
         if user_input == "":
-            #await loop.run_in_executor(None, lambda: worker(log_cb, user_input))
 
             self._is_ready = True
             self.set_input_enabled(True)
             self._log("VulcanAI Interactive Console", log_color=2)
-            self._log("Type 'exit' to quit.\n", log_color=2)
+            self._log("Type [bold]'exit'[/bold] to quit.\n", log_color=2)
         else:
             self.set_input_enabled(True)
-
-            #await loop.run_in_executor(None, lambda: worker(log_cb))
-            #await loop.run_in_executor(None, lambda: handle_user_query())
 
     # region Utilities
 
@@ -557,15 +570,14 @@ class VulcanConsole(App):
         elif not selected:
             self._log("No items selected.", log_color=3)
         else:
-            self._log("Submitting selected lines:", log_color=1)
 
             for tool_tmp in tools_list:
                 tool = tool_tmp[2:] # remove "- "
                 if tool_tmp in selected:
                     self.manager.registry.activate_tool(tool)
                 else:
-                    self.manager.registry.deactivate_tool(tool)
-                    self._log(f"Deactivated tool '{tool}'", log_color=2)
+                    if self.manager.registry.deactivate_tool(tool):
+                        self._log(f"Deactivated tool [bold]'{tool}'[/bold]", log_color=2)
 
     # endregion
 
@@ -574,19 +586,20 @@ class VulcanConsole(App):
     def cmd_help(self, _) -> None:
         table = "\n".join(
             [
-                "Available commands:\n"
-                "/help           - Show this help message\n"
-                "/tools          - List available tools\n"
-                "/edit_tools     - Edit the list of available tools\n"
-                "/change_k <int> - Change the 'k' value for the top_k algorithm selection or show the current value if no <int> is provided\n"
-                "/history <int>  - Change the history depth or show the current value if no <int> is provided\n"
-                "/show_history   - Show the current history\n"
-                "/plan           - Show the last generated plan\n"
-                "/rerun          - Rerun the last plan\n"
-                "/bb             - Show the last blackboard state\n"
-                "/clear          - Clear the console screen\n"
-                "/exit            - Exit the console\n"
-                "Query any other text to process it with the LLM and execute the plan generated.\n"
+                "[bold]Available commands:[/bold]\n"
+                "‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾\n"
+                "/[bold]help[/bold]           - Show this help message\n"
+                "/[bold]tools[/bold]          - List available tools\n"
+                "/[bold]edit_tools[/bold]     - Edit the list of available tools\n"
+                "/[bold]change_k <int>[/bold] - Change the 'k' value for the top_k algorithm selection or show the current value if no <int> is provided\n"
+                "/[bold]history <int>[/bold]  - Change the history depth or show the current value if no <int> is provided\n"
+                "/[bold]show_history[/bold]   - Show the current history\n"
+                "/[bold]plan[/bold]           - Show the last generated plan\n"
+                "/[bold]rerun[/bold]          - Rerun the last plan\n"
+                "/[bold]bb[/bold]             - Show the last blackboard state\n"
+                "/[bold]clear[/bold]          - Clear the console screen\n"
+                "/[bold]exit[/bold]           - Exit the console\n"
+                "[bold]Query any other text[/bold] to process it with the LLM and execute the plan generated.\n\n"
                 "Add --image=<path> to include images in the query. It can be used multiple times to add more images.\n"
                 "Example: '<user_prompt> --image=/path/to/image1 --image=/path/to/image2'"
             ]
@@ -594,10 +607,13 @@ class VulcanConsole(App):
         self._log(table, log_color=2)
 
     def cmd_tools(self, _) -> None:
-        help_msg = f"Available tools (current index k={self.manager.k}):\n"
+        tmp_msg = f"Available tools (current index k={self.manager.k}):"
+        tool_msg = f"[bold]{tmp_msg}[/bold]\n"
+        tool_msg += "‾" * len(tmp_msg) +'\n'
+
         for tool in self.manager.registry.tools.values():
-            help_msg += f"- {tool.name}: {tool.description}\n"
-        self._log(help_msg, log_color=2)
+            tool_msg += f"- [bold]{tool.name}:[/bold] {tool.description}\n"
+        self._log(tool_msg, log_color=2)
 
     def cmd_edit_tools(self, _) -> None:
         tools_list = []
@@ -642,11 +658,11 @@ class VulcanConsole(App):
             self._log("No history available.", log_color=2)
             return
 
-        help_msg = "\nCurrent history (oldest first):\n"
+        history_msg = "\nCurrent history (oldest first):\n"
         for i, (user_text, plan_summary) in enumerate(self.manager.history):
-            help_msg += f"{i+1}. User: {user_text}\n   Plan summary: {plan_summary}\n"
+            history_msg += f"{i+1}. User: {user_text}\n   Plan summary: {plan_summary}\n"
 
-        self._log(help_msg, log_color=2)
+        self._log(history_msg, log_color=2)
 
     def cmd_plan(self, _) -> None:
         if self.last_plan:
@@ -697,26 +713,70 @@ class VulcanConsole(App):
         # Allow Rich markup for colors and styles
         log.update("\n".join(self._log_lines), markup=True)"""
 
-    def _log(self, line: str, log_type: str = "", log_color: int = -1) -> None:
+    def _log(self, line: str, log_type: str = "", log_color: int = -1, print_args_idx: int=-1) -> None:
         msg = ""
 
         color_type = ""
 
         if log_type == "register":
-            msg = "[bold cyan]\[REGISTRY][/bold cyan] "
+            color_tmp = "#068399"
+            msg = f"[bold {color_tmp}]\[REGISTRY][/bold {color_tmp}] "
         elif log_type == "manager":
-            msg = "[bold blue]\[MANAGER][/bold blue] "
+            color_tmp = "#0d87c0"
+            msg = f"[bold {color_tmp}]\[MANAGER][/bold {color_tmp}] "
         elif log_type == "executor":
-            msg = "[bold green]\[EXECUTOR][/bold green] "
+            color_tmp = "#15B606"
+            msg = f"[bold {color_tmp}]\[EXECUTOR][/bold {color_tmp}] "
         elif log_type == "validator":
             msg = "[bold orange_red1]\[VALIDATOR][/bold orange_red1] "
         elif log_type == "error":
             msg = "[bold red]\[ERROR][/bold red] "
 
+
+        """if print_args_idx > 0:
+            msg += line[:print_args_idx]
+            i = print_args_idx
+            n = len(line)
+
+            color_1 = "#C49C00"
+            color_2 = "#069899"
+            msg += f"[{color_1}]"
+
+            while i < n:
+                c = line[i]
+                if c == '=' or c == ':':
+                    msg += f"[/{color_1}]"
+                    msg += line[i]
+                    msg += f"[{color_2}]"
+                elif c == ',':
+                    msg += f"[/{color_2}]"
+                    msg += line[i]
+                    msg += f"[{color_1}]"
+                elif c == '}' or c == ')':
+                    msg += f"[/{color_2}]"
+                    msg+=line[i]
+                    break
+                else:
+                    msg += line[i]
+
+                i+=1
+
+            if i < n:
+                msg += line[i:]
+
+
+
+            self._log_lines.append(msg)
+            self.render_log()
+            return"""
+
+
+
+
         if log_color == 0:
             color_type = "#FF0000"
         elif log_color == 1:
-            color_type = "#4E9A06"
+            color_type = "#56AA08"
         elif log_color == 2:
             color_type = "#8F6296"
         elif log_color == 3:
@@ -724,7 +784,10 @@ class VulcanConsole(App):
         elif log_color == 4:
             color_type = "#069899"
         else:
-            color_type = "#FFFFFF"
+            msg += f"{line}"
+            self._log_lines.append(msg)
+            self.render_log()
+            return
 
         msg += f"[{color_type}]{line}[/{color_type}]"
         self._log_lines.append(msg)
@@ -820,7 +883,8 @@ class VulcanConsole(App):
             self._history_index = None
 
             # echo what the user typed (keep this if you like the prompt arrow)
-            self._log(f"\[USER] >>> {cmd}")
+            color_user = "#91DD16"
+            self._log(f"[bold {color_user}]\[USER] >>>[/bold {color_user}] {cmd}")
 
             # If it doesn't start with '/', just print it as output and stop here
             if user_input.startswith("/"):
@@ -1064,19 +1128,21 @@ class VulcanConsole(App):
                 console.print("[yellow]Exiting...[/yellow]")
                 break"""
 
-    def init_manager(self, log_cb: Callable[[str], None]) -> None:
+    def init_manager(self) -> None:
         if self.iterative:
             from vulcanai.core.manager_iterator import IterativeManager as ConsoleManager
         else:
             from vulcanai.core.manager_plan import PlanManager as ConsoleManager
 
-        # TODO. use log_cb to print the log information
-        #console.print(f"[console]Initializing Manager '{ConsoleManager.__name__}'...[/console]")
-        self._log(f"Initializing Manager '{ConsoleManager.__name__}'...", log_color=2)
+        # Print in textual terminal:
+        # Initializing Manager '<PlanManager/IterativeManager>' ...
+        self._log(f"Initializing Manager [bold]'{ConsoleManager.__name__}'[/bold] ...", log_color=2)
 
         self.manager = ConsoleManager(model=self.model, k=self.k, logger=self._log)
-        #self.print(f"Manager initialized with model '{self.model}'.")
-        self._log(f"Manager initialized with model '{self.model}'", log_color=2)
+
+        # Print in textual terminal:
+        # Manager initialized with model '<model>'
+        self._log(f"Manager initialized with model [bold]'{self.model}[/bold]'", log_color=2)
 
 
     def print(self, msg: str) -> None:

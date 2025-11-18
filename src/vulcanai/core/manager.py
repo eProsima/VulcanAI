@@ -97,7 +97,7 @@ class ToolManager:
                 try:
                     self.validator.validate(plan)
                 except Exception as e:
-                    self.logger(f"Plan validation error: {e}", log_type="validator") # error
+                    self.logger(f"Plan validation error: {e}", log_type="validator", log_color=0) # error
                     raise e
             # Execute plan
             ret = self.execute_plan(plan)

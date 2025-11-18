@@ -25,6 +25,9 @@ class Brand(str, Enum):
 
 
 class Agent:
+
+    class_color = "#0d87c0"
+
     """Interface to operate the LLM."""
     def __init__(self, model_name: str, logger=None):
         self.brand, name = self._detect_brand(model_name)
@@ -133,7 +136,7 @@ class Agent:
     def _load_model(self, model_name: str):
         if self.brand == Brand.gpt:
             from vulcanai.models.openai import OpenAIModel
-            self.logger(f"Using OpenAI API with model: {model_name}", log_type="manager")
+            self.logger(f"Using OpenAI API with model: [{self.class_color}]{model_name}[/{self.class_color}]", log_type="manager")
             self.model = OpenAIModel(model_name, self.logger)
 
         elif self.brand == Brand.gemini:

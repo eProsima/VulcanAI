@@ -26,6 +26,9 @@ T = TypeVar('T', GlobalPlan, GoalSpec, AIValidation)
 
 
 class OpenAIModel(IModel):
+
+    color = "#0d87c0"
+
     """ Wrapper for OpenAI models. """
     def __init__(self, model_name: str, logger=None, hooks: Optional[IModelHooks] = None):#, console = None):
         super().__init__()
@@ -80,7 +83,7 @@ class OpenAIModel(IModel):
                 response_format=response_cls,
             )
         except Exception as e:
-            self.logger(f"OpenAI API error: {e}", error=True)
+            self.logger(f"OpenAI API error: {e}", log_type="manager", error=True)
             return None
         finally:
             # Notify hooks of request end
@@ -95,14 +98,17 @@ class OpenAIModel(IModel):
         try:
             parsed = completion.choices[0].message.parsed
         except Exception as e:
-            self.logger(f"Failed to parse response into {response_cls.__name__}: {e}", error=True)
+            self.logger(f"Failed to parse response into {response_cls.__name__}: {e}", log_type="manager", error=True)
 
         end = time.time()
-        self.logger(f"GPT response time: {end - start:.3f} seconds")
+        self.logger(f"GPT response time: [{self.color}]{end - start:.3f} seconds[/{self.color}]", log_type="manager")
         try:
             input_tokens = completion.usage.prompt_tokens
             output_tokens = completion.usage.completion_tokens
-            self.logger(f"Prompt tokens: {input_tokens}, Completion tokens: {output_tokens}")
+            # Print in textual terminal:
+            # [MANAGER] Prompt tokens: <num_1>, Completion tokens: <num_2>
+            self.logger(f"Prompt tokens: [{self.color}]{input_tokens}[/{self.color}], " + \
+                        f"Completion tokens: [{self.color}]{output_tokens}[/{self.color}]", log_type="manager")
         except Exception:
             pass
 
@@ -125,7 +131,7 @@ class OpenAIModel(IModel):
                         })
                     except Exception as e:
                         # Fail soft on a single bad image but continue with others
-                        self.logger(f"Image '{image_path}' could not be encoded: {e}", error=True)
+                        self.logger(f"Image '{image_path}' could not be encoded: {e}", log_type="manager", error=True)
         return content
 
     def _build_messages(

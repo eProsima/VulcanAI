@@ -57,6 +57,11 @@ class Blackboard(dict):
 class PlanExecutor:
     """Executes a validated GlobalPlan with blackboard and execution control parameters."""
 
+    class_color = "#15B606"
+    color_variable = "#C49C00"
+    color_value = "#069899"
+    color_error = "#CC0C0C"
+
     def __init__(self, registry, logger=None):
         self.registry = registry
         self.logger = logger #or VulcanAILogger.log_executor
@@ -87,7 +92,8 @@ class PlanExecutor:
         for i in range(attempts):
             ok = self._execute_plan_node_with_timeout(node, bb)
             if ok and self._check_success(node, bb):
-                self.logger(f"PlanNode {node.kind} succeeded on attempt {i+1}/{attempts}", log_type="executor")
+                self.logger(f"PlanNode [{self.color_value}]{node.kind}[/{self.color_value}] " + \
+                            f"[{self.class_color}]succeeded[/{self.class_color}] on attempt {i+1}/{attempts}", log_type="executor")
                 return True
         self.logger(f"PlanNode {node.kind} failed on attempt {i+1}/{attempts}", log_type="executor", log_color=0) # error
 
@@ -250,8 +256,22 @@ class PlanExecutor:
         arg_dict = {a.key: a.val for a in args}
         tool.bb = bb
 
+        first = True
+
+        msg = f"Invoking [italic][{self.class_color}]'{tool_name}'[/{self.class_color}][/italic] with args: [italic]"
+        msg += "'{"
+        for key, value in arg_dict.items():
+            if first:
+                msg += f"[{self.color_variable}]'{key}'[/{self.color_variable}]: [{self.color_value}]'{value}'[/{self.color_value}]"
+            else:
+                msg += f", [{self.color_variable}]'{key}'[/{self.color_variable}]: [{self.color_value}]'{value}'[/{self.color_value}]"
+            first = False
+        msg+="}''"
+        self.logger(msg, log_type="executor")
+        #self.logger(f"Invoking [italic]'{tool_name}'[/italic] with args: [italic]'{arg_dict}'[/italic]", log_type="executor", print_args_idx=49+1+len(tool_name))
+        #self.logger(f"Invoking [italic]'{tool_name}'[/italic] with args: [italic]'{arg_dict}'[/italic]", log_type="executor", print_args_idx=25+len(tool_name))
+
         start = time.time()
-        self.logger(f"Invoking [italic]'{tool_name}'[/italic] with args: [italic]'{arg_dict}'[/italic]", log_type="executor")
         tool_log = ""
         try:
             if timeout_ms:
@@ -276,11 +296,14 @@ class PlanExecutor:
             if tool_log:
                 self.logger(f"{tool_log}: {tool_name} TODO. danip", log_type="executor")#, tool_name=tool_name) # TODO danip
             elapsed = (time.time() - start) * 1000
-            self.logger(f"Executed [italic]'{tool_name}'[/italic] in {elapsed:.1f} ms with result: {result}", log_type="executor")
+            self.logger(f"Executed [italic][{self.class_color}]'{tool_name}'[/{self.class_color}][/italic] in [{self.color_value}]{elapsed:.1f} ms[/{self.color_value}] " + \
+                        f"with result: [bold][{self.class_color}]{result}[/{self.class_color}][/bold]", log_type="executor")
             return True, result
         except concurrent.futures.TimeoutError:
-            self.logger(f"Execution of [italic]'{tool_name}'[/italic] timed out after {timeout_ms} ms", log_type="executor")
+            self.logger(f"Execution of [italic][{self.class_color}]'{tool_name}'[/{self.class_color}][/italic] [{self.color_error}]timed out[/{self.color_error}] " + \
+                        f"after [{self.color_value}]{timeout_ms}[/{self.color_value}] ms", log_type="executor")
             return False, None
         except Exception as e:
-            self.logger(f"Execution failed for [italic]'{tool_name}'[/italic]: {e}", log_type="executor")
+            self.logger(f"Execution [bold][{self.color_error}]failed[\{self.color_error}][/bold] for " + \
+                        f"[italic][{self.class_color}]'{tool_name}'[/{self.class_color}][/italic]: {e}", log_type="executor")
             return False, None

@@ -80,8 +80,12 @@ class GlobalPlan(BaseModel):
         if self.summary:
             lines.append(f"- [bold]Plan Summary[/bold]: {self.summary}\n")
 
+        color_tool = "#15B606"
+        color_variable = "#C49C00"
+        color_value = "#069899"
+
         for i, node in enumerate(self.plan, 1):
-            lines.append(f"- PlanNode {i}: kind={node.kind}")
+            lines.append(f"- PlanNode {i}: [{color_variable}]kind[/{color_variable}]=[{color_value}]{node.kind}[/{color_value}]")
             if node.condition:
                 lines.append(f"    Condition: {node.condition}")
             if node.retry:
@@ -93,8 +97,10 @@ class GlobalPlan(BaseModel):
             if node.on_fail:
                 lines.append(f"    On Fail: {node.on_fail.kind} with {len(node.on_fail.steps)} steps")
             for j, step in enumerate(node.steps, 1):
-                arg_str = ", ".join([f"{a.key}={a.val}" for a in step.args]) if step.args else "no args"
-                lines.append(f"    Step {j}: {step.tool}({arg_str})")
+                #arg_str: <key_0>=<val_0>, ..., <key_n-1>=<val_n-1>
+                arg_str = ", ".join([f"[{color_variable}]{a.key}[/{color_variable}]=[{color_value}]{a.val}[/{color_value}]" for a in step.args]) if step.args else f"[{color_value}]no args[/{color_value}]"
+                # Step <num_step>: <tool>(<arg_str>)
+                lines.append(f"    Step {j}: [{color_tool}]{step.tool}[/{color_tool}]({arg_str})")
                 if step.condition:
                     lines.append(f"      Condition: {step.condition}")
                 if step.retry:
