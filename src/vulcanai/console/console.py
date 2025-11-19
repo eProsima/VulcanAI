@@ -43,6 +43,9 @@ from textual.timer import Timer
 
 import sys
 
+# library used to paste the clipboard into the terminal
+import pyperclip
+
 
 class StreamToTextual:
     """
@@ -934,6 +937,7 @@ class VulcanConsole(App):
 
 
         if key in ("up", "down"):
+
             # Only handle history navigation if input is focused
             if self.focused is not cmd_input:
                 return
@@ -945,6 +949,10 @@ class VulcanConsole(App):
             if not hasattr(self, "_history_index") or self._history_index is None:
                 self._history_index = len(self.history)
 
+            # store the command input if it is new
+            if self._history_index == len(self.history):
+                self.terminal_input = cmd_input.value
+
             if key == "up" and self._history_index > 0:
                 self._history_index -= 1
             elif key == "down" and self._history_index < len(self.history):
@@ -952,11 +960,13 @@ class VulcanConsole(App):
             else:
                 return  # ignore if out of range
 
+            self._log(f"Historyindex = {self._history_index}")
+
             # Update input value based on history
             if 0 <= self._history_index < len(self.history):
                 cmd_input.value = self.history[self._history_index]
             else:
-                cmd_input.value = ""
+                cmd_input.value = self.terminal_input
 
             # Move cursor to end
             cmd_input.cursor_position = len(cmd_input.value)
@@ -1043,6 +1053,28 @@ class VulcanConsole(App):
             cmd_input.cursor_position = i
 
             cmd_input.focus()          # keep caret in the input
+            event.prevent_default()
+            event.stop()
+            return
+
+        if key == "ctrl+v":
+            try:
+                paste_text = pyperclip.paste() or ""
+            except Exception as e:
+                self._log(f"Clipboard error: {e}", log_color=0)
+                return
+
+            if not paste_text:
+                return
+
+            value = cmd_input.value
+            cursor = cmd_input.cursor_position
+
+            # Insert clipboard text at cursor
+            cmd_input.value = value[:cursor] + paste_text + value[cursor:]
+            cmd_input.cursor_position = cursor + len(paste_text)
+
+            cmd_input.focus()
             event.prevent_default()
             event.stop()
             return

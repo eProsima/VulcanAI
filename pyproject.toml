@@ -25,6 +25,7 @@ dependencies = [
     "textual-dev==1.8.0",
     "textual-serve==1.1.3",
     "typeguard==2.13",
+    "pyperclip==1.11.0",
 ]
 
 [project.optional-dependencies]
