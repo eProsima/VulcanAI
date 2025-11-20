@@ -298,7 +298,7 @@ class PlanExecutor:
 
         first = True
 
-        msg = f"Invoking [italic][{self.class_color}]'{tool_name}'[/{self.class_color}][/italic] with args: [italic]"
+        msg = f"Invoking [italic][{self.class_color}]'{tool_name}'[/{self.class_color}][/italic] with args:"
         msg += "'{"
         for key, value in arg_dict.items():
             if first:

@@ -14,35 +14,21 @@ from __future__ import annotations
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from threading import Lock
-import argparse
-import os
-
-from prompt_toolkit import PromptSession
-from rich.progress import Progress, SpinnerColumn, TextColumn
-from vulcanai.models.model import IModelHooks
-from vulcanai.console.logger import console
-
-from textual.screen import ModalScreen
-from textual.app import App, ComposeResult
-from textual.widgets import Input, Log, Static, Checkbox, Button, Label
-from textual import events
-
-
-from rich.text import Text
-from rich.markup import escape
-
-from textual import work
-
-from textual.containers import VerticalScroll, Horizontal, Vertical
-
-import asyncio, time
-from typing import Callable, Iterable, Optional
-
-from textual.timer import Timer
-
 import sys
+import argparse
 
+from textual.app import App, ComposeResult
+from textual.widgets import Input, Static, Checkbox, Button, Label
+from textual import events
+from textual.containers import VerticalScroll, Horizontal, Vertical, Container
+from textual.binding import Binding
+# sipnner
+from textual.timer import Timer
+# checkbox
+from textual.screen import ModalScreen
+# non-blocking executions to print in textual terminal
+from textual import work
+import asyncio
 # library used to paste the clipboard into the terminal
 import pyperclip
 
@@ -147,38 +133,42 @@ class SpinnerHook:
             self.spinner_line_index = None
             self.console.render_log()
 
-
-
 class CheckListScreen(ModalScreen[list[str] | None]):
-    """
-    A modal screen with the tools checkboxes and Submit/Cancel buttons.
-    """
+
 
     CSS = """
     CheckListScreen {
         align: center middle;
     }
+
     .dialog {
         width: 60%;
         max-width: 90%;
+        height: 80%;          /* fixed portion of terminal */
         border: round $accent;
         padding: 1 2;
         background: $panel;
     }
+
     .title {
         text-align: center;
         margin-bottom: 1;
     }
+
+    /* This is the important part */
+    .checkbox-list {
+        height: 1fr;          /* take all remaining vertical space */
+                              /* no max-height, no overflow-y here */
+    }
+
     .btns {
-        height: auto;
-        dock: bottom;
+        height: 3;            /* give buttons row a fixed height */
         padding-top: 1;
         content-align: right middle;
     }
     """
 
-
-    def __init__(self, lines: Iterable[str], active_tools_num: int=0) -> None:
+    def __init__(self, lines: list[str], active_tools_num: int = 0) -> None:
         super().__init__()
         self._lines = list(lines)
         self.active_tools_num = active_tools_num
@@ -187,9 +177,12 @@ class CheckListScreen(ModalScreen[list[str] | None]):
         with Vertical(classes="dialog"):
             yield Label("Pick tools you want to enable", classes="title")
 
-            for i, line in enumerate(self._lines, start=1):
-                # The checkbox value is True = tool activated. False otherwise
-                yield Checkbox(line, value=i<=self.active_tools_num, id=f"cb{i}")
+            # SCROLLABLE CHECKBOX LIST
+            with VerticalScroll(classes="checkbox-list"):
+                for i, line in enumerate(self._lines, start=1):
+                    yield Checkbox(line, value=i <= self.active_tools_num, id=f"cb{i}")
+
+            # Buttons
             with Horizontal(classes="btns"):
                 yield Button("Cancel", variant="default", id="cancel")
                 yield Button("Submit", variant="primary", id="submit")
@@ -197,14 +190,12 @@ class CheckListScreen(ModalScreen[list[str] | None]):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "submit":
             boxes = list(self.query(Checkbox))
-            # Use the original strings instead of Checkbox.label (renderable)
             selected = [self._lines[i] for i, cb in enumerate(boxes) if cb.value]
             self.dismiss(selected)
         elif event.button.id == "cancel":
             self.dismiss(None)
 
     def on_mount(self) -> None:
-        # Focus the first checkbox for keyboard toggling with space
         first_cb = self.query_one(Checkbox)
         self.set_focus(first_cb)
 
@@ -216,8 +207,8 @@ class VulcanConsole(App):
     """
 
     BINDINGS = [
-        ("ctrl+c", "copy_to_clipboard", "Copy log to clipboard"),
-        ("y", "copy_log", "Copy log to clipboard"),
+        Binding("ctrl+l", "clear_log", "Clear log"),
+        Binding("f2", "show_help", "Show help", priority=True),
     ]
 
     def __init__(self, tools_from_entrypoints: str = "", user_context: str = "", main_node = None,
@@ -225,7 +216,6 @@ class VulcanConsole(App):
         super().__init__() # textual lib
 
         self.manager = None
-        self.session = PromptSession()
         self.last_plan = None
         self.last_bb = None
         self.hooks = SpinnerHook(self)
@@ -241,7 +231,7 @@ class VulcanConsole(App):
         self.commands = None
         self.tab_matches = []
         self.tab_index = 0
-        self._log_lines = []
+        self.log_lines = []
 
         # terminal qol
         self.history = []
@@ -334,8 +324,8 @@ class VulcanConsole(App):
         if not text:
             return
 
-        self._log_lines.append(text)
-        content = "\n".join(self._log_lines)
+        self.log_lines.append(text)
+        content = "\n".join(self.log_lines)
 
         log_static = self.query_one("#logcontent", Static)
         log_static.update(content)
@@ -473,8 +463,6 @@ class VulcanConsole(App):
 
         if selected is None:
             self._log("Selection cancelled.", log_color=3)
-        elif not selected:
-            self._log("No items selected.", log_color=3)
         else:
 
             for tool_tmp in tools_list:
@@ -504,11 +492,22 @@ class VulcanConsole(App):
                 "/[bold]plan[/bold]           - Show the last generated plan\n"
                 "/[bold]rerun[/bold]          - Rerun the last plan\n"
                 "/[bold]bb[/bold]             - Show the last blackboard state\n"
-                "/[bold]clear[/bold]          - Clear the console screen\n"
+                "/[bold]clear[/bold]          - Clears the console screen\n"
                 "/[bold]exit[/bold]           - Exit the console\n"
                 "[bold]Query any other text[/bold] to process it with the LLM and execute the plan generated.\n\n"
                 "Add --image=<path> to include images in the query. It can be used multiple times to add more images.\n"
-                "Example: '<user_prompt> --image=/path/to/image1 --image=/path/to/image2'"
+                "Example: '<user_prompt> --image=/path/to/image1 --image=/path/to/image2'\n"
+                "\n"
+                "[bold]Available keybinds:[/bold]\n"
+                "‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾\n"
+                "[bold]F2[/bold]                - Show this help message\n"
+                "[bold]Ctrl+Q[/bold]            - Exit the console\n"
+                "[bold]Ctrl+L[/bold]            - Clears the console screen\n"
+                "[bold]Ctrl+U[/bold]            - Clears the entire command line input\n"
+                "[bold]Ctrl+K[/bold]            - Clears from the cursor to then end of the line\n"
+                "[bold]Ctrl+W[/bold]            - Delete the word before the cursor\n"
+                "[bold]Ctrl+<left/right>[/bold] - Move cursor backward/forward by one word\n"
+                "[bold]Ctrl+R[/bold]            - Reverse search through command history (try typing part of a previous command).\n"
             ]
         )
         self._log(table, log_color=2)
@@ -595,7 +594,7 @@ class VulcanConsole(App):
             self._log("No blackboard available.", log_color=2)
 
     def cmd_clear(self, _) -> None:
-        self._log_lines.clear()
+        self.log_lines.clear()
         self.query_one("#logcontent", Static).update("")
 
     def cmd_quit(self, _) -> None:
@@ -610,7 +609,7 @@ class VulcanConsole(App):
 
     def render_log(self) -> None:
         log_static = self.query_one("#logcontent", Static)
-        log_static.update("\n".join(self._log_lines))
+        log_static.update("\n".join(self.log_lines))
 
         self.query_one("#logview", VerticalScroll).scroll_end(animate=False)
 
@@ -646,12 +645,12 @@ class VulcanConsole(App):
             color_type = "#069899"
         else:
             msg += f"{line}"
-            self._log_lines.append(msg)
+            self.log_lines.append(msg)
             self.render_log()
             return
 
         msg += f"[{color_type}]{line}[/{color_type}]"
-        self._log_lines.append(msg)
+        self.log_lines.append(msg)
         self.render_log()
 
     # endregion
@@ -732,12 +731,45 @@ class VulcanConsole(App):
             except Exception as e:
                 self._log(f"Error: {e!r}", log_color=0)
 
+    """def _reverse_search_reset(self) -> None:
+        self._rev_search_active = False
+        self._rev_search_query = ""
+        self._rev_search_index = None
+
+    def _reverse_search_update(self) -> None:
+        # Search backwards in history using self._rev_search_query.
+        cmd_input = self.query_one("#cmd", Input)
+
+        if not self.history:
+            cmd_input.value = f"(reverse-i-search)`{self._rev_search_query}`: "
+            cmd_input.cursor_position = len(cmd_input.value)
+            return
+
+        query = self._rev_search_query
+        # If index is None, start from the end
+        start = len(self.history) if self._rev_search_index is None else self._rev_search_index
+
+        found = None
+        for i in range(start - 1, -1, -1):
+            if query in self.history[i]:
+                found = (i, self.history[i])
+                break
+
+        if found is not None:
+            self._rev_search_index, match = found
+            cmd_input.value = f"(reverse-i-search)`{query}`: {match}"
+        else:
+            # No match: just show query
+            cmd_input.value = f"(reverse-i-search)`{query}`: "
+
+        cmd_input.cursor_position = len(cmd_input.value)"""
+
     async def on_key(self, event: events.Key) -> None:
         """Handle Up/Down for history navigation."""
         key = event.key
         cmd_input = self.query_one("#cmd", Input)
 
-
+        # NAVIGATE
         if key in ("up", "down"):
 
             # Only handle history navigation if input is focused
@@ -762,8 +794,6 @@ class VulcanConsole(App):
             else:
                 return  # ignore if out of range
 
-            self._log(f"Historyindex = {self._history_index}")
-
             # Update input value based on history
             if 0 <= self._history_index < len(self.history):
                 cmd_input.value = self.history[self._history_index]
@@ -774,6 +804,29 @@ class VulcanConsole(App):
             cmd_input.cursor_position = len(cmd_input.value)
             event.stop()
             return
+
+        # REVERSE SEARCH: Ctrl+R
+        """if key == "ctrl+r":
+            # Only handle if input focused and we have history
+            if self.focused is not cmd_input or not self.history:
+                return
+
+            current_query = cmd_input.value  # use current input as search query
+
+            # Start a new search if:
+            # - not active yet, or
+            # - query changed
+            if not self._rev_search_active: #or (current_query != (self._rev_search_query or "")):
+                self._log("entra")
+                self._rev_search_active = True
+                cmd_input.value = "(reverse-i-search)`"
+                #cmd_input.value = new_value
+                cmd_input.cursor_position = len(cmd_input.value)
+
+                cmd_input.focus()
+                event.prevent_default()
+                event.stop()
+                return"""
 
         # AUTOCOMPLETE: Tab
         if key == "tab":
@@ -788,8 +841,6 @@ class VulcanConsole(App):
 
             # Split into head (first token) and the remainder
             head, *rest = value.split(maxsplit=1)
-            remainder = rest[0] if rest else ""
-
             # Nothing typed yet: list all commands
             all_cmds = sorted(self.commands) if self.commands else []
             if not all_cmds:
@@ -807,7 +858,7 @@ class VulcanConsole(App):
 
             # If multiple matches, check for a longer common prefix to insert first
             if len(matches) > 1:
-                prefix = self.common_prefix(matches)
+                prefix = self.common_prefix(matches, raw)
                 new_value = prefix
             else:
                 # Single match: complete directly
@@ -817,11 +868,12 @@ class VulcanConsole(App):
             cmd_input.value = new_value
             cmd_input.cursor_position = len(cmd_input.value)
 
-            cmd_input.focus()          # keep caret in the input
+            cmd_input.focus()
             event.prevent_default()
             event.stop()
             return
 
+        # DELETE before
         if key == "ctrl+w":
             value = cmd_input.value
             cursor = cmd_input.cursor_position
@@ -835,30 +887,38 @@ class VulcanConsole(App):
             cmd_input.value = value[:i] + value[cursor:]
             cmd_input.cursor_position = i
 
-            cmd_input.focus()          # keep caret in the input
+            cmd_input.focus()
             event.prevent_default()
             event.stop()
             return
 
+        # DELETE after
         if key in ("ctrl+delete", "escape") :
             value = cmd_input.value
             cursor = cmd_input.cursor_position
-            i = cursor-1
+            i = cursor
             n = len(value)
+            count = 0
+            first = False
 
             while i < n:
-                if(value[i] == ' '): # TODO danip. mirar cuando tiene que borrar espacios en blanco
-                    break
+                if(value[i] == ' '):
+                    if first:
+                        break
+                else:
+                    first = True
                 i += 1
+                count +=1
 
             cmd_input.value = value[:cursor] + value[i:]
-            cmd_input.cursor_position = i
+            cmd_input.cursor_position = max(i - count, 0)
 
-            cmd_input.focus()          # keep caret in the input
+            cmd_input.focus()
             event.prevent_default()
             event.stop()
             return
 
+        # PASTE
         if key == "ctrl+v":
             try:
                 paste_text = pyperclip.paste() or ""
@@ -868,6 +928,17 @@ class VulcanConsole(App):
 
             if not paste_text:
                 return
+
+            # Remove endlines in the paste
+            i = 0
+            n = len(paste_text)
+            while i < n:
+                if paste_text[i] == '\n':
+                    paste_text = paste_text[:i]
+                    break
+                i += 1
+
+            self._log(paste_text)
 
             value = cmd_input.value
             cursor = cmd_input.cursor_position
@@ -881,12 +952,64 @@ class VulcanConsole(App):
             event.stop()
             return
 
+        """# When in reverse-search mode, normal keys update the query and run the search
+        if self._rev_search_active:
+            # Accept current match with Enter
+            if key == "enter":
+                # Extract the matched command, if any
+                if (
+                    self._rev_search_index is not None
+                    and 0 <= self._rev_search_index < len(self.history)
+                ):
+                    cmd_input.value = self.history[self._rev_search_index]
+                else:
+                    cmd_input.value = self._rev_search_query  # fallback
+                cmd_input.cursor_position = len(cmd_input.value)
+                self._reverse_search_reset()
+
+                cmd_input.focus()
+                event.prevent_default()
+                event.stop()
+                return
+
+            # Cancel reverse search with Escape / Ctrl+C
+            if key in ("escape", "ctrl+c"):
+                self._reverse_search_reset()
+                cmd_input.value = ""
+                cmd_input.cursor_position = 0
+
+                cmd_input.focus()
+                event.prevent_default()
+                event.stop()
+                return
+
+            # Backspace edits the query
+            if key == "backspace":
+                if self._rev_search_query:
+                    self._rev_search_query = self._rev_search_query[:-1]
+                self._reverse_search_update()
+
+                cmd_input.focus()
+                event.prevent_default()
+                event.stop()
+                return
+
+            # Printable characters extend the query
+            if len(key) == 1 and key.isprintable():
+                self._rev_search_query += key
+                self._reverse_search_update()
+
+                cmd_input.focus()
+                event.prevent_default()
+                event.stop()
+                return"""
+
         # Any other keypress resets tab cycle if the prefix changes
         if len(key) == 1 or key in ("backspace", "delete"):
             self.tab_matches = []
             self.tab_index = 0
 
-    def common_prefix(self, strings: str) -> str:
+    def common_prefix(self, strings: str, cmd_input: str="") -> str:
         if not strings:
             return ""
 
@@ -894,7 +1017,7 @@ class VulcanConsole(App):
         commands = strings[0]
 
         for i in range(1, len(strings)):
-            commands += f" {strings[i]}"
+            commands += f"    {strings[i]}"
 
             tmp = ""
             n = min(len(common_prefix), len(strings[i]))
@@ -910,6 +1033,9 @@ class VulcanConsole(App):
             if j < n:
                 common_prefix = tmp
 
+        # echo what the user typed (keep this if you like the prompt arrow)
+        color_user = "#91DD16"
+        self._log(f"[bold {color_user}]\[USER] >>>[/bold {color_user}] {cmd_input}")
         self._log(commands, log_color=2)
 
         return common_prefix
@@ -918,7 +1044,13 @@ class VulcanConsole(App):
 
     # region Actions (key bindings)
 
-    # TODO
+    # Called by Binding("ctrl+l", "clear_log", ...)
+    def action_clear_log(self) -> None:
+        self.cmd_clear(_=None)
+
+    # Called by Binding("ctrl+h", "show_help", ...)
+    def action_show_help(self) -> None:
+        self.cmd_help(_=None)
 
     # endregion
 
@@ -945,10 +1077,6 @@ class VulcanConsole(App):
         # Print in textual terminal:
         # Manager initialized with model '<model>'
         self._log(f"Manager initialized with model [bold]'{self.model}[/bold]'", log_color=2)
-
-
-    def print(self, msg: str) -> None:
-        console.print(f"[console]{msg}[/console]")
 
     def get_images(self, user_input: str) -> None:
         parts = user_input.split()
