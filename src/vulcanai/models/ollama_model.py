@@ -24,6 +24,10 @@ T = TypeVar('T', GlobalPlan, GoalSpec, AIValidation)
 
 
 class OllamaModel(IModel):
+
+    # Color of the class [MANAGER] in the textual terminal
+    class_color = "#0d87c0"
+
     """ Wrapper for Ollama models. """
     def __init__(self, model_name: str, logger=None, hooks: Optional[IModelHooks] = None):
         super().__init__()
@@ -33,7 +37,9 @@ class OllamaModel(IModel):
         try:
             self.model = ollama
         except Exception as e:
-            self.logger(f"Error loading Ollama client: {e}", error=True)
+            # Print in textual terminal:
+            # [MANAGER] ERROR. Missing a API Key: <exception>
+            self.logger(f"ERROR. Missing a API Key: {e}", log_color=0)
 
     def _inference(
         self,
@@ -62,12 +68,6 @@ class OllamaModel(IModel):
         # Build messages (system + optional history + current user)
         messages = self._build_messages(system_prompt, user_content, history)
 
-        # Notify hooks of request start
-        """try:
-            self.hooks.on_request_start()
-        except Exception as e:
-            pass"""
-
         # Call Ollama with response_format bound to the desired schema/class
         try:
             completion = self.model.chat(
@@ -77,7 +77,9 @@ class OllamaModel(IModel):
                 options={"temperature": 0.1}
             )
         except Exception as e:
-            self.logger(f"Ollama API error: {e}", error=True)
+            # Print in textual terminal:
+            # [MANAGER] ERROR. Ollama API: <exception>
+            self.logger(f"ERROR. Ollama API: {e}", log_color=0)
             return None
         finally:
             # Notify hooks of request end
@@ -91,14 +93,22 @@ class OllamaModel(IModel):
         try:
             parsed = response_cls.model_validate_json(completion.message.content)
         except Exception as e:
-            self.logger(f"Failed to parse response into {response_cls.__name__}: {e}", error=True)
+            # Print in textual terminal:
+            # [MANAGER] ERROR. Failed to parse response into <response_cls.__name__>: <exepction>
+            self.logger(f"ERROR. Failed to parse response into {response_cls.__name__}: {e}",
+                        log_type="manager", log_color=0)
 
         end = time.time()
+        # Print in textual terminal:
+        # [MANAGER] Ollama response time: <time> seconds
         self.logger(f"Ollama response time: {end - start:.3f} seconds")
         try:
             input_tokens = completion.prompt_eval_count
             output_tokens = completion.eval_count
-            self.logger(f"Prompt tokens: {input_tokens}, Completion tokens: {output_tokens}")
+            # Print in textual terminal:
+            # [MANAGER] Prompt tokens: <num_1>, Completion tokens: <num_2>
+            self.logger(f"Prompt tokens: [{self.class_color}]{input_tokens}[/{self.class_color}], " + \
+                        f"Completion tokens: [{self.class_color}]{output_tokens}[/{self.class_color}]", log_type="manager")
         except Exception:
             pass
 
@@ -115,7 +125,11 @@ class OllamaModel(IModel):
                     encoded_images.append(base64_image)
                 except Exception as e:
                     # Fail soft on a single bad image but continue with others
-                    self.logger(f"Image '{image_path}' could not be encoded: {e}", error=True)
+
+                    # Print in textual terminal:
+                    # [MANAGER] Fail soft. Image '<image_path>' could not be encoded: <exception>
+                    self.logger(f"Fail soft. Image '{image_path}' could not be encoded: {e}",
+                                log_type="manager", log_color=0)
             if encoded_images:
                 content["images"] = encoded_images
         return content

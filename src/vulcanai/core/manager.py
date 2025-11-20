@@ -33,12 +33,12 @@ class ToolManager:
         hist_depth: int = 3,
         logger=None
     ):
-        self.logger = logger #or VulcanAILogger.log_manager
+        self.logger = logger
         self.llm = Agent(model, self.logger)
         self.k = k
-        self.registry = registry or ToolRegistry(logger=(logger))# or VulcanAILogger.log_registry))
+        self.registry = registry or ToolRegistry(logger=(logger))
         self.validator = validator
-        self.executor = PlanExecutor(self.registry, logger=(logger))# or VulcanAILogger.log_executor))
+        self.executor = PlanExecutor(self.registry, logger=(logger))
         self.bb = Blackboard()
         self.user_context = ""
         # History is saved as a list of Tuples of user requests and plan summaries
@@ -97,12 +97,16 @@ class ToolManager:
                 try:
                     self.validator.validate(plan)
                 except Exception as e:
-                    self.logger(f"Plan validation error: {e}", log_type="validator", log_color=0) # error
+                    # Print in textual terminal:
+                    # [VALIDATOR] error. Plan validation error: <exception>
+                    self.logger(f"ERROR. Plan validation: {e}", log_type="validator", log_color=0)
                     raise e
             # Execute plan
             ret = self.execute_plan(plan)
         except Exception as e:
-            self.logger(f"Error handling user request: {e}", log_type="manager", log_color=0) # error
+            # Print in textual terminal:
+            # [VALIDATOR] ERROR. Handling user request: <exception>
+            self.logger(f"ERROR. Handling user request: {e}", log_type="manager", log_color=0)
             ret = {"error": str(e)}
 
         return ret
@@ -129,6 +133,9 @@ class ToolManager:
 
         # Query LLM
         plan = self.llm.inference_plan(system_prompt, user_prompt, images, self.history)
+        # Print in textual terminal:
+        # [VALIDATOR] Plan received:
+        # <plan>
         self.logger(f"Plan received:\n{plan}", log_type="manager")
         # Save to history
         if plan:
@@ -164,7 +171,10 @@ class ToolManager:
         """
         tools = self.registry.top_k(user_text, self.k)
         if not tools:
-            self.logger("No tools available in the registry.", log_type="manager", log_color=0) # error
+            # Print in textual terminal:
+            # [VALIDATOR] ERROR. No tools available in the registry.
+            self.logger("ERROR. No tools available in the registry.",
+                        log_type="manager", log_color=0)
             return "", ""
         tool_descriptions = []
         for tool in tools:
@@ -196,6 +206,8 @@ class ToolManager:
         :param new_depth: The new history depth.
         """
         self.history_depth = max(0, int(new_depth))
+        # Print in textual terminal:
+        # [VALIDATOR] Updated history depth to <new_depth>
         self.logger(f"Updated history depth to {new_depth}", log_type="manager", log_color=2)
         if len(self.history) > self.history_depth:
             if self.history_depth <= 0:
@@ -210,6 +222,8 @@ class ToolManager:
         :param new_k: The new k index.
         """
         self.k = max(1, int(new_k))
+        # Print in textual terminal:
+        # [VALIDATOR] Updated k index to <new_k>
         self.logger(f"Updated k index to {new_k}", log_type="manager", log_color=2)
 
     def _get_prompt_template(self) -> str:

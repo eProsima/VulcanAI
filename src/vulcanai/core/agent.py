@@ -32,7 +32,7 @@ class Agent:
     def __init__(self, model_name: str, logger=None):
         self.brand, name = self._detect_brand(model_name)
         self.model = None
-        self.logger = logger #or VulcanAILogger.log_manager
+        self.logger = logger
         self._load_model(name)
 
     def inference_plan(
@@ -136,17 +136,26 @@ class Agent:
     def _load_model(self, model_name: str):
         if self.brand == Brand.gpt:
             from vulcanai.models.openai import OpenAIModel
-            self.logger(f"Using OpenAI API with model: [{self.class_color}]{model_name}[/{self.class_color}]", log_type="manager")
+            # Print in textual terminal:
+            # [MANAGER] Using OpenAI API with model: <model_name>
+            self.logger(f"Using OpenAI API with model: " + \
+                        f"[{self.class_color}]{model_name}[/{self.class_color}]", log_type="manager")
             self.model = OpenAIModel(model_name, self.logger)
 
         elif self.brand == Brand.gemini:
             from vulcanai.models.gemini import GeminiModel
-            self.logger(f"Using Gemini API with model: {model_name}", log_type="manager")
+            # Print in textual terminal:
+            # [MANAGER] Using Gemini API with model: <model_name>
+            self.logger(f"Using Gemini API with model: " + \
+                        f"[{self.class_color}]{model_name}[/{self.class_color}]", log_type="manager")
             self.model = GeminiModel(model_name, self.logger)
 
         elif self.brand == Brand.ollama:
             from vulcanai.models.ollama_model import OllamaModel
-            self.logger(f"Using Ollama API with model: {model_name}", log_type="manager")
+            # Print in textual terminal:
+            # [MANAGER] Using Ollama API with model: <model_name>
+            self.logger(f"Using Ollama API with model: " + \
+                        f"[{self.class_color}]{model_name}[/{self.class_color}]", log_type="manager")
             self.model = OllamaModel(model_name, self.logger)
 
         else:
@@ -157,8 +166,16 @@ class Agent:
         if self.model:
             try:
                 self.model.hooks = hooks
+                # Print in textual terminal:
+                # [MANAGER] LLM hooks set.
                 self.logger("LLM hooks set.", log_type="manager")
             except Exception as e:
-                self.logger(f"Failed to set LLM hooks: {e}", log_type="manager", log_color=0) # error
+                # Print in textual terminal:
+                # [MANAGER] ERROR. Failed to set LLM hooks: <exception>
+                self.logger(f"ERROR. Failed to set LLM hooks: {e}",
+                            log_type="manager", log_color=0)
         else:
-            self.logger("LLM model not initialized, cannot set hooks.", log_type="manager", log_color=0) # error
+            # Print in textual terminal:
+            # [MANAGER] ERROR. LLM model not initialized, cannot set hooks.
+            self.logger("ERROR. LLM model not initialized, cannot set hooks.",
+                        log_type="manager", log_color=0)

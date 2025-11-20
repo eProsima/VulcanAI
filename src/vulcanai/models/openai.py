@@ -27,19 +27,21 @@ T = TypeVar('T', GlobalPlan, GoalSpec, AIValidation)
 
 class OpenAIModel(IModel):
 
-    color = "#0d87c0"
+    # Color of the class [MANAGER] in the textual terminal
+    class_color = "#0d87c0"
 
     """ Wrapper for OpenAI models. """
-    def __init__(self, model_name: str, logger=None, hooks: Optional[IModelHooks] = None):#, console = None):
+    def __init__(self, model_name: str, logger=None, hooks: Optional[IModelHooks] = None):
         super().__init__()
         self.logger = logger
         self.model_name = model_name
         self.hooks = hooks
-        #self.console = console
         try:
             self.model = OpenAI()
         except Exception as e:
-            self.logger(f"Missing OpenAI API Key: {e}", error=True)
+            # Print in textual terminal:
+            # [MANAGER] ERROR. Missing OpenAI API Key: <exception>
+            self.logger(f"ERROR. Missing OpenAI API Key: {e}", log_color=0)
 
     def _inference(
         self,
@@ -68,13 +70,6 @@ class OpenAIModel(IModel):
         # Build messages (system + optional history + current user)
         messages = self._build_messages(system_prompt, user_content, history)
 
-        # Notify hooks of request start
-        """try:
-            self.hooks.on_request_start()
-            #self.console.call_from_thread(self.hooks.on_request_start)
-        except Exception as e:
-            pass"""
-
         # Call OpenAI with response_format bound to the desired schema/class
         try:
             completion = self.model.chat.completions.parse(
@@ -83,13 +78,14 @@ class OpenAIModel(IModel):
                 response_format=response_cls,
             )
         except Exception as e:
-            self.logger(f"OpenAI API error: {e}", log_type="manager", error=True)
+            # Print in textual terminal:
+            # [MANAGER] ERROR. OpenAI API: <exception>
+            self.logger(f"ERROR. OpenAI API: {e}", log_type="manager", log_color=0)
             return None
         finally:
             # Notify hooks of request end
             try:
                 self.hooks.on_request_end()
-                #self.console.call_from_thread(self.hooks.on_request_end)
             except Exception as e:
                 pass
 
@@ -98,17 +94,23 @@ class OpenAIModel(IModel):
         try:
             parsed = completion.choices[0].message.parsed
         except Exception as e:
-            self.logger(f"Failed to parse response into {response_cls.__name__}: {e}", log_type="manager", error=True)
+            # Print in textual terminal:
+            # [MANAGER] ERROR. Failed to parse response into <response_cls.__name__>: <exepction>
+            self.logger(f"ERROR. Failed to parse response into {response_cls.__name__}: {e}",
+                        log_type="manager", log_color=0)
 
         end = time.time()
-        self.logger(f"GPT response time: [{self.color}]{end - start:.3f} seconds[/{self.color}]", log_type="manager")
+        # Print in textual terminal:
+        # [MANAGER] GPT response time: <time> seconds
+        self.logger(f"GPT response time: [{self.class_color}]{end - start:.3f} seconds[/{self.class_color}]",
+                    log_type="manager")
         try:
             input_tokens = completion.usage.prompt_tokens
             output_tokens = completion.usage.completion_tokens
             # Print in textual terminal:
             # [MANAGER] Prompt tokens: <num_1>, Completion tokens: <num_2>
-            self.logger(f"Prompt tokens: [{self.color}]{input_tokens}[/{self.color}], " + \
-                        f"Completion tokens: [{self.color}]{output_tokens}[/{self.color}]", log_type="manager")
+            self.logger(f"Prompt tokens: [{self.class_color}]{input_tokens}[/{self.class_color}], " + \
+                        f"Completion tokens: [{self.class_color}]{output_tokens}[/{self.class_color}]", log_type="manager")
         except Exception:
             pass
 
@@ -131,7 +133,11 @@ class OpenAIModel(IModel):
                         })
                     except Exception as e:
                         # Fail soft on a single bad image but continue with others
-                        self.logger(f"Image '{image_path}' could not be encoded: {e}", log_type="manager", error=True)
+
+                        # Print in textual terminal:
+                        # [MANAGER] Fail soft. Image '<image_path>' could not be encoded: <exception>
+                        self.logger(f"Fail soft. Image '{image_path}' could not be encoded: {e}",
+                                    log_type="manager", log_color=0)
         return content
 
     def _build_messages(
