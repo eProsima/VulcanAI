@@ -18,311 +18,25 @@ import sys
 import argparse
 
 from textual.app import App, ComposeResult
-from textual.widgets import Input, Static, Checkbox, Button, Label
+from textual.widgets import Input, Static
 from textual import events
-from textual.containers import VerticalScroll, Horizontal, Vertical, Container
+from textual.containers import VerticalScroll
 from textual.binding import Binding
-# sipnner
-from textual.timer import Timer
-# checkbox
-from textual.screen import ModalScreen
+
 # non-blocking executions to print in textual terminal
 from textual import work
 import asyncio
 # library used to paste the clipboard into the terminal
 import pyperclip
 
+from vulcanai.console.modal_screens import ReverseSearchModal
+from vulcanai.console.modal_screens import CheckListModal
+from vulcanai.console.utils import SpinnerHook
 
-class ReverseSearchModal(ModalScreen[str | None]):
-    """
-    Bottom modal for reverse-i-search.
-    """
-
-    DEFAULT_CSS = """
-    ReverseSearchModal {
-        align-horizontal: center;
-        align-vertical: bottom;
-    }
-
-    #rev-box {
-        width: 100%;
-        height: 3;
-        background: $surface;
-        border-top: solid $accent;
-        padding: 0 1;
-        layout: horizontal;
-    }
-
-    #rev-label {
-        width: 2fr;
-        content-align: left middle;
-    }
-
-    #rev-input {
-        width: 1fr;
-    }
-    """
-
-    def __init__(self, history: list[str]) -> None:
-        super().__init__()
-        self.history = history
-        self.search_query: str = ""
-        self.match_index: int | None = None
-
-    def compose(self) -> ComposeResult:
-        with Container(id="rev-box"):
-            # Label shows "(reverse-i-search)`query`: match"
-            yield Label("(reverse-i-search)``: ", id="rev-label")
-            yield Input(placeholder="type to search…", id="rev-input")
-
-    def on_mount(self) -> None:
-        self.query_one("#rev-input", Input).focus()
-
-    def update_label(self) -> None:
-        """
-        Update label based on current query + best match from history.
-        """
-
-        label = self.query_one("#rev-label", Label)
-        query = self.search_query
-
-        if not self.history or not query:
-            label.update(f"(reverse-i-search)`{query}`: ")
-            return
-
-        # Start from the end and search backwards for first match
-        start = len(self.history) if self.match_index is None else self.match_index
-        found = None
-        for i in range(start - 1, -1, -1):
-            if query in self.history[i]:
-                found = (i, self.history[i])
-                break
-
-        if found is not None:
-            self.match_index, match = found
-            label.update(f"(reverse-i-search)`{query}`: {match}")
-        else:
-            self.match_index = None
-            label.update(f"(reverse-i-search)`{query}`: ")
-
-    def on_input_changed(self, event: Input.Changed) -> None:
-        """
-        Whenever user types in the textbox, update query + label.
-        """
-
-        if event.input.id != "rev-input":
-            return
-        self.search_query = event.value
-        self.match_index = None  # restart from most recent
-        self.update_label()
-
-    async def on_key(self, event: events.Key) -> None:
-        key = event.key
-
-        # Accept current match
-        if key in ("enter", "tab"):
-            result: str | None
-            if self.match_index is not None and 0 <= self.match_index < len(self.history):
-                result = self.history[self.match_index]
-            else:
-                result = self.search_query or None
-
-            self.dismiss(result)
-            event.stop()
-            return
-
-        # Cancel with Esc / Ctrl+C
-        if key in ("escape", "ctrl+c"):
-            self.dismiss(None)
-            event.stop()
-            return
-
-        # Ctrl+R while in modal = go to previous match (optional)
-        if key == "ctrl+r" and self.search_query:
-            # look for previous match starting before current match_index
-            start = self.match_index if self.match_index is not None else len(self.history)
-            found = None
-            for i in range(start - 1, -1, -1):
-                if self.search_query in self.history[i]:
-                    found = (i, self.history[i])
-                    break
-
-            if found is not None:
-                self.match_index, match = found
-                label = self.query_one("#rev-label", Label)
-                label.update(f"(reverse-i-search)`{self.search_query}`: {match}")
-
-            event.prevent_default()
-            event.stop()
-            return
+from vulcanai.console.utils import attach_ros_logger_to_console
+from vulcanai.console.utils import common_prefix
 
 
-class StreamToTextual:
-    """
-    Class used to redirect the stdout/stderr streams in the textual terminal
-    """
-
-    def __init__(self, app, stream_name: str = "stdout"):
-        self.app = app
-        self.real_stream = getattr(sys, stream_name)
-
-    def write(self, data: str):
-        if not data:
-            return
-
-        # optional: still write to real stdout/stderr
-        self.real_stream.write(data)
-        self.real_stream.flush()
-
-        if data.strip():
-            # Ensure update happens on the app thread
-            self.app.call_from_thread(self.app.append_log_text, data)
-
-    def flush(self):
-        self.real_stream.flush()
-
-class SpinnerHook:
-    """
-    Single entrant spinner controller for console.
-    - Starts the spinner on the LLM request.
-    - Stops the spinner when LLM request is over.
-    """
-
-    def __init__(self, console):
-
-        self.console = console
-
-        # Spinner states
-        self.spinner_timer: Timer | None = None
-        self.spinner_frames = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"]
-        self.spinner_frame_index = 0
-        self.spinner_line_index: int | None = None
-
-    def on_request_start(self, text: str = "Querying LLM...") -> None:
-        """
-        Create the spinner line at the end of the log and start updating it.
-        """
-
-        self.color = "#0d87c0"
-        self.update_color = "#15B606"
-        self.text = text
-
-        # Check if it is already running
-        if self.spinner_timer is not None:
-            return
-
-        # Initialized the class variables
-        self.spinner_line_index = len(self.console.log_lines)
-        self.console._log(f"[{self.color}]{text}[/{self.color}]")
-        self.spinner_frame_index = 0
-
-        # Update every 0.1s
-        self.spinner_timer = self.console.set_interval(0.1, self.update_spinner)
-        # Update the terminal
-        self.console.render_log()
-
-    def update_spinner(self) -> None:
-        """
-        Timer callback. Rotate the spinner frame on the stored last log line.
-        """
-
-        # Check if the spinner is not running
-        if self.spinner_line_index is None:
-            return
-
-        frame = self.spinner_frames[self.spinner_frame_index]
-        self.spinner_frame_index = (self.spinner_frame_index + 1) % len(self.spinner_frames)
-
-        # Update that specific line only
-        self.console.log_lines[self.spinner_line_index] = \
-            f"[{self.update_color}]{frame}[/{self.update_color}] " + \
-            f"[{self.color}]{self.text}[/{self.color}]"
-
-        # Update the terminal
-        self.console.render_log()
-
-    def on_request_end(self) -> None:
-        """
-        Stop the spinner.
-        Optional, replace the line with final_text.
-        """
-
-        # Check if the spinner is running
-        if self.spinner_timer is not None:
-            self.spinner_timer.stop()
-            self.spinner_timer = None
-
-        # Update the spinner message line
-        if self.spinner_line_index is not None:
-            self.console.log_lines[self.spinner_line_index] += f"[{self.update_color}] Query finished![/{self.update_color}]"
-            self.spinner_line_index = None
-            self.console.render_log()
-
-class CheckListScreen(ModalScreen[list[str] | None]):
-
-
-    CSS = """
-    CheckListScreen {
-        align: center middle;
-    }
-
-    .dialog {
-        width: 60%;
-        max-width: 90%;
-        height: 80%;          /* fixed portion of terminal */
-        border: round $accent;
-        padding: 1 2;
-        background: $panel;
-    }
-
-    .title {
-        text-align: center;
-        margin-bottom: 1;
-    }
-
-    /* This is the important part */
-    .checkbox-list {
-        height: 1fr;          /* take all remaining vertical space */
-                              /* no max-height, no overflow-y here */
-    }
-
-    .btns {
-        height: 3;            /* give buttons row a fixed height */
-        padding-top: 1;
-        content-align: right middle;
-    }
-    """
-
-    def __init__(self, lines: list[str], active_tools_num: int = 0) -> None:
-        super().__init__()
-        self.lines = list(lines)
-        self.active_tools_num = active_tools_num
-
-    def compose(self) -> ComposeResult:
-        with Vertical(classes="dialog"):
-            yield Label("Pick tools you want to enable", classes="title")
-
-            # SCROLLABLE CHECKBOX LIST
-            with VerticalScroll(classes="checkbox-list"):
-                for i, line in enumerate(self.lines, start=1):
-                    yield Checkbox(line, value=i <= self.active_tools_num, id=f"cb{i}")
-
-            # Buttons
-            with Horizontal(classes="btns"):
-                yield Button("Cancel", variant="default", id="cancel")
-                yield Button("Submit", variant="primary", id="submit")
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "submit":
-            boxes = list(self.query(Checkbox))
-            selected = [self.lines[i] for i, cb in enumerate(boxes) if cb.value]
-            self.dismiss(selected)
-        elif event.button.id == "cancel":
-            self.dismiss(None)
-
-    def on_mount(self) -> None:
-        first_cb = self.query_one(Checkbox)
-        self.set_focus(first_cb)
 
 class VulcanConsole(App):
 
@@ -363,6 +77,8 @@ class VulcanConsole(App):
         self.history = []
 
     async def on_mount(self) -> None:
+        from vulcanai.console.utils import StreamToTextual
+
         # Disable terminal input
         self.set_input_enabled(False)
         sys.stdout = StreamToTextual(self, "stdout")
@@ -462,28 +178,6 @@ class VulcanConsole(App):
         log_static = self.query_one("#logcontent", Static)
         log_static.update(content)
 
-
-    def attach_ros_logger_to_console(self, node):
-        """
-        Function that remove ROS node overlaping prints in the terminal
-        """
-
-        logger = node.get_logger()
-
-        def info_hook(msg, *args, **kwargs):
-            self.call_from_thread(self._log, f"[gray]\[ROS] \[INFO] {msg}[/gray]")
-
-        def warn_hook(msg, *args, **kwargs):
-            self.call_from_thread(self._log, f"[gray]\[ROS] \[WARN] {msg}[/gray]")
-
-        def error_hook(msg, *args, **kwargs):
-            self.call_from_thread(self._log, f"[gray]\[ROS] \[ERROR] {msg}[/gray]")
-
-        logger.info = info_hook
-        logger.warning = warn_hook
-        logger.error = error_hook
-
-
     async def bootstrap(self, user_input: str="") -> None:
         """
         Function used to print information in runtime execution of a function
@@ -531,7 +225,7 @@ class VulcanConsole(App):
                 # Add the shared node to the console manager blackboard to be used by tools
                 if self.main_node != None:
                     self.manager.bb["main_node"] = self.main_node
-                    self.attach_ros_logger_to_console(self.main_node)
+                    attach_ros_logger_to_console(self, self.main_node)
                 else:
                     self._log("WARNING. No ROS node added", log_color=3)
 
@@ -592,7 +286,7 @@ class VulcanConsole(App):
         """
 
         # create the checklist dialog
-        selected = await self.push_screen_wait(CheckListScreen(tools_list, active_tools_num))
+        selected = await self.push_screen_wait(CheckListModal(tools_list, active_tools_num))
 
         if selected is None:
             self._log("Selection cancelled.", log_color=3)
@@ -786,6 +480,15 @@ class VulcanConsole(App):
         self.log_lines.append(msg)
         self.render_log()
 
+    def print_command_prompt(self, cmd: str=""):
+        """
+        Prints in the terminal the prompt where the user command inputs
+        are written. [USER] >>> <command_input>
+        """
+
+        color_user = "#91DD16"
+        self._log(f"[bold {color_user}]\[USER] >>>[/bold {color_user}] {cmd}")
+
     # endregion
 
     # region Input
@@ -846,15 +549,6 @@ class VulcanConsole(App):
         except EOFError:
             self._log("[yellow]Exiting...[/yellow]")
             return
-
-    def print_command_prompt(self, cmd: str=""):
-        """
-        Prints in the terminal the prompt where the user command inputs
-        are written. [USER] >>> <command_input>
-        """
-
-        color_user = "#91DD16"
-        self._log(f"[bold {color_user}]\[USER] >>>[/bold {color_user}] {cmd}")
 
     def handle_command(self, user_input: str) -> None:
         # Otherwise, parse as a command
@@ -946,8 +640,10 @@ class VulcanConsole(App):
 
             # If multiple matches, check for a longer common prefix to insert first
             if len(matches) > 1:
-                prefix = self.common_prefix(matches, raw)
+                prefix, commands = common_prefix(matches)
                 new_value = prefix
+                self.print_command_prompt(cmd_input)
+                self._log(commands, log_color=2)
             else:
                 # Single match: complete directly
                 new_value = matches[0]
@@ -1044,36 +740,6 @@ class VulcanConsole(App):
         if len(key) == 1 or key in ("backspace", "delete"):
             self.tab_matches = []
             self.tab_index = 0
-
-    def common_prefix(self, strings: str, cmd_input: str="") -> str:
-        if not strings:
-            return ""
-
-        common_prefix = strings[0]
-        commands = strings[0]
-
-        for i in range(1, len(strings)):
-            commands += f"    {strings[i]}"
-
-            tmp = ""
-            n = min(len(common_prefix), len(strings[i]))
-            j = 0
-
-            while j < n:
-                if common_prefix[j] != strings[i][j]:
-                    break
-                tmp += common_prefix[j]
-
-                j += 1
-
-            if j < n:
-                common_prefix = tmp
-
-        # echo what the user typed (keep this if you like the prompt arrow)
-        self.print_command_prompt(cmd_input)
-        self._log(commands, log_color=2)
-
-        return common_prefix
 
     # endregion
 
