@@ -33,6 +33,130 @@ import asyncio
 import pyperclip
 
 
+class ReverseSearchModal(ModalScreen[str | None]):
+    """
+    Bottom modal for reverse-i-search.
+    """
+
+    DEFAULT_CSS = """
+    ReverseSearchModal {
+        align-horizontal: center;
+        align-vertical: bottom;
+    }
+
+    #rev-box {
+        width: 100%;
+        height: 3;
+        background: $surface;
+        border-top: solid $accent;
+        padding: 0 1;
+        layout: horizontal;
+    }
+
+    #rev-label {
+        width: 2fr;
+        content-align: left middle;
+    }
+
+    #rev-input {
+        width: 1fr;
+    }
+    """
+
+    def __init__(self, history: list[str]) -> None:
+        super().__init__()
+        self.history = history
+        self.search_query: str = ""
+        self.match_index: int | None = None
+
+    def compose(self) -> ComposeResult:
+        with Container(id="rev-box"):
+            # Label shows "(reverse-i-search)`query`: match"
+            yield Label("(reverse-i-search)``: ", id="rev-label")
+            yield Input(placeholder="type to search…", id="rev-input")
+
+    def on_mount(self) -> None:
+        self.query_one("#rev-input", Input).focus()
+
+    def update_label(self) -> None:
+        """
+        Update label based on current query + best match from history.
+        """
+
+        label = self.query_one("#rev-label", Label)
+        query = self.search_query
+
+        if not self.history or not query:
+            label.update(f"(reverse-i-search)`{query}`: ")
+            return
+
+        # Start from the end and search backwards for first match
+        start = len(self.history) if self.match_index is None else self.match_index
+        found = None
+        for i in range(start - 1, -1, -1):
+            if query in self.history[i]:
+                found = (i, self.history[i])
+                break
+
+        if found is not None:
+            self.match_index, match = found
+            label.update(f"(reverse-i-search)`{query}`: {match}")
+        else:
+            self.match_index = None
+            label.update(f"(reverse-i-search)`{query}`: ")
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """
+        Whenever user types in the textbox, update query + label.
+        """
+
+        if event.input.id != "rev-input":
+            return
+        self.search_query = event.value
+        self.match_index = None  # restart from most recent
+        self.update_label()
+
+    async def on_key(self, event: events.Key) -> None:
+        key = event.key
+
+        # Accept current match
+        if key in ("enter", "tab"):
+            result: str | None
+            if self.match_index is not None and 0 <= self.match_index < len(self.history):
+                result = self.history[self.match_index]
+            else:
+                result = self.search_query or None
+
+            self.dismiss(result)
+            event.stop()
+            return
+
+        # Cancel with Esc / Ctrl+C
+        if key in ("escape", "ctrl+c"):
+            self.dismiss(None)
+            event.stop()
+            return
+
+        # Ctrl+R while in modal = go to previous match (optional)
+        if key == "ctrl+r" and self.search_query:
+            # look for previous match starting before current match_index
+            start = self.match_index if self.match_index is not None else len(self.history)
+            found = None
+            for i in range(start - 1, -1, -1):
+                if self.search_query in self.history[i]:
+                    found = (i, self.history[i])
+                    break
+
+            if found is not None:
+                self.match_index, match = found
+                label = self.query_one("#rev-label", Label)
+                label.update(f"(reverse-i-search)`{self.search_query}`: {match}")
+
+            event.prevent_default()
+            event.stop()
+            return
+
+
 class StreamToTextual:
     """
     Class used to redirect the stdout/stderr streams in the textual terminal
@@ -40,22 +164,22 @@ class StreamToTextual:
 
     def __init__(self, app, stream_name: str = "stdout"):
         self.app = app
-        self._real_stream = getattr(sys, stream_name)
+        self.real_stream = getattr(sys, stream_name)
 
     def write(self, data: str):
         if not data:
             return
 
         # optional: still write to real stdout/stderr
-        self._real_stream.write(data)
-        self._real_stream.flush()
+        self.real_stream.write(data)
+        self.real_stream.flush()
 
         if data.strip():
             # Ensure update happens on the app thread
             self.app.call_from_thread(self.app.append_log_text, data)
 
     def flush(self):
-        self._real_stream.flush()
+        self.real_stream.flush()
 
 class SpinnerHook:
     """
@@ -88,7 +212,7 @@ class SpinnerHook:
             return
 
         # Initialized the class variables
-        self.spinner_line_index = len(self.console._log_lines)
+        self.spinner_line_index = len(self.console.log_lines)
         self.console._log(f"[{self.color}]{text}[/{self.color}]")
         self.spinner_frame_index = 0
 
@@ -110,7 +234,7 @@ class SpinnerHook:
         self.spinner_frame_index = (self.spinner_frame_index + 1) % len(self.spinner_frames)
 
         # Update that specific line only
-        self.console._log_lines[self.spinner_line_index] = \
+        self.console.log_lines[self.spinner_line_index] = \
             f"[{self.update_color}]{frame}[/{self.update_color}] " + \
             f"[{self.color}]{self.text}[/{self.color}]"
 
@@ -120,7 +244,8 @@ class SpinnerHook:
     def on_request_end(self) -> None:
         """
         Stop the spinner.
-        Optional, replace the line with final_text."""
+        Optional, replace the line with final_text.
+        """
 
         # Check if the spinner is running
         if self.spinner_timer is not None:
@@ -129,7 +254,7 @@ class SpinnerHook:
 
         # Update the spinner message line
         if self.spinner_line_index is not None:
-            self.console._log_lines[self.spinner_line_index] += f"[{self.update_color}] Query finished![/{self.update_color}]"
+            self.console.log_lines[self.spinner_line_index] += f"[{self.update_color}] Query finished![/{self.update_color}]"
             self.spinner_line_index = None
             self.console.render_log()
 
@@ -170,7 +295,7 @@ class CheckListScreen(ModalScreen[list[str] | None]):
 
     def __init__(self, lines: list[str], active_tools_num: int = 0) -> None:
         super().__init__()
-        self._lines = list(lines)
+        self.lines = list(lines)
         self.active_tools_num = active_tools_num
 
     def compose(self) -> ComposeResult:
@@ -179,7 +304,7 @@ class CheckListScreen(ModalScreen[list[str] | None]):
 
             # SCROLLABLE CHECKBOX LIST
             with VerticalScroll(classes="checkbox-list"):
-                for i, line in enumerate(self._lines, start=1):
+                for i, line in enumerate(self.lines, start=1):
                     yield Checkbox(line, value=i <= self.active_tools_num, id=f"cb{i}")
 
             # Buttons
@@ -190,7 +315,7 @@ class CheckListScreen(ModalScreen[list[str] | None]):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "submit":
             boxes = list(self.query(Checkbox))
-            selected = [self._lines[i] for i, cb in enumerate(boxes) if cb.value]
+            selected = [self.lines[i] for i, cb in enumerate(boxes) if cb.value]
             self.dismiss(selected)
         elif event.button.id == "cancel":
             self.dismiss(None)
@@ -209,6 +334,7 @@ class VulcanConsole(App):
     BINDINGS = [
         Binding("ctrl+l", "clear_log", "Clear log"),
         Binding("f2", "show_help", "Show help", priority=True),
+        Binding("ctrl+r", "reverse_search", "Reverse search"),
     ]
 
     def __init__(self, tools_from_entrypoints: str = "", user_context: str = "", main_node = None,
@@ -263,6 +389,7 @@ class VulcanConsole(App):
 | |/ / /_/ / / /__/ /_/ / / / / ___ |_/ /
 |___/\__,_/_/\___/\__,_/_/ /_/_/  |_/___/
 """
+
 #small slant
         vulcanai_tittle_small_slant = \
 """
@@ -282,6 +409,7 @@ class VulcanConsole(App):
 \ \_/ / |_| | | (_| (_| | | | | | | |_| |_
  \___/ \__,_|_|\___\__,_|_| |_\_| |_/\___/
 """
+
 # Small Block
         vulcanai_tittle_block = \
 """
@@ -290,6 +418,7 @@ class VulcanConsole(App):
 ▝▞ ▌ ▌▐ ▌ ▖▞▀▌▌ ▌▌ ▌▐
  ▘ ▝▀▘ ▘▝▀ ▝▀▘▘ ▘▘ ▘▀▘
 """
+
 #Small
         vulcanai_tittle_small = \
 """
@@ -319,7 +448,10 @@ class VulcanConsole(App):
         yield Input(placeholder="> ", id="cmd")
 
     def append_log_text(self, text: str) -> None:
-        """Append text to the logcontent Static."""
+        """
+        Append text to the logcontent Static.
+        """
+
         text = text.rstrip("\n")
         if not text:
             return
@@ -335,6 +467,7 @@ class VulcanConsole(App):
         """
         Function that remove ROS node overlaping prints in the terminal
         """
+
         logger = node.get_logger()
 
         def info_hook(msg, *args, **kwargs):
@@ -694,11 +827,10 @@ class VulcanConsole(App):
                 return
 
             # Terminal history inputs navigation
-            self._history_index = None
+            self.history_index = None
 
             # echo what the user typed (keep this if you like the prompt arrow)
-            color_user = "#91DD16"
-            self._log(f"[bold {color_user}]\[USER] >>>[/bold {color_user}] {cmd}")
+            self.print_command_prompt(cmd)
 
             # If it doesn't start with '/', just print it as output and stop here
             if user_input.startswith("/"):
@@ -714,6 +846,15 @@ class VulcanConsole(App):
         except EOFError:
             self._log("[yellow]Exiting...[/yellow]")
             return
+
+    def print_command_prompt(self, cmd: str=""):
+        """
+        Prints in the terminal the prompt where the user command inputs
+        are written. [USER] >>> <command_input>
+        """
+
+        color_user = "#91DD16"
+        self._log(f"[bold {color_user}]\[USER] >>>[/bold {color_user}] {cmd}")
 
     def handle_command(self, user_input: str) -> None:
         # Otherwise, parse as a command
@@ -731,41 +872,11 @@ class VulcanConsole(App):
             except Exception as e:
                 self._log(f"Error: {e!r}", log_color=0)
 
-    """def _reverse_search_reset(self) -> None:
-        self._rev_search_active = False
-        self._rev_search_query = ""
-        self._rev_search_index = None
-
-    def _reverse_search_update(self) -> None:
-        # Search backwards in history using self._rev_search_query.
-        cmd_input = self.query_one("#cmd", Input)
-
-        if not self.history:
-            cmd_input.value = f"(reverse-i-search)`{self._rev_search_query}`: "
-            cmd_input.cursor_position = len(cmd_input.value)
-            return
-
-        query = self._rev_search_query
-        # If index is None, start from the end
-        start = len(self.history) if self._rev_search_index is None else self._rev_search_index
-
-        found = None
-        for i in range(start - 1, -1, -1):
-            if query in self.history[i]:
-                found = (i, self.history[i])
-                break
-
-        if found is not None:
-            self._rev_search_index, match = found
-            cmd_input.value = f"(reverse-i-search)`{query}`: {match}"
-        else:
-            # No match: just show query
-            cmd_input.value = f"(reverse-i-search)`{query}`: "
-
-        cmd_input.cursor_position = len(cmd_input.value)"""
-
     async def on_key(self, event: events.Key) -> None:
-        """Handle Up/Down for history navigation."""
+        """
+        Handle Up/Down for history navigation.
+        """
+
         key = event.key
         cmd_input = self.query_one("#cmd", Input)
 
@@ -780,23 +891,23 @@ class VulcanConsole(App):
                 return
 
             # Initialize history index if not already set
-            if not hasattr(self, "_history_index") or self._history_index is None:
-                self._history_index = len(self.history)
+            if not hasattr(self, "_history_index") or self.history_index is None:
+                self.history_index = len(self.history)
 
             # store the command input if it is new
-            if self._history_index == len(self.history):
+            if self.history_index == len(self.history):
                 self.terminal_input = cmd_input.value
 
-            if key == "up" and self._history_index > 0:
-                self._history_index -= 1
-            elif key == "down" and self._history_index < len(self.history):
-                self._history_index += 1
+            if key == "up" and self.history_index > 0:
+                self.history_index -= 1
+            elif key == "down" and self.history_index < len(self.history):
+                self.history_index += 1
             else:
                 return  # ignore if out of range
 
             # Update input value based on history
-            if 0 <= self._history_index < len(self.history):
-                cmd_input.value = self.history[self._history_index]
+            if 0 <= self.history_index < len(self.history):
+                cmd_input.value = self.history[self.history_index]
             else:
                 cmd_input.value = self.terminal_input
 
@@ -804,29 +915,6 @@ class VulcanConsole(App):
             cmd_input.cursor_position = len(cmd_input.value)
             event.stop()
             return
-
-        # REVERSE SEARCH: Ctrl+R
-        """if key == "ctrl+r":
-            # Only handle if input focused and we have history
-            if self.focused is not cmd_input or not self.history:
-                return
-
-            current_query = cmd_input.value  # use current input as search query
-
-            # Start a new search if:
-            # - not active yet, or
-            # - query changed
-            if not self._rev_search_active: #or (current_query != (self._rev_search_query or "")):
-                self._log("entra")
-                self._rev_search_active = True
-                cmd_input.value = "(reverse-i-search)`"
-                #cmd_input.value = new_value
-                cmd_input.cursor_position = len(cmd_input.value)
-
-                cmd_input.focus()
-                event.prevent_default()
-                event.stop()
-                return"""
 
         # AUTOCOMPLETE: Tab
         if key == "tab":
@@ -952,58 +1040,6 @@ class VulcanConsole(App):
             event.stop()
             return
 
-        """# When in reverse-search mode, normal keys update the query and run the search
-        if self._rev_search_active:
-            # Accept current match with Enter
-            if key == "enter":
-                # Extract the matched command, if any
-                if (
-                    self._rev_search_index is not None
-                    and 0 <= self._rev_search_index < len(self.history)
-                ):
-                    cmd_input.value = self.history[self._rev_search_index]
-                else:
-                    cmd_input.value = self._rev_search_query  # fallback
-                cmd_input.cursor_position = len(cmd_input.value)
-                self._reverse_search_reset()
-
-                cmd_input.focus()
-                event.prevent_default()
-                event.stop()
-                return
-
-            # Cancel reverse search with Escape / Ctrl+C
-            if key in ("escape", "ctrl+c"):
-                self._reverse_search_reset()
-                cmd_input.value = ""
-                cmd_input.cursor_position = 0
-
-                cmd_input.focus()
-                event.prevent_default()
-                event.stop()
-                return
-
-            # Backspace edits the query
-            if key == "backspace":
-                if self._rev_search_query:
-                    self._rev_search_query = self._rev_search_query[:-1]
-                self._reverse_search_update()
-
-                cmd_input.focus()
-                event.prevent_default()
-                event.stop()
-                return
-
-            # Printable characters extend the query
-            if len(key) == 1 and key.isprintable():
-                self._rev_search_query += key
-                self._reverse_search_update()
-
-                cmd_input.focus()
-                event.prevent_default()
-                event.stop()
-                return"""
-
         # Any other keypress resets tab cycle if the prefix changes
         if len(key) == 1 or key in ("backspace", "delete"):
             self.tab_matches = []
@@ -1034,8 +1070,7 @@ class VulcanConsole(App):
                 common_prefix = tmp
 
         # echo what the user typed (keep this if you like the prompt arrow)
-        color_user = "#91DD16"
-        self._log(f"[bold {color_user}]\[USER] >>>[/bold {color_user}] {cmd_input}")
+        self.print_command_prompt(cmd_input)
         self._log(commands, log_color=2)
 
         return common_prefix
@@ -1050,7 +1085,27 @@ class VulcanConsole(App):
 
     # Called by Binding("ctrl+h", "show_help", ...)
     def action_show_help(self) -> None:
+        self.print_command_prompt("/help")
+
         self.cmd_help(_=None)
+
+    def action_reverse_search(self) -> None:
+        if not self.history:
+            return
+
+        def done(result: str | None) -> None:
+            """
+            Callback when modal closes.
+            """
+
+            cmd_input = self.query_one("#cmd", Input)
+            if result:
+                cmd_input.value = result
+                cmd_input.cursor_position = len(result)
+            cmd_input.focus()
+
+        self.push_screen(ReverseSearchModal(self.history), done)
+
 
     # endregion
 
