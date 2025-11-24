@@ -96,7 +96,7 @@ class ReverseSearchModal(ModalScreen[str | None]):
         key = event.key
 
         # Accept current match
-        if key == "enter":
+        if key in ("enter", "tab"):
             result: str | None
             if self.match_index is not None and 0 <= self.match_index < len(self.history):
                 result = self.history[self.match_index]

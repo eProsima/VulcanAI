@@ -180,7 +180,7 @@ class PlanExecutor:
             else:
                 # Print in textual terminal:
                 # [EXECUTOR] Step '<step.tool>' attempt <i+1>/<attempts> failed
-                self.logger(f"Step [italic]'{step.tool}'[/italic] " + \
+                self.logger(f"Step [{self.class_color}][italic]'{step.tool}'[/italic][/{self.class_color}] " + \
                             f"attempt {i+1}/{attempts} failed", log_type="executor")
 
         return False
@@ -342,8 +342,15 @@ class PlanExecutor:
             # [EXECUTOR] Executed '<tool_name>' in <elapsed> ms with result: <result>
             self.logger(f"Executed [italic][{self.class_color}]'{tool_name}'[/{self.class_color}][/italic] " + \
                         f"in [{self.color_value}]{elapsed:.1f} ms[/{self.color_value}] " + \
-                        f"with result: [bold][{self.class_color}]{result}[/{self.class_color}][/bold]",
-                        log_type="executor")
+                        f"with result:", log_type="executor")
+
+            if isinstance(result, dict):
+                for key, value in result.items():
+                    self.logger(f"[bold]{key}[/bold]")
+                    self.logger(value)
+            else:
+                self.logger(result)
+
             return True, result
         except concurrent.futures.TimeoutError:
             # Print in textual terminal:
@@ -356,6 +363,6 @@ class PlanExecutor:
         except Exception as e:
             # Print in textual terminal:
             # [EXECUTOR] Execution failed for '<tool_name>': <exception>
-            self.logger(f"Execution [bold][{self.color_error}]failed[\{self.color_error}][/bold] for " + \
+            self.logger(f"Execution [bold][{self.color_error}]failed[/{self.color_error}][/bold] for " + \
                         f"[italic][{self.class_color}]'{tool_name}'[/{self.class_color}][/italic]: {e}", log_type="executor")
             return False, None
