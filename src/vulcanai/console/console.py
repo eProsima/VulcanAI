@@ -15,6 +15,7 @@ from __future__ import annotations
 # limitations under the License.
 
 import sys
+import os
 import argparse
 
 from textual.app import App, ComposeResult
@@ -214,6 +215,12 @@ class VulcanConsole(App):
                     self.manager.llm.set_hooks(self.hooks)
                 except Exception:
                     pass
+
+                current_path = os.path.dirname(os.path.abspath(__file__))
+
+                self.manager.register_tools_from_file(f"{current_path}/../tools/default_tools.py")
+                """for name, func in inspect.getmembers(vulcanai.tools.default_tools, inspect.isfunction):
+                    self.manager.register_tool(func)"""
 
                 if self.tools_from_entrypoints != "":
                     self.manager.register_tools_from_entry_points(self.tools_from_entrypoints)
@@ -721,8 +728,6 @@ class VulcanConsole(App):
                     paste_text = paste_text[:i]
                     break
                 i += 1
-
-            self._log(paste_text)
 
             value = cmd_input.value
             cursor = cmd_input.cursor_position
