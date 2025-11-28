@@ -61,6 +61,9 @@ TODO
         list       Output a list of action names
         send_goal  Send an action goal
         type       Print a action's type
+        echo       Echo a action
+        find       Find actions from type
+
 
 - ros2 param
     Commands:
@@ -93,6 +96,10 @@ Commands:
   ros2 wtf        Use `wtf` as alias to `doctor`
 """
 
+import os
+import time
+import subprocess
+from typing import List, Optional
 
 
 @vulcanai_tool
@@ -100,233 +107,689 @@ class Ros2NodeTool(AtomicTool):
     name = "ros2_node"
     description = "List ROS2 nodes and optionally get detailed info for a specific node."
     tags = ["ros2", "nodes", "cli", "info", "diagnostics"]
+
     input_schema = [
-        ("node_name", "string?") # optional
+        ("node_name", "string?") # (optional) Name of the ros2 node.
+                                 # if the node is not provided the command is `ros2 node list`.
+                                 # otherwise `ros2 node info <node_name>`
     ]
+
     output_schema = {
-        "nodes": "array",
-        "info": "string?"
+        "ros2": "bool",     # ros2 flag for pretty printing.
+        "output": "string", # list of ros2 nodes or info of a node.
     }
 
     def run(self, **kwargs):
+        # Get the shared ROS2 node from the blackboard
+        node = self.bb.get("main_node", None)
+        if node is None:
+            raise Exception("Could not find shared node, aborting...")
+
+        # Get the node name if provided by the query
         node_name = kwargs.get("node_name", None)
 
-        # -- Run `ros2 node list` ---------------------------------------------
-        try:
-            list_output = subprocess.check_output(
-                ["ros2", "node", "list"],
-                stderr=subprocess.STDOUT,
-                text=True
-            )
-            node_list = [line.strip() for line in list_output.splitlines()]
-        except subprocess.CalledProcessError as e:
-            raise Exception(f"Failed to run 'ros2 node list': {e.output}")
-
         result = {
-            "nodes": node_list,
-            "info": None
+            "ros2": True,
+            "output": None
         }
 
-        # -- Run `ros2 node info <node>` --------------------------------------
-        if node_name:
+        # -- Run `ros2 node list` ---------------------------------------------
+        if node_name == None:
             try:
+
+                # is one-shot, the of the subprocess is automatic
+                # (when it prints the nodes).
+                list_output = subprocess.check_output(
+                    ["ros2", "node", "list"],
+                    stderr=subprocess.STDOUT,
+                    text=True
+                )
+
+                # add the output of the command to the dictionary
+                result["output"] = [line.strip() for line in list_output.splitlines()]
+            except subprocess.CalledProcessError as e:
+                raise Exception(f"Failed to run 'ros2 node list': {e.output}")
+
+        # -- Run `ros2 node info <node>` --------------------------------------
+        else:
+
+            try:
+                # COMMAND: ros2 node info <node>
+                # is one-shot, the of the subprocess is automatic
+                # (when it prints the infomation of the node).
                 info_output = subprocess.check_output(
                     ["ros2", "node", "info", node_name],
                     stderr=subprocess.STDOUT,
                     text=True
                 )
-                result["info"] = info_output
+
+                # add the ouptut of the comand to the dictionary
+                result["output"] = info_output
             except subprocess.CalledProcessError as e:
                 raise Exception(f"Failed to get info for node '{node_name}': {e.output}")
 
         return result
 
-
 @vulcanai_tool
 class Ros2TopicTool(AtomicTool):
     name = "ros2_topic"
-    description = "List ROS2 topics or get info for a specific topic."
+    description = (
+        "Wrapper for `ros2 topic` CLI. Always returns `ros2 topic list` "
+        "and can optionally run any subcommand: bw, delay, echo, find, "
+        "hz, info, list, pub, type"
+    )
     tags = ["ros2", "topics", "cli", "info"]
+
+    # - `command` lets you pick a single subcommand (echo/bw/hz/delay/find/pub/type).
     input_schema = [
-        ("topic_name", "string?"),     # optional input
-        ("echo", "bool?")              # optional: run 'ros2 topic echo'
+        ("command", "string"),       # Command: "list", "info", "type", "find",
+                                     #  "pub", "hz", "echo", "bw", "delay"
+        ("topic_name", "string?"),   # (optional) Topic name. (info/echo/bw/delay/hz/type/pub)
+        ("msg_type", "string?"),     # (optional) Message type (`find` <type>, `pub` <message> <type>)
+                                     #
+        ("max_duration", "number?"), # (optional) Seconds for streaming commands (echo/bw/hz/delay)
+        ("max_lines", "int?"),       # (optional) Cap number of lines for streaming commands
     ]
+
     output_schema = {
-        "topics": "array",             # topic names
-        "info": "string?",             # output of `ros2 topic info`
-        "echo_output": "string?"       # output of `ros2 topic echo` (one-shot)
+        "ros2": "bool",            # ros2 flag for pretty printing
+        "output": "string",        # output
     }
 
-    def run(self, **kwargs):
-        topic_name = kwargs.get("topic_name", None)
-        do_echo = kwargs.get("echo", False)
+    # region utils
 
-        # -- Run `ros2 topic list` --------------------------------------------
+    def run_oneshot_cmd(self, args: List[str]) -> str:
         try:
-            list_output = subprocess.check_output(
-                ["ros2", "topic", "list"],
+            return subprocess.check_output(
+                args,
                 stderr=subprocess.STDOUT,
                 text=True
             )
-            topic_list = [line.strip() for line in list_output.splitlines()]
+
         except subprocess.CalledProcessError as e:
-            raise Exception(f"Failed to run 'ros2 topic list': {e.output}")
+            raise Exception(f"Failed to run '{' '.join(args)}': {e.output}")
+
+    def run_streaming_cmd(self, node, base_args: List[str],
+            max_duration: float,
+            max_lines: Optional[int] = None,
+            echo: bool = True) -> str:
+        """
+        Run `ros2 topic ...` for at most `max_duration` seconds.
+
+        - Streams output line by line (optionally echoing to this process' stdout).
+        - Optionally stops after `max_lines` lines.
+        - Returns all collected output as a single string.
+        TODO. if maxduration=-1 or max_lines=-1 STREAMING COMMAND until signal received
+        """
+
+        # Help ROS2 (Python) flush output promptly even when not attached to a TTY
+        env = os.environ.copy()
+        env.setdefault("PYTHONUNBUFFERED", "1")
+
+        proc = subprocess.Popen(
+            base_args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            env=env,
+        )
+
+        lines = []
+        first = True
+        start = time.monotonic()
+
+        try:
+            assert proc.stdout is not None
+
+            for raw_line in proc.stdout:
+                line = raw_line.rstrip("\n")
+                lines.append(line)
+
+                if echo:
+                    # TODO. danip
+                    if first:
+                        first = False
+                        print("\n")
+                    print(line)
+
+                # Check max_lines
+                if len(lines) >= max_lines:
+                    break
+                # Check duration
+                if (time.monotonic() - start) >= max_duration:
+                    break
+        finally:
+
+            # Ensure the subprocess is terminated
+            proc.kill()
+            # Wait for killed subprocess
+            try:
+                proc.wait(timeout=1)
+            except Exception:
+                pass
+
+        # Spin
+        rclpy.spin_once(node, timeout_sec=0.1)
+
+        # Return as a string.
+        return "\n".join(lines)
+
+    # endregion
+
+    def run(self, **kwargs):
+        # Get the shared ROS2 node from the blackboard
+        node = self.bb.get("main_node", None)
+        if node is None:
+            raise Exception("Could not find shared node, aborting...")
+
+        command = kwargs.get("command", None)  # optional explicit subcommand
+        topic_name = kwargs.get("topic_name", None)
+        msg_type = kwargs.get("msg_type", None)
+        # streaming commands variables
+        max_duration = kwargs.get("max_duration", 2.0)
+        max_lines = kwargs.get("max_lines", 50)
 
         result = {
-            "topics": topic_list,
-            "info": None,
-            "echo_output": None
+            "ros2": True,
+            "output": None,
         }
 
-        # -- Run `ros2 topic info <topic>` ------------------------------------
-        if topic_name:
-            try:
-                info_output = subprocess.check_output(
-                    ["ros2", "topic", "info", topic_name],
-                    stderr=subprocess.STDOUT,
-                    text=True
-                )
-                result["info"] = info_output
-            except subprocess.CalledProcessError as e:
-                raise Exception(f"Failed to run 'ros2 topic info {topic_name}': {e.output}")
+        command = command.lower()
+
+        # -- ros2 topic list --------------------------------------------------
+        if command == "list":
+            list_output = self.run_oneshot_cmd(["ros2", "topic", "list"])
+            result["output"] = [line.strip() for line in list_output.splitlines() \
+                            if line.strip()]
+
+        # -- ros2 topic info <topic_name> -------------------------------------
+        elif command == "info":
+            if not topic_name:
+                raise ValueError("`command='info'` requires `topic_name`.")
+
+            info_output = self.run_oneshot_cmd(
+                ["ros2", "topic", "info", topic_name]
+            )
+            result["output"] = info_output
+
+        # -- ros2 topic find <type> -------------------------------------------
+        elif command == "find":
+            # ``
+            if not msg_type:
+                raise ValueError("`command='find'` requires `msg_type` (ROS type).")
+            find_output = self.run_oneshot_cmd(
+                ["ros2", "topic", "find", msg_type]
+            )
+            find_topics = [
+                line.strip() for line in find_output.splitlines() if line.strip()
+            ]
+            result["output"] = find_topics
+
+        # -- ros2 topic type <topic_name> -------------------------------------
+        elif command == "type":
+            if not topic_name:
+                raise ValueError("`command='type'` requires `topic_name`.")
+
+            type_output = self.run_oneshot_cmd(
+                ["ros2", "topic", "type", topic_name]
+            )
+            result["output"] = type_output
+
+        # streaming commands TODO. danip
+        # -- ros2 topic echo <topic_name> -------------------------------------
+        elif command == "echo":
+            if not topic_name:
+                raise ValueError("`command='echo'` requires `topic_name`.")
+
+            # streaming commands TODO. danip
+            echo_output = self.run_streaming_cmd(node,
+                ["ros2", "topic", "echo", topic_name],
+                max_duration=max_duration,
+                max_lines=max_lines,
+            )
+            #result["output"] = echo_output
+            result["output"] = echo_output != None
+
+        # streaming commands TODO. danip
+        # -- ros2 topic bw <topic_name> ---------------------------------------
+        elif command == "bw":
+
+            subprocess.run(
+                ["ros2", "topic", "bw", "/turtle1/pose"],
+                check=True,
+            )
+            """if not topic_name:
+                raise ValueError("`command='bw'` requires `topic_name`.")
+            bw_output = self.run_streaming_cmd(node,
+                ["ros2", "topic", "bw", topic_name],
+                max_duration=10,
+                max_lines=10,
+            )"""
+            #result["bw_output"] = bw_output
+            result["output"] = True
+
+        # streaming commands TODO. danip
+        # delay --------------------------------------------------------------
+        elif command == "delay":
+            if not topic_name:
+                raise ValueError("`command='delay'` requires `topic_name`.")
+
+            delay_output = self.run_streaming_cmd(node,
+                ["ros2", "topic", "delay", topic_name],
+                max_duration=max_duration,
+                max_lines=max_lines,
+            )
+            result["output"] = delay_output
+
+        # streaming commands TODO. danip
+        # -- ros2 topic hz <topic_name> ---------------------------------------
+        elif command == "hz":
+            if not topic_name:
+                raise ValueError("`command='hz'` requires `topic_name`.")
+
+            hz_output = self.run_streaming_cmd(node,
+                ["ros2", "topic", "hz", topic_name],
+                max_duration=max_duration,
+                max_lines=max_lines,
+            )
+            result["output"] = hz_output
+
+        # streaming commands TODO. danip
+        # -- publisher --------------------------------------------------------
+        elif command == "pub":
+            # One-shot publish using `-1`
+            # ros2 topic pub -1 <topic> <msg_type> "<data>"
+            # ros2 topic pub -1 /rosout2 std_msgs/msg/String "{data: 'Hello'}"
+            if not topic_name:
+                raise ValueError("`command='pub'` requires `topic_name`.")
+            if not msg_type:
+                raise ValueError("`command='pub'` requires `msg_type`.")
+
+            # only send 1
+            pub_output = self.run_oneshot_cmd(
+                ["ros2", "topic", "pub", "-1", topic_name, msg_type]
+            )
+            result["output"] = pub_output
+        else:
+            raise ValueError(
+                f"Unknown command '{command}'. "
+                "Expected one of: list, info, echo, bw, delay, hz, find, pub, type."
+            )
 
         return result
-
 
 @vulcanai_tool
 class Ros2ServiceTool(AtomicTool):
     name = "ros2_service"
-    description = "List ROS2 services, get service info, type, and optionally call a service."
+    description = (
+        "Wrapper for `ros2 service` CLI. Always returns `ros2 service list`, "
+        "and can optionally run any subcommand: list, info, type, call, echo, find."
+    )
     tags = ["ros2", "services", "cli", "info", "call"]
+
+    # - `command` = "list", "info", "type", "call", "echo", "find"
     input_schema = [
-        ("service_name", "string?"),     # optional service name
-        ("call", "bool?"),               # optional: perform service call
-        ("args", "string?")              # JSON-like request data for service
+        ("command", "string"),         # Command: "list", "info", "type", "find"
+                                       # "call", "echo"
+        ("service_name", "string?"),   # (optional) Service name. "info", "type", "call", "echo"
+        ("service_type", "string?"),   # (optional) Service type. "find", "call"
+        ("call", "bool?"),             # (optional) backwards-compatible call flag
+        ("args", "string?"),           # (optional) YAML/JSON-like request data for `call`
+        ("max_duration", "number?"),   # (optional) Maximum duration
+        ("max_lines", "int?"),         # (optional) Maximum lines
     ]
+
     output_schema = {
-        "services": "array",             # output of `ros2 service list`
-        "info": "string?",               # output of `ros2 service info`
-        "type": "string?",               # output of `ros2 service type`
-        "call_output": "string?"         # output of `ros2 service call` (optional)
+        "ros2": "bool",                 # ros2 flag for pretty printing
+        "output": "string",           # `ros2 service list`
     }
 
-    def run(self, **kwargs):
-        service_name = kwargs.get("service_name", None)
-        do_call = kwargs.get("call", False)
-        call_args = kwargs.get("args", None)
+    # region utils
 
-        # -- Run `ros2 service list` ------------------------------------------
+    def run_oneshot_cmd(self, args: List[str]) -> str:
         try:
-            list_output = subprocess.check_output(
-                ["ros2", "service", "list"],
+            return subprocess.check_output(
+                args,
                 stderr=subprocess.STDOUT,
                 text=True
             )
-            service_list = [line.strip() for line in list_output.splitlines()]
         except subprocess.CalledProcessError as e:
-            raise Exception(f"Failed to run 'ros2 service list': {e.output}")
+            raise Exception(f"Failed to run '{' '.join(args)}': {e.output}")
+
+    def run_streaming_cmd(
+        self,
+        base_args: List[str],
+        max_duration: float,
+        max_lines: Optional[int] = None,
+    ) -> str:
+        """
+        Run a streaming `ros2 service` command (currently used for `echo`) for at most
+        `max_duration` seconds and optionally stop after `max_lines` lines.
+        """
+        proc = subprocess.Popen(
+            base_args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,  # line-buffered
+        )
+
+        lines: List[str] = []
+        try:
+            import time
+            start = time.time()
+
+            while True:
+                if max_duration is not None and (time.time() - start) > max_duration:
+                    break
+
+                line = proc.stdout.readline()
+                if not line:
+                    break  # process ended
+
+                lines.append(line.rstrip("\n"))
+                if max_lines is not None and len(lines) >= max_lines:
+                    break
+
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
+        finally:
+            if proc.stdout and not proc.stdout.closed:
+                proc.stdout.close()
+
+        return "\n".join(lines)
+
+    # endregion
+
+    def run(self, **kwargs):
+        # Get the shared ROS2 node from the blackboard
+        node = self.bb.get("main_node", None)
+        if node is None:
+            raise Exception("Could not find shared node, aborting...")
+
+        command = kwargs.get("command", None)
+        service_name = kwargs.get("service_name", None)
+        service_type = kwargs.get("service_type", None)
+        do_call = kwargs.get("call", False)            # legacy flag
+        call_args = kwargs.get("args", None)
+        # streaming commands variables
+        max_duration = kwargs.get("max_duration", 2.0) # default for echo
+        max_lines = kwargs.get("max_lines", 50)
 
         result = {
-            "services": service_list,
-            "info": None,
-            "type": None,
-            "call_output": None
+            "ros2": True,
+            "output": None,
         }
 
-        # -- Run `ros2 service info <service>` --------------------------------
-        if service_name:
-            try:
-                info_output = subprocess.check_output(
-                    ["ros2", "service", "info", service_name],
-                    stderr=subprocess.STDOUT,
-                    text=True
+        # Backwards-compatible mode: no `command` specified
+        # TODO. danip
+        """if command is None:
+            # Original behavior:
+            # - if service_name: info + type
+            # - if call=True: call service using inferred type
+            if service_name:
+                # info
+                info_output = self.run_oneshot_cmd(
+                    ["ros2", "service", "info", service_name]
                 )
                 result["info"] = info_output
-            except subprocess.CalledProcessError as e:
-                raise Exception(f"Failed to run 'ros2 service info {service_name}': {e.output}")
 
-        # -- Run `ros2 service type <service>` --------------------------------
-        if service_name:
-            try:
-                type_output = subprocess.check_output(
-                    ["ros2", "service", "type", service_name],
-                    stderr=subprocess.STDOUT,
-                    text=True
+                # type
+                type_output = self.run_oneshot_cmd(
+                    ["ros2", "service", "type", service_name]
+                )
+                detected_type = type_output.strip()
+                result["type"] = detected_type
+
+                # optional call
+                if do_call:
+                    if call_args is None:
+                        raise ValueError(
+                            "Backward-compatible `call=True` requires `args`."
+                        )
+                    call_output = self.run_oneshot_cmd(
+                        ["ros2", "service", "call", service_name, detected_type, call_args]
+                    )
+                    result["call_output"] = call_output
+
+            return result"""
+
+        command = command.lower()
+
+        # -- ros2 service list ------------------------------------------------
+        if command == "list":
+            list_output = self.run_oneshot_cmd(["ros2", "service", "list"])
+            result["output"] = list_output
+
+        # -- ros2 service info <service_name> ---------------------------------
+        elif command == "info":
+            if not service_name:
+                raise ValueError("`command='info'` requires `service_name`.")
+
+            info_output = self.run_oneshot_cmd(
+                ["ros2", "service", "info", service_name]
+            )
+
+            result["output"] = info_output
+
+        # -- ros2 service type <service_name> ---------------------------------
+        elif command == "type":
+            if not service_name:
+                raise ValueError("`command='type'` requires `service_name`.")
+
+            type_output = self.run_oneshot_cmd(
+                ["ros2", "service", "type", service_name]
+            )
+
+            result["output"] = type_output.strip()
+
+        # -- ros2 service find <type> -----------------------------------------
+        elif command == "find":
+            if not service_type:
+                raise ValueError("`command='find'` requires `service_type`.")
+
+            find_output = self.run_oneshot_cmd(
+                ["ros2", "service", "find", service_type]
+            )
+
+            result["output"] = find_output
+
+        # call ---------------------------------------------------------------
+        elif command == "call":
+            if not service_name:
+                raise ValueError("`command='call'` requires `service_name`.")
+            if call_args is None:
+                raise ValueError("`command='call'` requires `args`.")
+
+            # If service_type not given, detect it
+            if not service_type:
+                type_output = self.run_oneshot_cmd(
+                    ["ros2", "service", "type", service_name]
                 )
                 service_type = type_output.strip()
-                result["type"] = service_type
-            except subprocess.CalledProcessError as e:
-                raise Exception(f"Failed to run 'ros2 service type {service_name}': {e.output}")
+
+            call_output = self.run_oneshot_cmd(
+                ["ros2", "service", "call", service_name, service_type, call_args]
+            )
+
+            result["output"] = call_output
+
+        # streaming commands TODO. danip
+        # echo ---------------------------------------------------------------
+        elif command == "echo":
+            if not service_name:
+                raise ValueError("`command='echo'` requires `service_name`.")
+
+            echo_output = self.run_streaming_cmd(
+                ["ros2", "service", "echo", service_name],
+                max_duration=max_duration,
+                max_lines=max_lines,
+            )
+            result["echo_output"] = echo_output
+
+        # -- unknown ------------------------------------------------------------
+        else:
+
+            raise ValueError(
+                f"Unknown command '{command}'. "
+                "Expected one of: list, info, type, call, echo, find."
+            )
 
         return result
-
 
 @vulcanai_tool
 class Ros2ActionTool(AtomicTool):
     name = "ros2_action"
-    description = "List ROS2 actions, get action info/type, and optionally send a goal."
+    description = (
+        "Wrapper for `ros2 action` CLI. Always returns `ros2 action list`, "
+        "and can optionally run: list, info, type, send_goal."
+    )
     tags = ["ros2", "actions", "cli", "info", "goal"]
+
+    # - `command`: "list", "info", "type", "send_goal"
     input_schema = [
-        ("action_name", "string?"),  # optional: target action
-        ("send_goal", "bool?"),      # optional: whether to send a goal
-        ("args", "string?"),         # goal data, e.g. '{order: 5}'
-        ("wait_for_result", "bool?") # if true, use --result
+        ("command", "string"),        # Command: "list" "info" "type" "send_goal"
+        ("action_name", "string?"),   # (optional) Action name
+        ("action_type", "string?"),   # (optional) Action type. "find"
+        ("send_goal", "bool?"),       # (optional) legacy flag (backwards compatible)
+        ("args", "string?"),          # (optional) goal YAML, e.g. '{order: 5}'
+        ("wait_for_result", "bool?"), # (optional) if true => add `--result`
     ]
+
     output_schema = {
-        "actions": "array",          # output of `ros2 action list`
-        "info": "string?",           # output of `ros2 action info`
-        "type": "string?",           # output of `ros2 action type`
-        "goal_output": "string?"     # output of `ros2 action send_goal`
+        "ros2": "bool",      # ros2 flag for pretty printing
+        "output": "string",  # `ros2 action list`
     }
 
-    def run(self, **kwargs):
-        action_name = kwargs.get("action_name", None)
-        do_send_goal = kwargs.get("send_goal", False)
-        goal_args = kwargs.get("args", None)
-        wait_for_result = kwargs.get("wait_for_result", True)
+    # regin utils
 
-        # -- Run `ros2 action list` -------------------------------------------
+    def run_oneshot_cmd(self, args: List[str]) -> str:
         try:
-            list_output = subprocess.check_output(
-                ["ros2", "action", "list"],
+            return subprocess.check_output(
+                args,
                 stderr=subprocess.STDOUT,
                 text=True
             )
-            action_list = [line.strip() for line in list_output.splitlines()]
         except subprocess.CalledProcessError as e:
-            raise Exception(f"Failed to run 'ros2 action list': {e.output}")
+            raise Exception(f"Failed to run '{' '.join(args)}': {e.output}")
+
+    # endregion
+
+    def run(self, **kwargs):
+        # Get the shared ROS2 node from the blackboard
+        node = self.bb.get("main_node", None)
+        if node is None:
+            raise Exception("Could not find shared node, aborting...")
+        
+        command = kwargs.get("command", None)
+        action_name = kwargs.get("action_name", None)
+        do_send_goal = kwargs.get("send_goal", False)          # legacy flag
+        goal_args = kwargs.get("args", None)
+        wait_for_result = kwargs.get("wait_for_result", True)
+        action_type = kwargs.get("action_type", None)
 
         result = {
-            "actions": action_list,
-            "info": None,
-            "type": None,
-            "goal_output": None
+            "ros2": True,
+            "output": None,
         }
 
-        # -- Run `ros2 action info <action>` ----------------------------------
-        if action_name:
-            try:
-                info_output = subprocess.check_output(
-                    ["ros2", "action", "info", action_name],
-                    stderr=subprocess.STDOUT,
-                    text=True
+        # Backwards-compatible mode: no `command` specified
+        # TODO. danip
+        """if command is None:
+            # Original behavior:
+            # - if action_name: info + type
+            # - if send_goal=True: send goal (using detected type) and optionally wait for result
+            if action_name:
+                # info
+                info_output = self.run_oneshot_cmd(
+                    ["ros2", "action", "info", action_name]
                 )
                 result["info"] = info_output
-            except subprocess.CalledProcessError as e:
-                raise Exception(f"Failed to run 'ros2 action info {action_name}': {e.output}")
 
-        # -- Run `ros2 action type <action>` ----------------------------------
-        if action_name:
-            try:
-                type_output = subprocess.check_output(
-                    ["ros2", "action", "type", action_name],
-                    stderr=subprocess.STDOUT,
-                    text=True
+                # type
+                type_output = self.run_oneshot_cmd(
+                    ["ros2", "action", "type", action_name]
+                )
+                detected_type = type_output.strip()
+                result["type"] = detected_type
+                action_type = detected_type  # reuse below if send_goal=True
+
+                # optional goal
+                if do_send_goal:
+                    if goal_args is None:
+                        raise ValueError(
+                            "Backward-compatible `send_goal=True` requires `args`."
+                        )
+
+                    args_list = ["ros2", "action", "send_goal"]
+                    if wait_for_result:
+                        args_list.append("--result")
+                    args_list.extend([action_name, action_type, goal_args])
+
+                    goal_output = self.run_oneshot_cmd(args_list)
+                    result["goal_output"] = goal_output
+
+            return result"""
+
+        command = command.lower()
+
+        # -- ros2 action list -------------------------------------------------
+        if command == "list":
+            list_output = self.run_oneshot_cmd(["ros2", "action", "list"])
+            result["output"] = list_output
+
+        # -- ros2 action info <action_name> -----------------------------------
+        elif command == "info":
+            if not action_name:
+                raise ValueError("`command='info'` requires `action_name`.")
+
+            info_output = self.run_oneshot_cmd(
+                ["ros2", "action", "info", action_name]
+            )
+            result["output"] = info_output
+
+        # -- ros2 action type <type_name ---------------------------------------------------------------
+        elif command == "type":
+            if not action_name:
+                raise ValueError("`command='type'` requires `action_name`.")
+            type_output = self.run_oneshot_cmd(
+                ["ros2", "action", "type", action_name]
+            )
+
+            result["output"] = type_output
+
+        # send_goal -----------------------------------------------------------
+        elif command == "send_goal":
+            if not action_name:
+                raise ValueError("`command='send_goal'` requires `action_name`.")
+            if goal_args is None:
+                raise ValueError("`command='send_goal'` requires `args`.")
+
+            # Use explicit type if provided, otherwise detect it
+            if not action_type:
+                type_output = self.run_oneshot_cmd(
+                    ["ros2", "action", "type", action_name]
                 )
                 action_type = type_output.strip()
-                result["type"] = action_type
-            except subprocess.CalledProcessError as e:
-                raise Exception(f"Failed to run 'ros2 action type {action_name}': {e.output}")
+
+            args_list = ["ros2", "action", "send_goal"]
+            if wait_for_result:
+                args_list.append("--result")
+            args_list.extend([action_name, action_type, goal_args])
+
+            goal_output = self.run_oneshot_cmd(args_list)
+            """result["goal_output"] = goal_output
+            result["type"] = action_type"""
+            result["output"] = goal_output
+
+        # -- unknown ------------------------------------------------------------
+        else:
+            raise ValueError(
+                f"Unknown command '{command}'. "
+                "Expected one of: list, info, type, send_goal."
+            )
 
         return result
 
@@ -334,45 +797,191 @@ class Ros2ActionTool(AtomicTool):
 @vulcanai_tool
 class Ros2ParamTool(AtomicTool):
     name = "ros2_param"
-    description = "List ROS2 parameters, get/describe a parameter, or set a parameter."
+    description = (
+        "Wrapper for `ros2 param` CLI. Always returns `ros2 param list` "
+        "(optionally filtered by node), and can run: list, get, describe, "
+        "set, delete, dump, load."
+    )
     tags = ["ros2", "param", "parameters", "cli"]
+
+    # - `command`: "list", "get", "describe", "set", "delete", "dump", "load"
     input_schema = [
-        ("node_name", "string?"),        # optional: target node
-        ("param_name", "string?"),       # optional: specific parameter
-        ("set_value", "string?")         # optional: set a parameter to a value
+        ("command", "string"),     # Command: "list" "get" "describe"
+                                   # "set" "delete" "dump" "load"
+        ("param_name", "string?"), # (optional) Parameter name
+        ("node_name", "string?"),  # (optional) Target node
+        ("set_value", "string?"),  # (optional) value for set
+        ("file_path", "string?"),  # (optional) for dump/load YAML file
     ]
+
     output_schema = {
-        "param_list": "string?",         # `ros2 param list` output
-        "get_output": "string?",          # `ros2 param get`
-        "describe_output": "string?",     # `ros2 param describe`
-        "set_output": "string?"           # `ros2 param set`
+        "ros2": "bool",     # ros2 flag for pretty printing
+        "output": "string",
     }
 
+    # region utils
+    def run_oneshot_cmd(self, args: List[str]) -> str:
+        try:
+            return subprocess.check_output(
+                args,
+                stderr=subprocess.STDOUT,
+                text=True
+            )
+
+        except subprocess.CalledProcessError as e:
+            raise Exception(f"Failed to run '{' '.join(args)}': {e.output}")
+
+    # endregion
+
     def run(self, **kwargs):
+        # Get the shared ROS2 node from the blackboard
+        node = self.bb.get("main_node", None)
+        if node is None:
+            raise Exception("Could not find shared node, aborting...")
+
+        command = kwargs.get("command", None)
         node = kwargs.get("node_name", None)
         param = kwargs.get("param_name", None)
         set_value = kwargs.get("set_value", None)
+        file_path = kwargs.get("file_path", None)
 
         result = {
-            "param_list": None,
-            "get_output": None,
-            "describe_output": None,
-            "set_output": None,
+            "ros2": True,
+            "output": None,
         }
 
-        # -- Run `ros2 param list (GLOBAL or per-node)` -----------------------
-        try:
-            if node:
-                list_cmd = ["ros2", "param", "list", node]
-            else:
-                list_cmd = ["ros2", "param", "list"]
+        # Backwards-compatible mode: no `command` specified
+        # TODO. danip
+        """if command is None:
+            # Old behavior was just param list; we extend it slightly:
+            # - If node + param => get + describe
+            # - If set_value provided => set
+            if node and param:
+                # get
+                get_output = self.run_oneshot_cmd(
+                    ["ros2", "param", "get", node, param]
+                )
+                result["get_output"] = get_output
 
-            list_output = subprocess.check_output(
-                list_cmd, stderr=subprocess.STDOUT, text=True
+                # describe
+                describe_output = self.run_oneshot_cmd(
+                    ["ros2", "param", "describe", node, param]
+                )
+                result["describe_output"] = describe_output
+
+                # optional set
+                if set_value is not None:
+                    set_output = self.run_oneshot_cmd(
+                        ["ros2", "param", "set", node, param, set_value]
+                    )
+                    result["set_output"] = set_output
+
+            return result"""
+
+        command = command.lower()
+
+        # -- ros2 param list` -------------------------------------------------
+        if command == "list":
+            try:
+                if node:
+                    list_cmd = ["ros2", "param", "list", node]
+                else:
+                    list_cmd = ["ros2", "param", "list"]
+
+                list_output = self.run_oneshot_cmd(list_cmd)
+                result["output"] = list_output
+
+            except Exception as e:
+                raise Exception(str(e))
+
+        # -- ros2 param get <node> <param> ------------------------------------
+        elif command == "get":
+            if not node or not param:
+                raise ValueError("`command='get'` requires `node_name` and `param_name`.")
+
+            get_output = self.run_oneshot_cmd(
+                ["ros2", "param", "get", node, param]
             )
-            result["param_list"] = list_output
-        except subprocess.CalledProcessError as e:
-            raise Exception(f"Failed to run 'ros2 param list': {e.output}")
+
+            result["output"] = get_output
+
+        # -- ros2 param describe <node> <param> -------------------------------
+        elif command == "describe":
+            if not node or not param:
+                raise ValueError("`command='describe'` requires `node_name` and `param_name`.")
+
+            describe_output = self.run_oneshot_cmd(
+                ["ros2", "param", "describe", node, param]
+            )
+
+            result["output"] = describe_output
+
+        # -- ros2 param set <node> <param> <set_value> ------------------------
+        elif command == "set":
+            if not node or not param:
+                raise ValueError("`command='set'` requires `node_name` and `param_name`.")
+            if set_value is None:
+                raise ValueError("`command='set'` requires `set_value`.")
+
+            set_output = self.run_oneshot_cmd(
+                ["ros2", "param", "set", node, param, set_value]
+            )
+
+            result["output"] = set_output
+
+        # -- ros2 param delete <node> <parm> ----------------------------------
+        elif command == "delete":
+            if not node or not param:
+                raise ValueError("`command='delete'` requires `node_name` and `param_name`.")
+
+            delete_output = self.run_oneshot_cmd(
+                ["ros2", "param", "delete", node, param]
+            )
+
+            result["output"] = delete_output
+
+        # -- ros2 param dump <node> [file_path] -------------------------------
+        elif command == "dump":
+            if not node:
+                raise ValueError("`command='dump'` requires `node_name`.")
+
+            # Two modes:
+            # - If file_path given, write to file with --output-file
+            # - Otherwise, capture YAML from stdout
+            if file_path:
+                dump_output = self.run_oneshot_cmd(
+                    ["ros2", "param", "dump", node, "--output-file", file_path]
+                )
+
+                # CLI usually prints a line like "Saved parameters to file..."
+                # so we just expose that.
+                result["dump_output"] = dump_output or f"Dumped parameters to {file_path}"
+            else:
+                dump_output = self.run_oneshot_cmd(
+                    ["ros2", "param", "dump", node]
+                )
+
+                result["dump_output"] = dump_output
+
+        # -- ros2 param load <node> <file_path> -------------------------------
+        elif command == "load":
+            if not node or not file_path:
+                raise ValueError("`command='load'` requires `node_name` and `file_path`.")
+
+            load_output = self.run_oneshot_cmd(
+                ["ros2", "param", "load", node, file_path]
+            )
+
+            result["output"] = load_output
+
+        # -- unknown ----------------------------------------------------------
+        else:
+            raise ValueError(
+                f"Unknown command '{command}'. "
+                "Expected one of: list, get, describe, set, delete, dump, load."
+            )
 
         return result
+
+
 
