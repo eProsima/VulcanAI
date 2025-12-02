@@ -22,6 +22,8 @@ from typing import Dict, Any, Optional, Set, Tuple, List
 from vulcanai.console.logger import VulcanAILogger
 from vulcanai.core.plan_types import GlobalPlan, PlanBase, Step, ArgValue
 
+import threading
+
 
 TYPE_CAST = {
     "float": float,
@@ -284,6 +286,12 @@ class PlanExecutor:
                    bb: Blackboard = None,
                    parallel: bool = False) -> Tuple[bool, Any]:
         """Invoke a registered tool."""
+
+        self.logger("\n EXECUTOR. _call_tool()")
+        self.logger(threading.current_thread())
+        self.logger(threading.current_thread().name)
+
+
         tool = self.registry.tools.get(tool_name)
         if not tool:
             # Print in textual terminal:

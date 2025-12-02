@@ -21,6 +21,8 @@ from vulcanai.core.plan_types import GlobalPlan
 from vulcanai.core.validator import PlanValidator
 from vulcanai.tools.tool_registry import ToolRegistry
 
+import threading
+
 
 class ToolManager:
     """Manages the LLM Agent and calls the executor with the LLM output."""
@@ -88,6 +90,11 @@ class ToolManager:
         :return: A dictionary with the execution result, including the plan used and the final blackboard state.
         """
         try:
+
+            self.logger("\n MANAGER. handle_user_request()")
+            self.logger(threading.current_thread())
+            self.logger(threading.current_thread().name)
+
             # Get plan from LLM
             plan = self.get_plan_from_user_request(user_text, context)
             if not plan:
