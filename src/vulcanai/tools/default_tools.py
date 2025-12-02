@@ -175,7 +175,6 @@ class Ros2NodeTool(AtomicTool):
                 raise Exception(f"Failed to get info for node '{node_name}': {e.output}")
 
         return result
-
 @vulcanai_tool
 class Ros2TopicTool(AtomicTool):
     name = "ros2_topic"
@@ -214,197 +213,77 @@ class Ros2TopicTool(AtomicTool):
 
         except subprocess.CalledProcessError as e:
             raise Exception(f"Failed to run '{' '.join(args)}': {e.output}")
-    #1
-    def run_streaming_cmd(self, node, base_args: List[str],
-            max_duration: float,
-            max_lines: Optional[int] = None,
-            echo: bool = True) -> str:
-        """
-        Run `ros2 topic ...` for at most `max_duration` seconds.
-
-        - Streams output line by line (optionally echoing to this process' stdout).
-        - Optionally stops after `max_lines` lines.
-        - Returns all collected output as a single string.
-        TODO. if maxduration=-1 or max_lines=-1 STREAMING COMMAND until signal received
-        """
-
-        # Help ROS2 (Python) flush output promptly even when not attached to a TTY
-        env = os.environ.copy()
-        env.setdefault("PYTHONUNBUFFERED", "1")
-
-        proc = subprocess.Popen(
-            base_args,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            env=env,
-        )
-
-        lines = []
-        first = True
-        start = time.monotonic()
-
-        try:
-            assert proc.stdout is not None
-
-            for raw_line in proc.stdout:
-                line = raw_line.rstrip("\n")
-                lines.append(line)
-
-                if echo:
-                    # TODO. danip
-                    if first:
-                        first = False
-                        print("\n")
-                    print(line)
-
-                # Check max_lines
-                if len(lines) >= max_lines:
-                    break
-                # Check duration
-                if (time.monotonic() - start) >= max_duration:
-                    break
-        finally:
-
-            # Ensure the subprocess is terminated
-            proc.kill()
-            # Wait for killed subprocess
-            try:
-                proc.wait(timeout=1)
-            except Exception:
-                pass
-
-        # Spin
-        rclpy.spin_once(node, timeout_sec=0.1)
-
-        # Return as a string.
-        return "\n".join(lines)
 
     #2-3
-    async def run_streaming_cmd_async(
-        self, node, console,
-        base_args: List[str],
-        max_duration: float,
-        max_lines: Optional[int] = None,
-        echo: bool = True
-    ) -> str:
-        
+    async def run_streaming_cmd_async(self, console, args: List[str],
+            max_duration: float = 60,
+            max_lines: int = 1000,
+            echo: bool = True) -> str:
 
-        console._log("\n turtlesim_tool. run() -> launcher -> run_streaming_cmd_async")
-        console._log(threading.current_thread())
-        console._log(threading.current_thread().name)
 
-        """from vulcanai.console.utils import StreamToTextual
+        # Unpack the command
+        cmd, *cmd_args = args
 
-        # Disable terminal input
-        sys.stdout = StreamToTextual(console, "stdout")
-        sys.stderr = StreamToTextual(console, "stderr")"""
-
+        # Create the subprocess
         process = await asyncio.create_subprocess_exec(
-            "ros2", "topic", "echo", "/turtle1/pose",
+            cmd,
+            *cmd_args,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
         )
 
         assert process.stdout is not None
 
-        with open("/home/danny/eProsima/ARISE/workspace_console_2/output.txt", "w", encoding="utf-8") as f:
-
-            try:
-                console._log("\n turtlesim_tool. run() -> launcher -> run_streaming_cmd_async -> process")
-                console._log(threading.current_thread())
-                console._log(threading.current_thread().name)
-                # Read line by line
-                async for raw_line in process.stdout:
-                    line = raw_line.decode(errors="ignore").rstrip("\n")
-                    #node.get_logger().info(line)
-                    #print(line)
-                    #console._log(line)
-                    f.write(line + "\n")
-
-            except asyncio.CancelledError:
-                # Task was cancelled → stop the subprocess
-                #node.get_logger().info("Cancellation received: terminating subprocess...")
-                #print("Cancellation received: terminating subprocess...")
-                console._log("Cancellation received: terminating subprocess...")
-                process.terminate()
-                raise
-
-            except KeyboardInterrupt:
-                # Ctrl+C pressed → stop subprocess
-                #node.get_logger().info("Ctrl+C received: terminating subprocess...")
-                #print("Ctrl+C received: terminating subprocess...")
-                console._log("Ctrl+C received: terminating subprocess...")
-                process.terminate()
-
-            finally:
-                try:
-                    await asyncio.wait_for(process.wait(), timeout=3.0)
-                except asyncio.TimeoutError:
-                    #node.get_logger().warn("Subprocess didn't exit in time → killing it.")
-                    #print("Subprocess didn't exit in time → killing it.")
-                    console._log("Subprocess didn't exit in time → killing it.")
-                    process.kill()
-                    await process.wait()
-
-        return "Process stopped due to Ctrl+C"
-
-
-
-
-        """# Help ROS2 (Python) flush output promptly even when not attached to a TTY
-        env = os.environ.copy()
-        env.setdefault("PYTHONUNBUFFERED", "1")
-
-        proc = subprocess.Popen(
-            base_args,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            env=env,
-        )
-
-        lines = []
-        first = True
-        start = time.monotonic()
+        start_time = time.monotonic()
+        line_count = 0
 
         try:
-            assert proc.stdout is not None
+            # Subprocess main loop. Read line by line
+            async for raw_line in process.stdout:
+                line = raw_line.decode(errors="ignore").rstrip("\n")
 
-            for raw_line in proc.stdout:
-                line = raw_line.rstrip("\n")
-                lines.append(line)
-
+                # Print the line
                 if echo:
-                    # TODO. danip
-                    if first:
-                        first = False
-                        print("\n")
-                    print(line)
+                    console._log(line)
 
-                # Check max_lines
-                if len(lines) >= max_lines:
+                # Count the line
+                line_count += 1
+                if max_lines is not None and line_count >= max_lines:
+                    console._log(
+                        f"[yellow]Stopping: [bold]reached max_lines = {max_lines}[/bold][/yellow]"
+                    )
+                    process.terminate()
                     break
+
                 # Check duration
-                if (time.monotonic() - start) >= max_duration:
+                if max_duration and (time.monotonic() - start_time) >= max_duration:
+                    console._log(
+                        f"[yellow]Stopping: [bold]exceeded max_duration = {max_duration}s[/bold] [/yellow]"
+                    )
+                    process.terminate()
                     break
+
+
+        except asyncio.CancelledError:
+            # Task was cancelled → stop the subprocess
+            console._log("[yellow][bold]Cancellation received:[/bold] terminating subprocess...[/yellow]")
+            process.terminate()
+            raise
+        # Not necessary, textual terminal get the keyboard input
+        except KeyboardInterrupt:
+            # Ctrl+C pressed → stop subprocess
+            console._log("[yellow][bold]Ctrl+C received:[/bold] terminating subprocess...[/yellow]")
+            process.terminate()
+
         finally:
-
-            # Ensure the subprocess is terminated
-            proc.kill()
-            # Wait for killed subprocess
             try:
-                proc.wait(timeout=1)
-            except Exception:
-                pass
+                await asyncio.wait_for(process.wait(), timeout=3.0)
+            except asyncio.TimeoutError:
+                console._log("Subprocess didn't exit in time → killing it.", log_color=0)
+                process.kill()
+                await process.wait()
 
-        # Spin
-        rclpy.spin_once(node, timeout_sec=0.1)
-
-        # Return as a string.
-        return "\n".join(lines)"""
+        return "Process stopped due to Ctrl+C"
 
     # endregion
 
@@ -413,27 +292,24 @@ class Ros2TopicTool(AtomicTool):
         node = self.bb.get("main_node", None)
         if node is None:
             raise Exception("Could not find shared node, aborting...")
-        
+
         console = self.bb.get("console", None)
         if console is None:
             raise Exception("Could not find console, aborting...")
-        
-
-        console._log("\n turtlesim_tool. run()")
-        console._log(threading.current_thread())
-        console._log(threading.current_thread().name)
 
         command = kwargs.get("command", None)  # optional explicit subcommand
         topic_name = kwargs.get("topic_name", None)
         msg_type = kwargs.get("msg_type", None)
         # streaming commands variables
-        max_duration = kwargs.get("max_duration", 2.0)
-        max_lines = kwargs.get("max_lines", 50)
+        max_duration = kwargs.get("max_duration", 60.0)
+        max_lines = kwargs.get("max_lines", 1000)
 
         result = {
             "ros2": True,
             "output": None,
         }
+
+        self.stream_task = None
 
         command = command.lower()
 
@@ -484,77 +360,35 @@ class Ros2TopicTool(AtomicTool):
 
             # streaming commands TODO. danip
 
-            """if console.loop == None:
-                # No loop -> top-level / CLI case
-                node.get_logger().info("EMPTY\n\n\n\n\n\n\n\n")
-                stream_task = asyncio.run(self.run_streaming_cmd_async(node, console, ["ros2", "topic", "echo", topic_name],
-                                                                max_duration=max_duration,
-                                                                max_lines=max_lines))
-            else:
-                echo_output = console.loop.create_task(self.run_streaming_cmd_async(node, console, ["ros2", "topic", "echo", topic_name],
-                                                                max_duration=max_duration,
-                                                                max_lines=max_lines))
-
-                def _on_done(task: asyncio.Task):
-                    try:
-                        task.result()
-                    except Exception as e:
-                        # Use console so you see the error in the Textual terminal
-                        #self._log(f"[red]Echo task error:[/red] {e!r}")
-                        node.get_logger().info("ERROR")
-
-                echo_output.add_done_callback(_on_done)"""
-            
-            """
-            try:
-                # Are we already inside an event loop? (e.g. Textual)
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                # No loop -> top-level / CLI case
-                stream_task = asyncio.run(self.run_streaming_cmd_async(node, console, ["ros2", "topic", "echo", topic_name],
-                                                                max_duration=max_duration,
-                                                                max_lines=max_lines))
-            else:
-                # Inside an event loop -> schedule as a task
-                # You probably don't care about the return value here,
-                # you just want streaming side effects.
-                echo_output = loop.create_task(self.run_streaming_cmd_async([node, console, "ros2", "topic", "echo", topic_name],
-                                                                max_duration=max_duration,
-                                                                max_lines=max_lines))
-            """
-
             base_args = ["ros2", "topic", "echo", topic_name]
             def launcher() -> None:
-
-                console._log("\n turtlesim_tool. run() -> launcher")
-                console._log(threading.current_thread())
-                console._log(threading.current_thread().name)
-
                 # This always runs in the Textual event-loop thread
                 loop = asyncio.get_running_loop()
-                stream_task = loop.create_task(
+                self.stream_task = loop.create_task(
                     self.run_streaming_cmd_async(
-                        node,
                         console,
                         base_args,
-                        max_duration=0.0,
-                        max_lines=None,
+                        max_duration=max_duration,
+                        max_lines=max_lines,
                     )
                 )
 
-                # function used to track this launcher function
                 def _on_done(task: asyncio.Task) -> None:
+
+                    if task.cancelled():
+                        # Normal path → don't log as an error
+                        # If you want a message, call UI methods directly here,
+                        # not via console.write (see Fix 2)
+                        return
+
                     try:
                         task.result()
                     except Exception as e:
-                        # IMPORTANT: don't call node.get_logger().info here,
-                        # because your hook uses call_from_thread (see below)
-                        #console.write(f"Echo task error: {e!r}\n")
-                        console._log(f"Echo task error: {e!r}\n")
+                        console._log(f"Echo task error: {e!r}\n", log_color=0)
+                        result["output"] = False
+                        return
 
-                stream_task.add_done_callback(_on_done)
-
-                #return stream_task
+                self.stream_task.add_done_callback(_on_done)
 
             try:
                 # Are we already in the Textual event loop thread?
@@ -562,22 +396,15 @@ class Ros2TopicTool(AtomicTool):
             except RuntimeError:
                 # No loop here → probably ROS thread. Bounce into Textual thread.
                 # `console.app` is your Textual App instance.
-                console.set_stream_task("a")
                 console.app.call_from_thread(launcher)
-                console.set_stream_task("b")
             else:
                 # We *are* in the loop → just launch directly.
-                console.set_stream_task("c")
                 launcher()
-                console.set_stream_task("d")
 
-            
-            console.set_stream_task("e")
 
-            
+            console.set_stream_task(self.stream_task)
 
-            #result["output"] = echo_output
-            #result["output"] = echo_output != None
+            result["output"] = True
 
         # streaming commands TODO. danip
         # -- ros2 topic bw <topic_name> ---------------------------------------
@@ -603,12 +430,12 @@ class Ros2TopicTool(AtomicTool):
             if not topic_name:
                 raise ValueError("`command='delay'` requires `topic_name`.")
 
-            delay_output = self.run_streaming_cmd(node,
+            """delay_output = self.run_streaming_cmd(node,
                 ["ros2", "topic", "delay", topic_name],
                 max_duration=max_duration,
                 max_lines=max_lines,
             )
-            result["output"] = delay_output
+            result["output"] = delay_output"""
 
         # streaming commands TODO. danip
         # -- ros2 topic hz <topic_name> ---------------------------------------
@@ -616,12 +443,12 @@ class Ros2TopicTool(AtomicTool):
             if not topic_name:
                 raise ValueError("`command='hz'` requires `topic_name`.")
 
-            hz_output = self.run_streaming_cmd(node,
+            """hz_output = self.run_streaming_cmd(node,
                 ["ros2", "topic", "hz", topic_name],
                 max_duration=max_duration,
                 max_lines=max_lines,
             )
-            result["output"] = hz_output
+            result["output"] = hz_output"""
 
         # streaming commands TODO. danip
         # -- publisher --------------------------------------------------------

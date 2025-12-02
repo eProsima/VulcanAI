@@ -37,12 +37,7 @@ from vulcanai.console.utils import SpinnerHook
 from vulcanai.console.utils import attach_ros_logger_to_console
 from vulcanai.console.utils import common_prefix
 
-from typing import List, Optional
 from collections import deque
-
-# TODO. remove
-import threading
-
 
 
 class VulcanConsole(App):
@@ -56,7 +51,7 @@ class VulcanConsole(App):
         Binding("ctrl+l", "clear_log", "Clear log"),
         Binding("f2", "show_help", "Show help", priority=True),
         Binding("ctrl+r", "reverse_search", "Reverse search"),
-        Binding("ctrl+c", "stop_stream", "Stop Streaming"),
+        Binding("ctrl+c", "stop_streaming_task", "Stop Streaming"),
     ]
 
     def __init__(self, tools_from_entrypoints: str = "", user_context: str = "", main_node = None,
@@ -79,9 +74,7 @@ class VulcanConsole(App):
         self.commands = None
         self.tab_matches = []
         self.tab_index = 0
-        self.log_lines = []
         self.log_lines_dq = deque(maxlen=500)
-        self.log_lines_limit = []
 
         # terminal qol
         self.history = []
@@ -158,10 +151,6 @@ class VulcanConsole(App):
    \_/ \_,_|_\__\__,_|_||_/_/ \_\___|
 """
 
-        self._log("INIT")
-        self._log(threading.current_thread())
-        self._log(threading.current_thread().name)
-
         #self._log(f"{vulcanai_tittle_std}", log_color=1)
         #self._log(f"")
         self._log(f"{vulcanai_tittle_slant}", log_color=1)
@@ -181,53 +170,12 @@ class VulcanConsole(App):
             yield Static("", id="logcontent")
         yield Input(placeholder="> ", id="cmd")
 
-
-    def add_line_dq(self, input: str, color: str = "") -> None:
-         # Split incoming text into individual lines
-        lines = input.splitlines()
-
-        color_begin = ""
-        color_end = ""
-        if color != "":
-            color_begin = f"[{color}]"
-            color_end = f"[/{color}]"
-
-
-        # Append each line; deque automatically truncates old ones
-
-        with open("/home/danny/eProsima/ARISE/workspace_console_2/output.txt", "a", encoding="utf-8") as f:
-            for line in lines:
-                self.log_lines_dq.append(f"{color_begin}{line}{color_end}")
-                #f.write(line + "\n")
-                f.write(f"{color_begin}{line}{color_end}\n")
-
-    def append_log_text(self, text: str) -> None:
-        """
-        Append text to the logcontent Static.
-        """
-
-        text = text.rstrip("\n")
-        if not text:
-            return
-
-        """self.log_lines.append(text)
-        content = "\n".join(self.log_lines)"""
-        self.add_line_dq(text)
-        content = "\n".join(self.log_lines_dq)
-
-        log_static = self.query_one("#logcontent", Static)
-        log_static.update(content)
-
     async def bootstrap(self, user_input: str="") -> None:
         """
         Function used to print information in runtime execution of a function
         """
 
         def worker(user_input: str="") -> None:
-
-            self._log("\n worker()")
-            self._log(threading.current_thread())
-            self._log(threading.current_thread().name)
 
             # INITIALIZE CODE
             if user_input == "":
@@ -260,10 +208,7 @@ class VulcanConsole(App):
                     pass
 
                 current_path = os.path.dirname(os.path.abspath(__file__))
-
-                #self.manager.register_tools_from_file(f"{current_path}/../tools/default_tools.py")
-                """for name, func in inspect.getmembers(vulcanai.tools.default_tools, inspect.isfunction):
-                    self.manager.register_tool(func)"""
+                self.manager.register_tools_from_file(f"{current_path}/../tools/default_tools.py")
 
                 if self.tools_from_entrypoints != "":
                     self.manager.register_tools_from_entry_points(self.tools_from_entrypoints)
@@ -284,11 +229,6 @@ class VulcanConsole(App):
             else:
                 # Disable terminal input
                 self.set_input_enabled(False)
-
-                # TODO. danip remove
-                """for i in range(1, 500):
-                    self._log(f"Frase: {i}")
-                    time.sleep(0.01)"""
 
                 try:
                     images = []
@@ -317,8 +257,8 @@ class VulcanConsole(App):
                     return
 
         # This is the main thread, here is where the hook is started for queries
-        #if user_input != "":
-        #    self.hooks.on_request_start()
+        if user_input != "":
+            self.hooks.on_request_start()
 
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, lambda: worker(user_input))
@@ -360,82 +300,6 @@ class VulcanConsole(App):
     # endregion
 
     # region Commands
-
-    def set_stream_task(self, input):
-        self._log(input)
-        self.stream_task = input
-
-
-    def action_stop_stream(self):
-        self._log("CTRL+C")
-
-        #self._log("self.stream_task != None -> " + (self.stream_task != None))
-        if self.stream_task and not self.stream_task.done():
-            self._log("TERMINATING...")
-            self.stream_task.cancel()   # ← triggers CancelledError in task
-            self.stream_task = None
-            self._log("TERMINATE")
-
-        else:
-            self._log("NONE")
-
-    async def run_streaming_cmd_async(
-        self, node, console,
-        base_args: List[str],
-        max_duration: float,
-        max_lines: Optional[int] = None,
-        echo: bool = True
-    ) -> str:
-        
-        """from vulcanai.console.utils import StreamToTextual
-
-        # Disable terminal input
-        stdout_stream = StreamToTextual(console, "stdout")
-        stderr_stream = StreamToTextual(console, "stderr")"""
-
-        process = await asyncio.create_subprocess_exec(
-            "ros2", "topic", "echo", "/turtle1/pose",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-        )
-
-        assert process.stdout is not None
-
-        try:
-            # Read line by line
-            async for raw_line in process.stdout:
-                line = raw_line.decode(errors="ignore").rstrip("\n")
-                node.get_logger().info(line)
-                #print(line)
-                #stdout_stream.write(line + "\n")
-
-        except asyncio.CancelledError:
-            # Task was cancelled → stop the subprocess
-            node.get_logger().info("Cancellation received: terminating subprocess...")
-            #print("Cancellation received: terminating subprocess...")
-            #stdout_stream.write("Cancellation received: terminating subprocess...\n")
-            process.terminate()
-            raise
-
-        except KeyboardInterrupt:
-            # Ctrl+C pressed → stop subprocess
-            node.get_logger().info("Ctrl+C received: terminating subprocess...")
-            #print("Ctrl+C received: terminating subprocess...")
-            #stdout_stream.write("Ctrl+C received: terminating subprocess...\n")
-            process.terminate()
-
-        finally:
-            try:
-                await asyncio.wait_for(process.wait(), timeout=3.0)
-            except asyncio.TimeoutError:
-                node.get_logger().warn("Subprocess didn't exit in time → killing it.")
-                #print("Subprocess didn't exit in time → killing it.")
-                #stdout_stream.write("Subprocess didn't exit in time → killing it.")
-                
-                process.kill()
-                await process.wait()
-
-        return "Process stopped due to Ctrl+C"
 
     def cmd_help(self, _) -> None:
         table = "\n".join(
@@ -553,7 +417,6 @@ class VulcanConsole(App):
             self._log("No blackboard available.", log_color=2)
 
     def cmd_clear(self, _) -> None:
-        """self.log_lines.clear()"""
         self.log_lines_dq.clear()
         self.query_one("#logcontent", Static).update("")
 
@@ -567,9 +430,23 @@ class VulcanConsole(App):
 
     # region Logging
 
+    def add_line_dq(self, input: str, color: str = "") -> None:
+         # Split incoming text into individual lines
+        lines = input.splitlines()
+
+        color_begin = ""
+        color_end = ""
+        if color != "":
+            color_begin = f"[{color}]"
+            color_end = f"[/{color}]"
+
+
+        # Append each line; deque automatically truncates old ones
+        for line in lines:
+            self.log_lines_dq.append(f"{color_begin}{line}{color_end}")
+
     def render_log(self) -> None:
         log_static = self.query_one("#logcontent", Static)
-        """log_static.update("\n".join(self.log_lines))"""
         log_static.update("\n".join(self.log_lines_dq))
 
         self.query_one("#logview", VerticalScroll).scroll_end(animate=False)
@@ -606,13 +483,10 @@ class VulcanConsole(App):
             color_type = "#069899"
         else:
             msg += f"{text}"
-            """self.log_lines.append(msg)"""
             self.add_line_dq(msg)
             self.render_log()
             return
 
-        #msg += f"[{color_type}]{text}[/{color_type}]"
-        """self.log_lines.append(msg)"""
         self.add_line_dq(text, color=color_type)
         self.render_log()
 
@@ -875,6 +749,15 @@ class VulcanConsole(App):
             self.tab_matches = []
             self.tab_index = 0
 
+    def set_stream_task(self, input):
+        """
+        Function used in the tools to set the current streaming task.
+        with this variable the user can finish the execution of the
+        task by using the signal "Ctrl + C"
+        """
+
+        self.stream_task = input
+
     # endregion
 
     # region Actions (key bindings)
@@ -889,6 +772,7 @@ class VulcanConsole(App):
 
         self.cmd_help(_=None)
 
+    # Called by Binding("ctrl+r", "reverse_search", ...)
     def action_reverse_search(self) -> None:
         if not self.history:
             return
@@ -905,6 +789,17 @@ class VulcanConsole(App):
             cmd_input.focus()
 
         self.push_screen(ReverseSearchModal(self.history), done)
+
+    # Called by Binding("ctrl+C", "stop_streaming_task", ...)
+    def action_stop_streaming_task(self):
+
+        if self.stream_task != None and not self.stream_task.done():
+            self._log("TERMINATING...")
+            self.stream_task.cancel() # triggers CancelledError in the task
+            self.stream_task = None
+
+        else:
+            self._log("Press (Ctrl+Q) to exit.", log_color=3)
 
 
     # endregion

@@ -21,7 +21,8 @@ class StreamToTextual:
 
         if data.strip():
             # Ensure update happens on the app thread
-            self.app.call_from_thread(self.app.append_log_text, data)
+            #self.app.call_from_thread(self.app.append_log_text, data)
+            self.app.call_from_thread(self.app.add_line_dq, data)
             self.app.render_log()
 
     def flush(self):
@@ -58,9 +59,8 @@ class SpinnerHook:
             return
 
         # Initialized the class variables
-        """self.spinner_line_index = len(self.console.log_lines)"""
-        self.spinner_line_index = len(self.console.log_lines_dq)
         self.console._log(f"[{self.color}]{text}[/{self.color}]")
+        self.spinner_line_index = len(self.console.log_lines_dq) - 1
         self.spinner_frame_index = 0
 
         # Update every 0.1s
@@ -81,14 +81,10 @@ class SpinnerHook:
         self.spinner_frame_index = (self.spinner_frame_index + 1) % len(self.spinner_frames)
 
         # Update that specific line only
-        """self.console.log_lines[self.spinner_line_index] = \
-            f"[{self.update_color}]{frame}[/{self.update_color}] " + \
-            f"[{self.color}]{self.text}[/{self.color}]"
-        """
         self.console.log_lines_dq[self.spinner_line_index] = \
             f"[{self.update_color}]{frame}[/{self.update_color}] " + \
             f"[{self.color}]{self.text}[/{self.color}]"
-        
+
         # Update the terminal
         self.console.render_log()
 
@@ -105,8 +101,8 @@ class SpinnerHook:
 
         # Update the spinner message line
         if self.spinner_line_index is not None:
-            """self.console.log_lines[self.spinner_line_index] += f"[{self.update_color}] Query finished![/{self.update_color}]" """
-            self.console.log_lines_dq[self.spinner_line_index] += f"[{self.update_color}] Query finished![/{self.update_color}]"
+            self.console.log_lines_dq[self.spinner_line_index] += \
+                f"[{self.update_color}] Query finished![/{self.update_color}]"
             self.spinner_line_index = None
             self.console.render_log()
 
