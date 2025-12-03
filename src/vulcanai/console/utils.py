@@ -2,6 +2,17 @@ import sys
 # sipnner
 from textual.timer import Timer
 
+import time
+
+import rclpy
+
+import subprocess
+
+import asyncio
+import os
+from typing import List, Optional
+
+
 class StreamToTextual:
     """
     Class used to redirect the stdout/stderr streams in the textual terminal
@@ -153,3 +164,134 @@ def common_prefix(strings: str) -> str:
             common_prefix = tmp
 
     return common_prefix, commands
+
+async def run_streaming_cmd_async(console, args: List[str],
+        max_duration: float = 60,
+        max_lines: int = 1000,
+        echo: bool = True) -> str:
+
+
+    # Unpack the command
+    cmd, *cmd_args = args
+
+    # Create the subprocess
+    process = await asyncio.create_subprocess_exec(
+        cmd,
+        *cmd_args,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+
+    assert process.stdout is not None
+
+    start_time = time.monotonic()
+    line_count = 0
+
+    try:
+        # Subprocess main loop. Read line by line
+        async for raw_line in process.stdout:
+            line = raw_line.decode(errors="ignore").rstrip("\n")
+
+            # Print the line
+            if echo:
+                console._log(line, subprocess_flag=True)
+
+            # Count the line
+            line_count += 1
+            if max_lines is not None and line_count >= max_lines:
+                console._log(
+                    f"[yellow]Stopping: [bold]reached max_lines = {max_lines}[/bold][/yellow]"
+                )
+                process.terminate()
+                break
+
+            # Check duration
+            if max_duration and (time.monotonic() - start_time) >= max_duration:
+                console._log(
+                    f"[yellow]Stopping: [bold]exceeded max_duration = {max_duration}s[/bold] [/yellow]"
+                )
+                process.terminate()
+                break
+
+
+    except asyncio.CancelledError:
+        # Task was cancelled → stop the subprocess
+        console._log("[yellow][bold]Cancellation received:[/bold] terminating subprocess...[/yellow]")
+        process.terminate()
+        raise
+    # Not necessary, textual terminal get the keyboard input
+    except KeyboardInterrupt:
+        # Ctrl+C pressed → stop subprocess
+        console._log("[yellow][bold]Ctrl+C received:[/bold] terminating subprocess...[/yellow]")
+        process.terminate()
+
+    finally:
+        try:
+            await asyncio.wait_for(process.wait(), timeout=3.0)
+        except asyncio.TimeoutError:
+            console._log("Subprocess didn't exit in time → killing it.", log_color=0)
+            process.kill()
+            await process.wait()
+
+    return "Process stopped due to Ctrl+C"
+
+
+def execute_subprocess(console, base_args, max_duration, max_lines):
+
+    stream_task = None
+
+    def launcher() -> None:
+        nonlocal stream_task
+        # This always runs in the Textual event-loop thread
+        loop = asyncio.get_running_loop()
+        stream_task = loop.create_task(
+            run_streaming_cmd_async(
+                console,
+                base_args,
+                max_duration=max_duration,
+                max_lines=max_lines,
+            )
+        )
+
+        def _on_done(task: asyncio.Task) -> None:
+
+            if task.cancelled():
+                # Normal path → don't log as an error
+                # If you want a message, call UI methods directly here,
+                # not via console.write (see Fix 2)
+                return
+
+            try:
+                task.result()
+            except Exception as e:
+                console._log(f"Echo task error: {e!r}\n", log_color=0)
+                result["output"] = False
+                return
+
+        stream_task.add_done_callback(_on_done)
+
+    try:
+        # Are we already in the Textual event loop thread?
+        asyncio.get_running_loop()
+    except RuntimeError:
+        # No loop here → probably ROS thread. Bounce into Textual thread.
+        # `console.app` is your Textual App instance.
+        console.app.call_from_thread(launcher)
+    else:
+        # We *are* in the loop → just launch directly.
+        launcher()
+
+
+    console.set_stream_task(stream_task)
+
+
+def run_oneshot_cmd(args: List[str]) -> str:
+    try:
+        return subprocess.check_output(
+            args,
+            stderr=subprocess.STDOUT,
+            text=True
+        )
+
+    except subprocess.CalledProcessError as e:
+        raise Exception(f"Failed to run '{' '.join(args)}': {e.output}")

@@ -32,8 +32,10 @@ from typing import List, Optional
 
 import threading
 
+from vulcanai.console.utils import execute_subprocess
+from vulcanai.console.utils import run_oneshot_cmd
+
 """
-TODO
 
 - ros2 node
     Commands:
@@ -201,91 +203,6 @@ class Ros2TopicTool(AtomicTool):
         "output": "string",        # output
     }
 
-    # region utils
-
-    def run_oneshot_cmd(self, args: List[str]) -> str:
-        try:
-            return subprocess.check_output(
-                args,
-                stderr=subprocess.STDOUT,
-                text=True
-            )
-
-        except subprocess.CalledProcessError as e:
-            raise Exception(f"Failed to run '{' '.join(args)}': {e.output}")
-
-    #2-3
-    async def run_streaming_cmd_async(self, console, args: List[str],
-            max_duration: float = 60,
-            max_lines: int = 1000,
-            echo: bool = True) -> str:
-
-
-        # Unpack the command
-        cmd, *cmd_args = args
-
-        # Create the subprocess
-        process = await asyncio.create_subprocess_exec(
-            cmd,
-            *cmd_args,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-        )
-
-        assert process.stdout is not None
-
-        start_time = time.monotonic()
-        line_count = 0
-
-        try:
-            # Subprocess main loop. Read line by line
-            async for raw_line in process.stdout:
-                line = raw_line.decode(errors="ignore").rstrip("\n")
-
-                # Print the line
-                if echo:
-                    console._log(line)
-
-                # Count the line
-                line_count += 1
-                if max_lines is not None and line_count >= max_lines:
-                    console._log(
-                        f"[yellow]Stopping: [bold]reached max_lines = {max_lines}[/bold][/yellow]"
-                    )
-                    process.terminate()
-                    break
-
-                # Check duration
-                if max_duration and (time.monotonic() - start_time) >= max_duration:
-                    console._log(
-                        f"[yellow]Stopping: [bold]exceeded max_duration = {max_duration}s[/bold] [/yellow]"
-                    )
-                    process.terminate()
-                    break
-
-
-        except asyncio.CancelledError:
-            # Task was cancelled → stop the subprocess
-            console._log("[yellow][bold]Cancellation received:[/bold] terminating subprocess...[/yellow]")
-            process.terminate()
-            raise
-        # Not necessary, textual terminal get the keyboard input
-        except KeyboardInterrupt:
-            # Ctrl+C pressed → stop subprocess
-            console._log("[yellow][bold]Ctrl+C received:[/bold] terminating subprocess...[/yellow]")
-            process.terminate()
-
-        finally:
-            try:
-                await asyncio.wait_for(process.wait(), timeout=3.0)
-            except asyncio.TimeoutError:
-                console._log("Subprocess didn't exit in time → killing it.", log_color=0)
-                process.kill()
-                await process.wait()
-
-        return "Process stopped due to Ctrl+C"
-
-    # endregion
 
     def run(self, **kwargs):
         # Get the shared ROS2 node from the blackboard
@@ -309,13 +226,11 @@ class Ros2TopicTool(AtomicTool):
             "output": None,
         }
 
-        self.stream_task = None
-
         command = command.lower()
 
         # -- ros2 topic list --------------------------------------------------
         if command == "list":
-            list_output = self.run_oneshot_cmd(["ros2", "topic", "list"])
+            list_output = run_oneshot_cmd(["ros2", "topic", "list"])
             result["output"] = [line.strip() for line in list_output.splitlines() \
                             if line.strip()]
 
@@ -324,7 +239,7 @@ class Ros2TopicTool(AtomicTool):
             if not topic_name:
                 raise ValueError("`command='info'` requires `topic_name`.")
 
-            info_output = self.run_oneshot_cmd(
+            info_output = run_oneshot_cmd(
                 ["ros2", "topic", "info", topic_name]
             )
             result["output"] = info_output
@@ -334,7 +249,7 @@ class Ros2TopicTool(AtomicTool):
             # ``
             if not msg_type:
                 raise ValueError("`command='find'` requires `msg_type` (ROS type).")
-            find_output = self.run_oneshot_cmd(
+            find_output = run_oneshot_cmd(
                 ["ros2", "topic", "find", msg_type]
             )
             find_topics = [
@@ -347,110 +262,50 @@ class Ros2TopicTool(AtomicTool):
             if not topic_name:
                 raise ValueError("`command='type'` requires `topic_name`.")
 
-            type_output = self.run_oneshot_cmd(
+            type_output = run_oneshot_cmd(
                 ["ros2", "topic", "type", topic_name]
             )
             result["output"] = type_output
 
-        # streaming commands TODO. danip
         # -- ros2 topic echo <topic_name> -------------------------------------
         elif command == "echo":
             if not topic_name:
                 raise ValueError("`command='echo'` requires `topic_name`.")
 
-            # streaming commands TODO. danip
-
             base_args = ["ros2", "topic", "echo", topic_name]
-            def launcher() -> None:
-                # This always runs in the Textual event-loop thread
-                loop = asyncio.get_running_loop()
-                self.stream_task = loop.create_task(
-                    self.run_streaming_cmd_async(
-                        console,
-                        base_args,
-                        max_duration=max_duration,
-                        max_lines=max_lines,
-                    )
-                )
-
-                def _on_done(task: asyncio.Task) -> None:
-
-                    if task.cancelled():
-                        # Normal path → don't log as an error
-                        # If you want a message, call UI methods directly here,
-                        # not via console.write (see Fix 2)
-                        return
-
-                    try:
-                        task.result()
-                    except Exception as e:
-                        console._log(f"Echo task error: {e!r}\n", log_color=0)
-                        result["output"] = False
-                        return
-
-                self.stream_task.add_done_callback(_on_done)
-
-            try:
-                # Are we already in the Textual event loop thread?
-                asyncio.get_running_loop()
-            except RuntimeError:
-                # No loop here → probably ROS thread. Bounce into Textual thread.
-                # `console.app` is your Textual App instance.
-                console.app.call_from_thread(launcher)
-            else:
-                # We *are* in the loop → just launch directly.
-                launcher()
-
-
-            console.set_stream_task(self.stream_task)
+            execute_subprocess(console, base_args, max_duration, max_lines)
 
             result["output"] = True
 
-        # streaming commands TODO. danip
         # -- ros2 topic bw <topic_name> ---------------------------------------
         elif command == "bw":
 
-            subprocess.run(
-                ["ros2", "topic", "bw", "/turtle1/pose"],
-                check=True,
-            )
-            """if not topic_name:
-                raise ValueError("`command='bw'` requires `topic_name`.")
-            bw_output = self.run_streaming_cmd(node,
-                ["ros2", "topic", "bw", topic_name],
-                max_duration=10,
-                max_lines=10,
-            )"""
-            #result["bw_output"] = bw_output
+            base_args = ["ros2", "topic", "bw", topic_name]
+            execute_subprocess(console, base_args, max_duration, max_lines)
+
             result["output"] = True
 
-        # streaming commands TODO. danip
         # delay --------------------------------------------------------------
         elif command == "delay":
             if not topic_name:
                 raise ValueError("`command='delay'` requires `topic_name`.")
 
-            """delay_output = self.run_streaming_cmd(node,
-                ["ros2", "topic", "delay", topic_name],
-                max_duration=max_duration,
-                max_lines=max_lines,
-            )
-            result["output"] = delay_output"""
 
-        # streaming commands TODO. danip
+            base_args = ["ros2", "topic", "delay", topic_name]
+            execute_subprocess(console, base_args, max_duration, max_lines)
+
+            result["output"] = True
+
         # -- ros2 topic hz <topic_name> ---------------------------------------
         elif command == "hz":
             if not topic_name:
                 raise ValueError("`command='hz'` requires `topic_name`.")
 
-            """hz_output = self.run_streaming_cmd(node,
-                ["ros2", "topic", "hz", topic_name],
-                max_duration=max_duration,
-                max_lines=max_lines,
-            )
-            result["output"] = hz_output"""
+            base_args = ["ros2", "topic", "hz", topic_name]
+            execute_subprocess(console, base_args, max_duration, max_lines)
 
-        # streaming commands TODO. danip
+            result["output"] = True
+
         # -- publisher --------------------------------------------------------
         elif command == "pub":
             # One-shot publish using `-1`
@@ -461,11 +316,19 @@ class Ros2TopicTool(AtomicTool):
             if not msg_type:
                 raise ValueError("`command='pub'` requires `msg_type`.")
 
-            # only send 1
-            pub_output = self.run_oneshot_cmd(
+            """# only send 1
+            pub_output = run_oneshot_cmd(
                 ["ros2", "topic", "pub", "-1", topic_name, msg_type]
             )
-            result["output"] = pub_output
+            result["output"] = pub_output"""
+
+            # TODO. expand publisher options?
+
+            base_args = ["ros2", "topic", "pub", topic_name, msg_type]
+            execute_subprocess(console, base_args, max_duration, max_lines)
+
+            result["output"] = True
+
         else:
             raise ValueError(
                 f"Unknown command '{command}'. "
@@ -500,69 +363,16 @@ class Ros2ServiceTool(AtomicTool):
         "output": "string",           # `ros2 service list`
     }
 
-    # region utils
-
-    def run_oneshot_cmd(self, args: List[str]) -> str:
-        try:
-            return subprocess.check_output(
-                args,
-                stderr=subprocess.STDOUT,
-                text=True
-            )
-        except subprocess.CalledProcessError as e:
-            raise Exception(f"Failed to run '{' '.join(args)}': {e.output}")
-
-    def run_streaming_cmd(
-        self,
-        base_args: List[str],
-        max_duration: float,
-        max_lines: Optional[int] = None,
-    ) -> str:
-        """
-        Run a streaming `ros2 service` command (currently used for `echo`) for at most
-        `max_duration` seconds and optionally stop after `max_lines` lines.
-        """
-        proc = subprocess.Popen(
-            base_args,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,  # line-buffered
-        )
-
-        lines: List[str] = []
-        try:
-            import time
-            start = time.time()
-
-            while True:
-                if max_duration is not None and (time.time() - start) > max_duration:
-                    break
-
-                line = proc.stdout.readline()
-                if not line:
-                    break  # process ended
-
-                lines.append(line.rstrip("\n"))
-                if max_lines is not None and len(lines) >= max_lines:
-                    break
-
-            if proc.poll() is None:
-                proc.kill()
-                proc.wait()
-        finally:
-            if proc.stdout and not proc.stdout.closed:
-                proc.stdout.close()
-
-        return "\n".join(lines)
-
-    # endregion
-
+    
     def run(self, **kwargs):
         # Get the shared ROS2 node from the blackboard
         node = self.bb.get("main_node", None)
         if node is None:
             raise Exception("Could not find shared node, aborting...")
+
+        console = self.bb.get("console", None)
+        if console is None:
+            raise Exception("Could not find console, aborting...")
 
         command = kwargs.get("command", None)
         service_name = kwargs.get("service_name", None)
@@ -578,44 +388,11 @@ class Ros2ServiceTool(AtomicTool):
             "output": None,
         }
 
-        # Backwards-compatible mode: no `command` specified
-        # TODO. danip
-        """if command is None:
-            # Original behavior:
-            # - if service_name: info + type
-            # - if call=True: call service using inferred type
-            if service_name:
-                # info
-                info_output = self.run_oneshot_cmd(
-                    ["ros2", "service", "info", service_name]
-                )
-                result["info"] = info_output
-
-                # type
-                type_output = self.run_oneshot_cmd(
-                    ["ros2", "service", "type", service_name]
-                )
-                detected_type = type_output.strip()
-                result["type"] = detected_type
-
-                # optional call
-                if do_call:
-                    if call_args is None:
-                        raise ValueError(
-                            "Backward-compatible `call=True` requires `args`."
-                        )
-                    call_output = self.run_oneshot_cmd(
-                        ["ros2", "service", "call", service_name, detected_type, call_args]
-                    )
-                    result["call_output"] = call_output
-
-            return result"""
-
         command = command.lower()
 
         # -- ros2 service list ------------------------------------------------
         if command == "list":
-            list_output = self.run_oneshot_cmd(["ros2", "service", "list"])
+            list_output = run_oneshot_cmd(["ros2", "service", "list"])
             result["output"] = list_output
 
         # -- ros2 service info <service_name> ---------------------------------
@@ -623,7 +400,7 @@ class Ros2ServiceTool(AtomicTool):
             if not service_name:
                 raise ValueError("`command='info'` requires `service_name`.")
 
-            info_output = self.run_oneshot_cmd(
+            info_output = run_oneshot_cmd(
                 ["ros2", "service", "info", service_name]
             )
 
@@ -634,7 +411,7 @@ class Ros2ServiceTool(AtomicTool):
             if not service_name:
                 raise ValueError("`command='type'` requires `service_name`.")
 
-            type_output = self.run_oneshot_cmd(
+            type_output = run_oneshot_cmd(
                 ["ros2", "service", "type", service_name]
             )
 
@@ -645,13 +422,13 @@ class Ros2ServiceTool(AtomicTool):
             if not service_type:
                 raise ValueError("`command='find'` requires `service_type`.")
 
-            find_output = self.run_oneshot_cmd(
+            find_output = run_oneshot_cmd(
                 ["ros2", "service", "find", service_type]
             )
 
             result["output"] = find_output
 
-        # call ---------------------------------------------------------------
+        # -- ros2 service call service_name service_type ----------------------
         elif command == "call":
             if not service_name:
                 raise ValueError("`command='call'` requires `service_name`.")
@@ -660,29 +437,26 @@ class Ros2ServiceTool(AtomicTool):
 
             # If service_type not given, detect it
             if not service_type:
-                type_output = self.run_oneshot_cmd(
+                type_output = run_oneshot_cmd(
                     ["ros2", "service", "type", service_name]
                 )
                 service_type = type_output.strip()
 
-            call_output = self.run_oneshot_cmd(
+            call_output = run_oneshot_cmd(
                 ["ros2", "service", "call", service_name, service_type, call_args]
             )
 
             result["output"] = call_output
 
-        # streaming commands TODO. danip
-        # echo ---------------------------------------------------------------
+        # -- ros2 service echo service_name -----------------------------------
         elif command == "echo":
             if not service_name:
                 raise ValueError("`command='echo'` requires `service_name`.")
 
-            echo_output = self.run_streaming_cmd(
-                ["ros2", "service", "echo", service_name],
-                max_duration=max_duration,
-                max_lines=max_lines,
-            )
-            result["echo_output"] = echo_output
+            base_args = ["ros2", "service", "echo", service_name]
+            execute_subprocess(console, base_args, max_duration, max_lines)
+
+            result["output"] = echo_output
 
         # -- unknown ------------------------------------------------------------
         else:
@@ -718,19 +492,7 @@ class Ros2ActionTool(AtomicTool):
         "output": "string",  # `ros2 action list`
     }
 
-    # regin utils
 
-    def run_oneshot_cmd(self, args: List[str]) -> str:
-        try:
-            return subprocess.check_output(
-                args,
-                stderr=subprocess.STDOUT,
-                text=True
-            )
-        except subprocess.CalledProcessError as e:
-            raise Exception(f"Failed to run '{' '.join(args)}': {e.output}")
-
-    # endregion
 
     def run(self, **kwargs):
         # Get the shared ROS2 node from the blackboard
@@ -750,49 +512,11 @@ class Ros2ActionTool(AtomicTool):
             "output": None,
         }
 
-        # Backwards-compatible mode: no `command` specified
-        # TODO. danip
-        """if command is None:
-            # Original behavior:
-            # - if action_name: info + type
-            # - if send_goal=True: send goal (using detected type) and optionally wait for result
-            if action_name:
-                # info
-                info_output = self.run_oneshot_cmd(
-                    ["ros2", "action", "info", action_name]
-                )
-                result["info"] = info_output
-
-                # type
-                type_output = self.run_oneshot_cmd(
-                    ["ros2", "action", "type", action_name]
-                )
-                detected_type = type_output.strip()
-                result["type"] = detected_type
-                action_type = detected_type  # reuse below if send_goal=True
-
-                # optional goal
-                if do_send_goal:
-                    if goal_args is None:
-                        raise ValueError(
-                            "Backward-compatible `send_goal=True` requires `args`."
-                        )
-
-                    args_list = ["ros2", "action", "send_goal"]
-                    if wait_for_result:
-                        args_list.append("--result")
-                    args_list.extend([action_name, action_type, goal_args])
-
-                    goal_output = self.run_oneshot_cmd(args_list)
-                    result["goal_output"] = goal_output
-
-            return result"""
-
         command = command.lower()
 
         # -- ros2 action list -------------------------------------------------
         if command == "list":
-            list_output = self.run_oneshot_cmd(["ros2", "action", "list"])
+            list_output = run_oneshot_cmd(["ros2", "action", "list"])
             result["output"] = list_output
 
         # -- ros2 action info <action_name> -----------------------------------
@@ -800,7 +524,7 @@ class Ros2ActionTool(AtomicTool):
             if not action_name:
                 raise ValueError("`command='info'` requires `action_name`.")
 
-            info_output = self.run_oneshot_cmd(
+            info_output = run_oneshot_cmd(
                 ["ros2", "action", "info", action_name]
             )
             result["output"] = info_output
@@ -809,7 +533,7 @@ class Ros2ActionTool(AtomicTool):
         elif command == "type":
             if not action_name:
                 raise ValueError("`command='type'` requires `action_name`.")
-            type_output = self.run_oneshot_cmd(
+            type_output = run_oneshot_cmd(
                 ["ros2", "action", "type", action_name]
             )
 
@@ -824,7 +548,7 @@ class Ros2ActionTool(AtomicTool):
 
             # Use explicit type if provided, otherwise detect it
             if not action_type:
-                type_output = self.run_oneshot_cmd(
+                type_output = run_oneshot_cmd(
                     ["ros2", "action", "type", action_name]
                 )
                 action_type = type_output.strip()
@@ -834,7 +558,7 @@ class Ros2ActionTool(AtomicTool):
                 args_list.append("--result")
             args_list.extend([action_name, action_type, goal_args])
 
-            goal_output = self.run_oneshot_cmd(args_list)
+            goal_output = run_oneshot_cmd(args_list)
             """result["goal_output"] = goal_output
             result["type"] = action_type"""
             result["output"] = goal_output
@@ -874,19 +598,7 @@ class Ros2ParamTool(AtomicTool):
         "output": "string",
     }
 
-    # region utils
-    def run_oneshot_cmd(self, args: List[str]) -> str:
-        try:
-            return subprocess.check_output(
-                args,
-                stderr=subprocess.STDOUT,
-                text=True
-            )
 
-        except subprocess.CalledProcessError as e:
-            raise Exception(f"Failed to run '{' '.join(args)}': {e.output}")
-
-    # endregion
 
     def run(self, **kwargs):
         # Get the shared ROS2 node from the blackboard
@@ -905,34 +617,6 @@ class Ros2ParamTool(AtomicTool):
             "output": None,
         }
 
-        # Backwards-compatible mode: no `command` specified
-        # TODO. danip
-        """if command is None:
-            # Old behavior was just param list; we extend it slightly:
-            # - If node + param => get + describe
-            # - If set_value provided => set
-            if node and param:
-                # get
-                get_output = self.run_oneshot_cmd(
-                    ["ros2", "param", "get", node, param]
-                )
-                result["get_output"] = get_output
-
-                # describe
-                describe_output = self.run_oneshot_cmd(
-                    ["ros2", "param", "describe", node, param]
-                )
-                result["describe_output"] = describe_output
-
-                # optional set
-                if set_value is not None:
-                    set_output = self.run_oneshot_cmd(
-                        ["ros2", "param", "set", node, param, set_value]
-                    )
-                    result["set_output"] = set_output
-
-            return result"""
-
         command = command.lower()
 
         # -- ros2 param list` -------------------------------------------------
@@ -943,7 +627,7 @@ class Ros2ParamTool(AtomicTool):
                 else:
                     list_cmd = ["ros2", "param", "list"]
 
-                list_output = self.run_oneshot_cmd(list_cmd)
+                list_output = run_oneshot_cmd(list_cmd)
                 result["output"] = list_output
 
             except Exception as e:
@@ -954,7 +638,7 @@ class Ros2ParamTool(AtomicTool):
             if not node or not param:
                 raise ValueError("`command='get'` requires `node_name` and `param_name`.")
 
-            get_output = self.run_oneshot_cmd(
+            get_output = run_oneshot_cmd(
                 ["ros2", "param", "get", node, param]
             )
 
@@ -965,7 +649,7 @@ class Ros2ParamTool(AtomicTool):
             if not node or not param:
                 raise ValueError("`command='describe'` requires `node_name` and `param_name`.")
 
-            describe_output = self.run_oneshot_cmd(
+            describe_output = run_oneshot_cmd(
                 ["ros2", "param", "describe", node, param]
             )
 
@@ -978,7 +662,7 @@ class Ros2ParamTool(AtomicTool):
             if set_value is None:
                 raise ValueError("`command='set'` requires `set_value`.")
 
-            set_output = self.run_oneshot_cmd(
+            set_output = run_oneshot_cmd(
                 ["ros2", "param", "set", node, param, set_value]
             )
 
@@ -989,7 +673,7 @@ class Ros2ParamTool(AtomicTool):
             if not node or not param:
                 raise ValueError("`command='delete'` requires `node_name` and `param_name`.")
 
-            delete_output = self.run_oneshot_cmd(
+            delete_output = run_oneshot_cmd(
                 ["ros2", "param", "delete", node, param]
             )
 
@@ -1004,26 +688,26 @@ class Ros2ParamTool(AtomicTool):
             # - If file_path given, write to file with --output-file
             # - Otherwise, capture YAML from stdout
             if file_path:
-                dump_output = self.run_oneshot_cmd(
+                dump_output = run_oneshot_cmd(
                     ["ros2", "param", "dump", node, "--output-file", file_path]
                 )
 
                 # CLI usually prints a line like "Saved parameters to file..."
                 # so we just expose that.
-                result["dump_output"] = dump_output or f"Dumped parameters to {file_path}"
+                result["output"] = dump_output or f"Dumped parameters to {file_path}"
             else:
-                dump_output = self.run_oneshot_cmd(
+                dump_output = run_oneshot_cmd(
                     ["ros2", "param", "dump", node]
                 )
 
-                result["dump_output"] = dump_output
+                result["output"] = dump_output
 
         # -- ros2 param load <node> <file_path> -------------------------------
         elif command == "load":
             if not node or not file_path:
                 raise ValueError("`command='load'` requires `node_name` and `file_path`.")
 
-            load_output = self.run_oneshot_cmd(
+            load_output = run_oneshot_cmd(
                 ["ros2", "param", "load", node, file_path]
             )
 
