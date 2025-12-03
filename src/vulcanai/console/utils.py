@@ -22,7 +22,11 @@ import threading
 import time
 
 from textual.markup import escape  # To remove potential errors in textual terminal
-
+# sipnner
+from textual.timer import Timer
+import rclpy
+import os
+from typing import List, Optional
 
 class SpinnerHook:
     """
@@ -65,6 +69,23 @@ class StreamToTextual:
     def flush(self):
         self.real_stream.flush()
 
+
+
+class SpinnerHook:
+    """
+    Single entrant spinner controller for console.
+    - Starts the spinner on the LLM request.
+    - Stops the spinner when LLM request is over.
+    """
+
+    def __init__(self, spinner_status):
+        self.spinner_status = spinner_status
+
+    def on_request_start(self, text="Querying LLM..."):
+        self.spinner_status.start(text)
+
+    def on_request_end(self):
+        self.spinner_status.stop()
 
 def attach_ros_logger_to_console(console):
     """
@@ -157,10 +178,10 @@ def common_prefix(strings: str) -> str:
 
     return common_prefix, commands
 
-
 async def run_streaming_cmd_async(
     console, args: list[str], max_duration: float = 60, max_lines: int = 1000, echo: bool = True, tool_name=""
 ) -> str:
+
     # Unpack the command
     cmd, *cmd_args = args
 
@@ -230,6 +251,7 @@ def execute_subprocess(console, tool_name, base_args, max_duration, max_lines):
     stream_task = None
 
     def _launcher() -> None:
+
         nonlocal stream_task
         # This always runs in the Textual event-loop thread
         loop = asyncio.get_running_loop()
