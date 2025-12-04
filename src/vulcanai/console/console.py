@@ -34,6 +34,10 @@ from vulcanai.console.utils import SpinnerHook, StreamToTextual, attach_ros_logg
 from vulcanai.console.widget_custom_log_text_area import CustomLogTextArea
 from vulcanai.console.widget_spinner import SpinnerStatus
 
+from vulcanai.console.logger import VulcanAILogger
+
+import asyncio
+
 
 class TextualLogSink:
     """A default console that prints to standard output."""
@@ -160,6 +164,27 @@ class VulcanConsole(App):
         self.tab_matches = []
         # Current index in the tab matches
         self.tab_index = 0
+        current_path = os.path.dirname(os.path.abspath(__file__))
+        self.manager.register_tools_from_file(f"{current_path}/../tools/default_tools.py")
+
+        self.manager.bb["console"] = self
+        self.logger = VulcanAILogger.log_manager
+        self.stream_task = None
+
+        #self.loop = asyncio.get_running_loop()
+
+    def set_stream_task(self, input_stream):
+        """
+        Function used in the tools to set the current streaming task.
+        with this variable the user can finish the execution of the
+        task by using the signal "Ctrl + C"
+        """
+
+        self.stream_task = input_stream
+
+    def run(self):
+        self.print("VulcanAI Interactive Console")
+        self.print("Type 'exit' to quit.\n")
 
         # Terminal qol
         self.history = []
@@ -352,8 +377,11 @@ class VulcanConsole(App):
                 self.logger.log_console(f"Output of plan: {bb_ret}")
 
             except KeyboardInterrupt:
-                self.logger.log_msg("<yellow>Exiting...</yellow>")
-                return
+                if self.stream_task == None:
+                    self.logger.log_msg("<yellow>Exiting...</yellow>")
+                else:
+                    self.stream_task.cancel() # triggers CancelledError in the task
+                    self.stream_task = None
             except EOFError:
                 self.logger.log_msg("<yellow>Exiting...</yellow>")
                 return

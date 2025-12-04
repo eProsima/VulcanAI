@@ -141,8 +141,7 @@ async def run_streaming_cmd_async(
             if echo:
                 line_processed = escape(line)
                 console.add_line(line_processed)
-
-            # Count the line
+       # Count the line
             line_count += 1
             if max_lines is not None and line_count >= max_lines:
                 console.logger.log_tool(f"[tool]Stopping:[/tool] Reached max_lines = {max_lines}", tool_name=tool_name)
@@ -168,8 +167,6 @@ async def run_streaming_cmd_async(
     except KeyboardInterrupt:
         # Ctrl+C pressed → stop subprocess
         console.logger.log_tool("[tool]Ctrl+C received:[/tool] terminating subprocess...", tool_name=tool_name)
-        process.terminate()
-
     finally:
         try:
             await asyncio.wait_for(process.wait(), timeout=3.0)
@@ -185,7 +182,6 @@ def execute_subprocess(console, tool_name, base_args, max_duration, max_lines):
     stream_task = None
 
     def _launcher() -> None:
-
         nonlocal stream_task
         # This always runs in the Textual event-loop thread
         loop = asyncio.get_running_loop()
