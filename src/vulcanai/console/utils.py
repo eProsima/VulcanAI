@@ -27,6 +27,7 @@ from textual.timer import Timer
 import rclpy
 import os
 from typing import List, Optional
+import threading
 
 class SpinnerHook:
     """
@@ -146,7 +147,6 @@ def attach_ros_logger_to_console(console):
     RcutilsLogger.log = patched_log
     RcutilsLogger._textual_patched = True
 
-
 # endregion
 
 # region TEXTUAL
@@ -181,7 +181,6 @@ def common_prefix(strings: str) -> str:
 async def run_streaming_cmd_async(
     console, args: list[str], max_duration: float = 60, max_lines: int = 1000, echo: bool = True, tool_name=""
 ) -> str:
-
     # Unpack the command
     cmd, *cmd_args = args
 
