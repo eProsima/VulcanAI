@@ -1,17 +1,32 @@
-import sys
-# sipnner
-from textual.timer import Timer
+# Copyright 2025 Proyectos y Sistemas de Mantenimiento SL (eProsima).
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-import time
-
-import rclpy
-
-import subprocess
 
 import asyncio
-import os
-from typing import List, Optional
+import subprocess
+import sys
+import time
+# To remove possible errors in textual terminal
+# Subscribed to [/turtle1/pose] -> Subscribed to \[/turtle1/pose]
+from textual.markup import escape
+from textual.timer import Timer
 
+
+import heapq
+import difflib
+
+color_tool = "#EB921E"
 
 class StreamToTextual:
     """
@@ -165,10 +180,11 @@ def common_prefix(strings: str) -> str:
 
     return common_prefix, commands
 
-async def run_streaming_cmd_async(console, args: List[str],
+async def run_streaming_cmd_async(console, args: list[str],
         max_duration: float = 60,
         max_lines: int = 1000,
-        echo: bool = True) -> str:
+        echo: bool = True,
+        print_header="") -> str:
 
 
     # Unpack the command
@@ -194,53 +210,57 @@ async def run_streaming_cmd_async(console, args: List[str],
 
             # Print the line
             if echo:
-                console._log(line, subprocess_flag=True)
+                line_processed = escape(line)
+                console._log(line_processed)#, subprocess_flag=True)
 
             # Count the line
             line_count += 1
             if max_lines is not None and line_count >= max_lines:
-                console._log(
+                console._log(f"{print_header} " + \
                     f"[yellow]Stopping: [bold]reached max_lines = {max_lines}[/bold][/yellow]"
                 )
+                console.set_stream_task(None)
                 process.terminate()
                 break
 
             # Check duration
             if max_duration and (time.monotonic() - start_time) >= max_duration:
-                console._log(
+                console._log(f"{print_header} " + \
                     f"[yellow]Stopping: [bold]exceeded max_duration = {max_duration}s[/bold] [/yellow]"
                 )
+                console.set_stream_task(None)
                 process.terminate()
                 break
 
 
     except asyncio.CancelledError:
         # Task was cancelled → stop the subprocess
-        console._log("[yellow][bold]Cancellation received:[/bold] terminating subprocess...[/yellow]")
+        console._log(f"{print_header} [yellow][bold]Cancellation received:[/bold] terminating subprocess...[/yellow]")
         process.terminate()
         raise
     # Not necessary, textual terminal get the keyboard input
     except KeyboardInterrupt:
         # Ctrl+C pressed → stop subprocess
-        console._log("[yellow][bold]Ctrl+C received:[/bold] terminating subprocess...[/yellow]")
+        console._log(f"{print_header} [yellow][bold]Ctrl+C received:[/bold] terminating subprocess...[/yellow]")
         process.terminate()
 
     finally:
         try:
             await asyncio.wait_for(process.wait(), timeout=3.0)
         except asyncio.TimeoutError:
-            console._log("Subprocess didn't exit in time → killing it.", log_color=0)
+            console._log(f"{print_header} Subprocess didn't exit in time → killing it.", log_color=0)
             process.kill()
             await process.wait()
 
     return "Process stopped due to Ctrl+C"
 
 
-def execute_subprocess(console, base_args, max_duration, max_lines):
+def execute_subprocess(console, tool_name, base_args, max_duration, max_lines):
 
     stream_task = None
+    tool_header_str = f"[bold {color_tool}]\[TOOL [italic]{tool_name}[/italic]][/bold {color_tool}]"
 
-    def launcher() -> None:
+    def _launcher() -> None:
         nonlocal stream_task
         # This always runs in the Textual event-loop thread
         loop = asyncio.get_running_loop()
@@ -250,6 +270,7 @@ def execute_subprocess(console, base_args, max_duration, max_lines):
                 base_args,
                 max_duration=max_duration,
                 max_lines=max_lines,
+                print_header=tool_header_str
             )
         )
 
@@ -265,7 +286,7 @@ def execute_subprocess(console, base_args, max_duration, max_lines):
                 task.result()
             except Exception as e:
                 console._log(f"Echo task error: {e!r}\n", log_color=0)
-                result["output"] = False
+                #result["output"] = False
                 return
 
         stream_task.add_done_callback(_on_done)
@@ -276,16 +297,16 @@ def execute_subprocess(console, base_args, max_duration, max_lines):
     except RuntimeError:
         # No loop here → probably ROS thread. Bounce into Textual thread.
         # `console.app` is your Textual App instance.
-        console.app.call_from_thread(launcher)
+        console.app.call_from_thread(_launcher)
     else:
         # We *are* in the loop → just launch directly.
-        launcher()
+        _launcher()
 
 
     console.set_stream_task(stream_task)
+    console._log(f"{tool_header_str} [yellow][bold]Subprocess created![/bold][/yellow]")
 
-
-def run_oneshot_cmd(args: List[str]) -> str:
+def run_oneshot_cmd(args: list[str]) -> str:
     try:
         return subprocess.check_output(
             args,
@@ -295,3 +316,85 @@ def run_oneshot_cmd(args: List[str]) -> str:
 
     except subprocess.CalledProcessError as e:
         raise Exception(f"Failed to run '{' '.join(args)}': {e.output}")
+
+
+def suggest_string(console, tool_name, string_name, input_string, real_string_list):
+
+    ret = None
+
+    def _similarity(a: str, b: str) -> float:
+        """Return a similarity score between 0 and 1."""
+        return difflib.SequenceMatcher(None, a, b).ratio()
+
+    def _get_suggestions(real_string_list_comp: list[str], string_comp: str) -> tuple[str, list[str]]:
+        """
+        Function used to search for the most "similar" string in a list.
+
+        Used in ROS2 cli commands to used the "simmilar" in case
+        the queried topic does not exists.
+
+        Example:
+        real_string_list_comp = [
+            "/parameter_events",
+            "/rosout",
+            "/turtle1/cmd_vel",
+            "/turtle1/color_sensor",
+            "/turtle1/pose",
+        ]
+        string_comp = "trtle1"
+
+        @return
+            str: the most "similar" string
+            list[str] a sorted list by a similitud value
+        """
+
+        topic_list_pq = []
+        n = len(string_comp)
+
+        for string in real_string_list_comp:
+            m = len(string)
+            # Calculate the similitud
+            score = _similarity(string_comp, string)
+            # Give more value for the nearest size comparations.
+            score -= abs(n - m) * 0.005
+            # Max-heap (via negative score)
+            heapq.heappush(topic_list_pq, (-score, string))
+
+        # Pop ordered list
+        ret_list: list[str] = []
+        _, most_topic_similar = heapq.heappop(topic_list_pq)
+
+        ret_list.append(most_topic_similar)
+
+        while topic_list_pq:
+            _ , topic = heapq.heappop(topic_list_pq)
+            ret_list.append(topic)
+
+        return most_topic_similar, ret_list
+
+    if input_string not in real_string_list:
+
+        tool_header_str = f"[bold {color_tool}]\[TOOL [italic]{tool_name}[/italic]][/bold {color_tool}]"
+
+        console._log(f"{tool_header_str} {string_name}: \"{input_string}\" does not exists")
+
+        # Get the suggestions list sorted by similitud value
+        _, topic_sim_list = _get_suggestions(real_string_list, input_string)
+
+        # Open the ModalScreen
+        console.open_radiolist(topic_sim_list, f" {tool_name}")
+
+        # Wait for the user to select and item in the
+        # RadioList ModalScreen
+        while console.suggestion_index == -1:
+            time.sleep(0.01)
+
+        # Check if the user cancelled the suggestion
+        if console.suggestion_index >= 0:
+            ret = topic_sim_list[console.suggestion_index]
+
+        # Reset suggestion index
+        console.suggestion_index = -1
+
+    return ret
+

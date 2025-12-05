@@ -347,6 +347,8 @@ class PlanExecutor:
 
             if isinstance(result, dict):
                 for key, value in result.items():
+                    if key == "ros2":
+                        continue
                     self.logger(f"[bold]{key}[/bold]")
                     self.logger(value)
             else:

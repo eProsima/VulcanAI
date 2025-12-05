@@ -1,5 +1,5 @@
 from textual.app import ComposeResult
-from textual.widgets import Input, Checkbox, Button, Label
+from textual.widgets import Input, Checkbox, Button, Label, RadioSet, RadioButton
 from textual import events
 from textual.containers import VerticalScroll, Horizontal, Vertical, Container
 
@@ -197,3 +197,75 @@ class CheckListModal(ModalScreen[list[str] | None]):
     def on_mount(self) -> None:
         first_cb = self.query_one(Checkbox)
         self.set_focus(first_cb)
+
+
+
+
+class RadioListModal(ModalScreen[str | None]):
+
+    CSS = """
+    RadioListModal {
+        align: center middle;
+    }
+
+    .dialog {
+        width: 60%;
+        max-width: 90%;
+        height: 40%;
+        border: round $accent;
+        padding: 1 2;
+        background: $panel;
+    }
+
+    .title {
+        text-align: center;
+        margin-bottom: 1;
+    }
+
+    .radio-list {
+        height: 1fr;
+    }
+
+    .btns {
+        height: 3;
+        padding-top: 1;
+        content-align: right middle;
+    }
+    """
+
+    def __init__(self, lines: list[str], default_index: int = 0) -> None:
+        super().__init__()
+        self.lines = lines
+        self.default_index = default_index
+
+    def compose(self) -> ComposeResult:
+        with Vertical(classes="dialog"):
+            yield Label("Pick one option", classes="title")
+
+            # One-select radio list
+            with VerticalScroll(classes="radio-list"):
+                with RadioSet(id="radio-set"):
+                    for i, line in enumerate(self.lines):
+                        yield RadioButton(
+                            line,
+                            id=f"rb{i}",
+                            value=(i == self.default_index)
+                        )
+
+            # Buttons
+            with Horizontal(classes="btns"):
+                yield Button("Cancel", variant="default", id="cancel")
+                yield Button("Submit", variant="primary", id="submit")
+
+    def on_mount(self) -> None:
+        first_rb = self.query_one(RadioButton)
+        self.set_focus(first_rb)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "submit":
+            radioset = self.query_one("#radio-set", RadioSet)
+            selected = radioset.pressed_index
+            if selected != None:
+                self.dismiss(selected)
+        else:
+            self.dismiss(None)

@@ -31,14 +31,16 @@ import asyncio
 import pyperclip
 
 from vulcanai.console.modal_screens import ReverseSearchModal
-from vulcanai.console.modal_screens import CheckListModal
+from vulcanai.console.modal_screens import CheckListModal, RadioListModal
 from vulcanai.console.utils import SpinnerHook
 
 from vulcanai.console.utils import attach_ros_logger_to_console
 from vulcanai.console.utils import common_prefix
 
 from collections import deque
-
+# used to remove possible errors in textual terminal
+# Subscribed to [/turtle1/pose] -> Subscribed to \[/turtle1/pose]
+from textual.markup import escape
 
 class VulcanConsole(App):
 
@@ -80,6 +82,19 @@ class VulcanConsole(App):
         self.history = []
 
         self.stream_task = None
+        self.suggestion_index = -1
+
+    from textual.events import MouseEvent
+
+    async def on_mouse_down(self, event: MouseEvent) -> None:
+        """
+        Function used to paste the string for the user clipboard
+        """
+
+        if event.button == 2:  # Middle click
+            await self._paste_clipboard()
+            event.prevent_default()
+            event.stop()
 
     async def on_mount(self) -> None:
         from vulcanai.console.utils import StreamToTextual
@@ -297,6 +312,40 @@ class VulcanConsole(App):
                     if self.manager.registry.deactivate_tool(tool):
                         self._log(f"Deactivated tool [bold]'{tool}'[/bold]", log_color=2)
 
+    def open_radiolist(self, option_list: list[str], tool: str = "") -> str:
+        """
+        Function used top open a RadioList ModalScreen in the suggestion
+        string process.
+
+        Used when the user inputs a wrong topic, service, action, ...
+        """
+
+        def _radiolist_callback(selected: str | None):
+            """
+            Docstring for _radiolist_callback
+
+            :param selected: Description
+            :type selected: str | None
+            """
+
+            color_tmp = "#EB921E"
+            if selected is None:
+                self._log(f"[bold {color_tmp}]\[TOOL[italic]{tool}[/italic]][/bold {color_tmp}] " + \
+                          f"Suggestion cancelled")
+                self.suggestion_index = -2
+                return
+
+            self._log(f"[bold {color_tmp}]\[TOOL[italic]{tool}[/italic]][/bold {color_tmp}] " + \
+                      f"Selected suggestion: \"{option_list[selected]}\"")
+            self.suggestion_index = selected
+
+        self.app.call_from_thread(
+            lambda: self.push_screen(
+                RadioListModal(option_list),
+                callback=_radiolist_callback,
+            )
+        )
+
     # endregion
 
     # region Commands
@@ -430,8 +479,11 @@ class VulcanConsole(App):
 
     # region Logging
 
-    def add_line_dq(self, input: str, color: str = "") -> None:
-         # Split incoming text into individual lines
+    def add_line_dq(self, input: str,
+            color: str = "",
+            subprocess_flag: bool = False) -> None:
+
+        # Split incoming text into individual lines
         lines = input.splitlines()
 
         color_begin = ""
@@ -443,7 +495,10 @@ class VulcanConsole(App):
 
         # Append each line; deque automatically truncates old ones
         for line in lines:
-            self.log_lines_dq.append(f"{color_begin}{line}{color_end}")
+            line_processed = line
+            if subprocess_flag:
+                line_processed = escape(line)
+            self.log_lines_dq.append(f"{color_begin}{line_processed}{color_end}")
 
     def render_log(self) -> None:
         log_static = self.query_one("#logcontent", Static)
@@ -451,7 +506,11 @@ class VulcanConsole(App):
 
         self.query_one("#logview", VerticalScroll).scroll_end(animate=False)
 
-    def _log(self, text: str, log_type: str = "", log_color: int = -1, print_args_idx: int=-1) -> None:
+    def _log(self, text: str,
+            log_type: str = "", log_color: int = -1,
+            print_args_idx: int=-1,
+            subprocess_flag: bool = False) -> None:
+
         msg = ""
 
         color_type = ""
@@ -483,11 +542,11 @@ class VulcanConsole(App):
             color_type = "#069899"
         else:
             msg += f"{text}"
-            self.add_line_dq(msg)
+            self.add_line_dq(msg, subprocess_flag=subprocess_flag)
             self.render_log()
             return
 
-        self.add_line_dq(text, color=color_type)
+        self.add_line_dq(text, color=color_type, subprocess_flag=subprocess_flag)
         self.render_log()
 
     def print_command_prompt(self, cmd: str=""):
@@ -575,6 +634,32 @@ class VulcanConsole(App):
                 handler(args)
             except Exception as e:
                 self._log(f"Error: {e!r}", log_color=0)
+
+    async def _paste_clipboard(self) -> None:
+        cmd_input = self.query_one("#cmd", Input)
+
+        try:
+            paste_text = pyperclip.paste() or ""
+        except Exception as e:
+            self._log(f"Clipboard error: {e}", log_color=0)
+            return
+
+        if not paste_text:
+            return
+
+        # Remove endlines
+        cut = paste_text.find("\n")
+        if cut != -1:
+            paste_text = paste_text[:cut]
+
+        value = cmd_input.value
+        cursor = cmd_input.cursor_position
+
+        # Insert text at cursor
+        cmd_input.value = value[:cursor] + paste_text + value[cursor:]
+        cmd_input.cursor_position = cursor + len(paste_text)
+        cmd_input.focus()
+
 
     async def on_key(self, event: events.Key) -> None:
         """
@@ -714,32 +799,7 @@ class VulcanConsole(App):
 
         # PASTE
         if key == "ctrl+v":
-            try:
-                paste_text = pyperclip.paste() or ""
-            except Exception as e:
-                self._log(f"Clipboard error: {e}", log_color=0)
-                return
-
-            if not paste_text:
-                return
-
-            # Remove endlines in the paste
-            i = 0
-            n = len(paste_text)
-            while i < n:
-                if paste_text[i] == '\n':
-                    paste_text = paste_text[:i]
-                    break
-                i += 1
-
-            value = cmd_input.value
-            cursor = cmd_input.cursor_position
-
-            # Insert clipboard text at cursor
-            cmd_input.value = value[:cursor] + paste_text + value[cursor:]
-            cmd_input.cursor_position = cursor + len(paste_text)
-
-            cmd_input.focus()
+            await self._paste_clipboard()
             event.prevent_default()
             event.stop()
             return
@@ -749,14 +809,14 @@ class VulcanConsole(App):
             self.tab_matches = []
             self.tab_index = 0
 
-    def set_stream_task(self, input):
+    def set_stream_task(self, input_stream):
         """
         Function used in the tools to set the current streaming task.
         with this variable the user can finish the execution of the
         task by using the signal "Ctrl + C"
         """
 
-        self.stream_task = input
+        self.stream_task = input_stream
 
     # endregion
 
@@ -794,7 +854,6 @@ class VulcanConsole(App):
     def action_stop_streaming_task(self):
 
         if self.stream_task != None and not self.stream_task.done():
-            self._log("TERMINATING...")
             self.stream_task.cancel() # triggers CancelledError in the task
             self.stream_task = None
 
