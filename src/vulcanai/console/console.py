@@ -34,9 +34,14 @@ from vulcanai.console.utils import SpinnerHook, StreamToTextual, attach_ros_logg
 from vulcanai.console.widget_custom_log_text_area import CustomLogTextArea
 from vulcanai.console.widget_spinner import SpinnerStatus
 
-from vulcanai.console.logger import VulcanAILogger
 
-import asyncio
+from prompt_toolkit import PromptSession
+from rich.progress import Progress, SpinnerColumn, TextColumn
+from vulcanai.models.model import IModelHooks
+from vulcanai.console.logger import console, VulcanAILogger
+
+
+
 
 
 class TextualLogSink:
@@ -171,7 +176,6 @@ class VulcanConsole(App):
         self.logger = VulcanAILogger.log_manager
         self.stream_task = None
 
-        #self.loop = asyncio.get_running_loop()
 
     def set_stream_task(self, input_stream):
         """
