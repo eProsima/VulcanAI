@@ -96,11 +96,11 @@ class ToolRegistry:
         # Validation tools list to retrieve validation tools separately
         self.validation_tools: List[str] = []
 
-    def register_tool(self, tool: ITool, solve_deps: bool = True)  -> bool:
+    def register_tool(self, tool: ITool, solve_deps: bool = True):
         """Register a single tool instance."""
         # Avoid duplicates
         if tool.name in self.tools:
-            return False
+            return
 
         self.tools[tool.name] = tool
         if tool.is_validation_tool:
@@ -115,8 +115,6 @@ class ToolRegistry:
             # Get class of tool
             if issubclass(type(tool), CompositeTool):
                 self._resolve_dependencies(tool)
-
-        return True
 
     def activate_tool(self, tool_name) -> bool:
         """Activate a singles tool instance."""
@@ -149,7 +147,7 @@ class ToolRegistry:
             # Print in textual terminal:
             # [REGISTRY] ERROR. Tool '<name>' not found in the active tools list.
             self.logger(f"ERROR. Tool [{self.class_color}]'{tool_name}'[/{self.class_color}] "+ \
-                        f"not found int the active tools list.", log_color=0)
+                        f"not found in the active tools list.", log_color=0)
             return False
 
         # Add the tool to the deactivated tools
@@ -205,8 +203,8 @@ class ToolRegistry:
             self._loaded_modules.append(module)
         except Exception as e:
             # Print in textual terminal:
-            # [REGISTRY] ERROR. Loading tools from <path>}: <exception>
-            self.logger(f"ERROR. Loading tools from {path}: {e}", log_type="register", log_color=0)
+            # [REGISTRY] ERROR. Could not load tools from <path>}: <exception>
+            self.logger(f"ERROR. Could not load tools from {path}: {e}", log_type="register", log_color=0)
     def discover_tools_from_file(self, path: str):
         """Load tools from a Python file and register them."""
         self._load_tools_from_file(path)
@@ -245,7 +243,7 @@ class ToolRegistry:
         if not active_names:
             # If there is no tool for the requested category, be explicit and return []
             self.logger(
-                f"No matching tools for the requested mode ({'validation' if validation else 'action'}).",
+                f"ERROR. No matching tools for the requested mode ({'validation' if validation else 'action'}).",
                 log_type="register", log_color=0
             )
             return []

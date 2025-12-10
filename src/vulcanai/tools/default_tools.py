@@ -327,7 +327,7 @@ class Ros2TopicTool(AtomicTool):
             execute_subprocess(console, self.name, base_args, max_duration, max_lines)
 
             result["output"] = True
-
+        # -- unknown ----------------------------------------------------------
         else:
             raise ValueError(
                 f"Unknown command '{command}'. "
@@ -480,7 +480,6 @@ class Ros2ServiceTool(AtomicTool):
 
         # -- unknown ------------------------------------------------------------
         else:
-
             raise ValueError(
                 f"Unknown command '{command}'. "
                 "Expected one of: list, info, type, call, echo, find."
@@ -829,6 +828,13 @@ class Ros2PkgTool(AtomicTool):
                 ["ros2", "topic", "xml", package_name]
             )
             result["output"] = info_output
+
+        # -- unknown ----------------------------------------------------------
+        else:
+            raise ValueError(
+                f"Unknown command '{command}'. "
+                "Expected one of: list, info, echo, bw, delay, hz, find, pub, type."
+            )
 
         return result
 

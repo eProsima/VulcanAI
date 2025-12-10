@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 # Copyright 2025 Proyectos y Sistemas de Mantenimiento SL (eProsima).
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,39 +12,71 @@ from __future__ import annotations
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import sys
-import os
+from __future__ import annotations
+
 import argparse
-
-from textual.app import App, ComposeResult
-from textual.widgets import Input, Static
-from textual import events
-from textual.containers import VerticalScroll
-from textual.binding import Binding
-
-# non-blocking executions to print in textual terminal
-from textual import work
 import asyncio
-# library used to paste the clipboard into the terminal
-import pyperclip
-
-from vulcanai.console.modal_screens import ReverseSearchModal
-from vulcanai.console.modal_screens import CheckListModal, RadioListModal
-from vulcanai.console.utils import SpinnerHook
-
-from vulcanai.console.utils import attach_ros_logger_to_console
-from vulcanai.console.utils import common_prefix
+import os
+import pyperclip  # To paste the clipboard into the terminal
+import sys
 
 from collections import deque
-# used to remove possible errors in textual terminal
-# Subscribed to [/turtle1/pose] -> Subscribed to \[/turtle1/pose]
-from textual.markup import escape
+from textual import events, work
+from textual.app import App, ComposeResult
+from textual.binding import Binding
+from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.events import MouseEvent
+from textual.markup import escape  # To remove potential errors in textual terminal
+from textual.widgets import Input, Static
+
+from vulcanai.console.modal_screens import CheckListModal, RadioListModal, ReverseSearchModal
+from vulcanai.console.utils import attach_ros_logger_to_console, common_prefix, SpinnerHook, StreamToTextual
 
 class VulcanConsole(App):
 
+    # CSS = """
+    # #log { height: 1fr; }
+    # #cmd { dock: bottom; }
+    # """
+
     CSS = """
-    #log { height: 1fr; }
-    #cmd { dock: bottom; }
+    Screen {
+        layout: horizontal;
+    }
+
+    #left {
+        width: 3fr;
+    }
+
+    #right {
+        width: 1fr;
+        layout: vertical;
+        border: tall #56AA08;
+        padding: 0;
+    }
+
+    #logview {
+        height: 1fr;
+    }
+
+    #cmd {
+        dock: bottom;
+    }
+
+    #history_title {
+        content-align: center middle;
+        margin: 0;
+        padding: 0;
+    }
+
+    #history_scroll {
+        height: 1fr;      /* fill remaining space */
+        margin: 1;
+    }
+
+    #history {
+        width: 100%;
+    }
     """
 
     BINDINGS = [
@@ -54,11 +84,13 @@ class VulcanConsole(App):
         Binding("f2", "show_help", "Show help", priority=True),
         Binding("ctrl+r", "reverse_search", "Reverse search"),
         Binding("ctrl+c", "stop_streaming_task", "Stop Streaming"),
+        Binding("up", "history_prev", show=False),
+        Binding("down", "history_next", show=False),
     ]
 
     def __init__(self, tools_from_entrypoints: str = "", user_context: str = "", main_node = None,
                  model: str = "gpt-5-nano", k: int = 7, iterative: bool = False):
-        super().__init__() # textual lib
+        super().__init__() # Textual lib
 
         self.manager = None
         self.last_plan = None
@@ -78,13 +110,11 @@ class VulcanConsole(App):
         self.tab_index = 0
         self.log_lines_dq = deque(maxlen=500)
 
-        # terminal qol
+        # Terminal qol
         self.history = []
 
         self.stream_task = None
         self.suggestion_index = -1
-
-    from textual.events import MouseEvent
 
     async def on_mouse_down(self, event: MouseEvent) -> None:
         """
@@ -97,7 +127,6 @@ class VulcanConsole(App):
             event.stop()
 
     async def on_mount(self) -> None:
-        from vulcanai.console.utils import StreamToTextual
 
         # Disable terminal input
         self.set_input_enabled(False)
@@ -106,88 +135,52 @@ class VulcanConsole(App):
 
         self.loop = asyncio.get_running_loop()
 
-        # TODO
-        # https://patorjk.com/software/taag/#p=display&f=Small+Slant&t=VulcanAI&x=none&v=4&h=4&w=80&we=false
-#Standard
-        vulcanai_tittle_std = \
-"""
- __     __     _                    _    ___
- \ \   / /   _| | ___ __ _ _ __    / \  |_ _|
-  \ \ / / | | | |/ __/ _` | '_ \  / _ \  | |
-   \ V /| |_| | | (_| (_| | | | |/ ___ \ | |
-    \_/  \__,_|_|\___\__,_|_| |_/_/   \_\___|
-"""
+#         vulcanai_tittle_slant = \
+# """
+#  _    __      __                 ___    ____
+# | |  / /_  __/ /________  ____  /   |  /  _/
+# | | / / / / / / ___/ __ `/ __ \/ /| |  / /
+# | |/ / /_/ / / /__/ /_/ / / / / ___ |_/ /
+# |___/\__,_/_/\___/\__,_/_/ /_/_/  |_/___/
+# """
 
-#slant
-        vulcanai_tittle_slant = \
-"""
- _    __      __                 ___    ____
-| |  / /_  __/ /________  ____  /   |  /  _/
-| | / / / / / / ___/ __ `/ __ \/ /| |  / /
-| |/ / /_/ / / /__/ /_/ / / / / ___ |_/ /
-|___/\__,_/_/\___/\__,_/_/ /_/_/  |_/___/
-"""
-
-#small slant
-        vulcanai_tittle_small_slant = \
-"""
-  _   __     __              ___   ____
- | | / /_ __/ /______ ____  / _ | /  _/
- | |/ / // / / __/ _ `/ _ \/ __ |_/ /
- |___/\_,_/_/\__/\_,_/_//_/_/ |_/___/
-"""
-
-#Doom
-        vulcanai_tittle_doom = \
-"""
- _   _       _                  ___  _____
-| | | |     | |                / _ \|_   _|
-| | | |_   _| | ___ __ _ _ __ / /_\ \ | |
-| | | | | | | |/ __/ _` | '_ \|  _  | | |
-\ \_/ / |_| | | (_| (_| | | | | | | |_| |_
- \___/ \__,_|_|\___\__,_|_| |_\_| |_/\___/
-"""
-
-# Small Block
-        vulcanai_tittle_block = \
-"""
-▌ ▌   ▜          ▞▀▖▜▘
-▚▗▘▌ ▌▐ ▞▀▖▝▀▖▛▀▖▙▄▌▐
-▝▞ ▌ ▌▐ ▌ ▖▞▀▌▌ ▌▌ ▌▐
- ▘ ▝▀▘ ▘▝▀ ▝▀▘▘ ▘▘ ▘▀▘
-"""
-
-#Small
-        vulcanai_tittle_small = \
-"""
- __   __    _                _   ___
- \ \ / /  _| |__ __ _ _ _   /_\ |_ _|
-  \ V / || | / _/ _` | ' \ / _ \ | |
-   \_/ \_,_|_\__\__,_|_||_/_/ \_\___|
-"""
-
-        #self._log(f"{vulcanai_tittle_std}", log_color=1)
-        #self._log(f"")
-        self._log(f"{vulcanai_tittle_slant}", log_color=1)
-        #self._log(f"")
-        #self._log(f"{vulcanai_tittle_small_slant}", log_color=1)
-        #self._log(f"")
-        #self._log(f"{vulcanai_tittle_block}", log_color=1)
-        #self._log(f"")
-        #self._log(f"{vulcanai_tittle_small}", log_color=1)
-
+#         self._log(f"{vulcanai_tittle_slant}", log_color=1)
 
         await asyncio.sleep(0)
         asyncio.create_task(self.bootstrap())
 
     def compose(self) -> ComposeResult:
-        with VerticalScroll(id="logview"):
-            yield Static("", id="logcontent")
-        yield Input(placeholder="> ", id="cmd")
+        # with VerticalScroll(id="logview"):
+        #     yield Static("", id="logcontent")
+        # yield Input(placeholder="> ", id="cmd")
+
+
+        vulcanai_title_slant = """[#56AA08]\
+ _    __      __                 ___    ____
+| |  / /_  __/ /________  ____  /   |  /  _/
+| | / / / / / / ___/ __ `/ __ \/ /| |  / /
+| |/ / /_/ / / /__/ /_/ / / / / ___ |_/ /
+|___/\__,_/_/\___/\__,_/_/ /_/_/  |_/___/[/#56AA08]
+"""
+
+        with Horizontal():
+            # LEFT
+            with Vertical(id="left"):
+                with VerticalScroll(id="logview"):
+                    yield Static("", id="logcontent")
+                yield Input(placeholder="> ", id="cmd")
+
+            # RIGHT
+            with Vertical(id="right"):
+                yield Static(vulcanai_title_slant, id="history_title")
+                yield Static(f" Loading info...", id="variables")
+                with VerticalScroll(id="history_scroll"):
+                    # IMPORTANT: markup=True so [bold reverse] works
+                    yield Static("", id="history", markup=True)
 
     async def bootstrap(self, user_input: str="") -> None:
         """
-        Function used to print information in runtime execution of a function
+        Function used to print information at runtime execution of a function
         """
 
         def worker(user_input: str="") -> None:
@@ -196,8 +189,8 @@ class VulcanConsole(App):
             if user_input == "":
                 self.init_manager()
 
-                # add the commands
-                # command registry: name -> handler
+                # Add the commands
+                # Command registry: name -> handler
                 self.commands = {
                     "/help": self.cmd_help,
                     "/tools": self.cmd_tools,
@@ -205,6 +198,7 @@ class VulcanConsole(App):
                     "/change_k": self.cmd_change_k,
                     "/history": self.cmd_history_index,
                     "/show_history": self.cmd_show_history,
+                    "/clear_history": self.cmd_clear_history,
                     "/plan": self.cmd_plan,
                     "/rerun": self.cmd_rerun,
                     "/bb": self.cmd_blackboard_state,
@@ -212,7 +206,7 @@ class VulcanConsole(App):
                     "/exit": self.cmd_quit,
                 }
 
-                # cycling through tab matches
+                # Cycling through tab matches
                 self.tab_matches = []
                 self.tab_index = 0
 
@@ -227,15 +221,14 @@ class VulcanConsole(App):
 
                 if self.tools_from_entrypoints != "":
                     self.manager.register_tools_from_entry_points(self.tools_from_entrypoints)
-                else:
-                    self._log("WARNING. No tools added", log_color=3)
 
                 self.manager.add_user_context(self.user_context)
+
+                self.manager.bb["console"] = self
 
                 # Add the shared node to the console manager blackboard to be used by tools
                 if self.main_node != None:
                     self.manager.bb["main_node"] = self.main_node
-                    self.manager.bb["console"] = self
                     attach_ros_logger_to_console(self, self.main_node)
                 else:
                     self._log("WARNING. No ROS node added", log_color=3)
@@ -289,14 +282,41 @@ class VulcanConsole(App):
 
     # region Utilities
 
-    @work  # runs in a worker. waiting won't freeze the UI
+    def _apply_history_to_input(self) -> None:
+        cmd_input = self.query_one("#cmd", Input)
+        if self.history_index is None or self.history_index == len(self.history):
+            cmd_input.value = ""
+        else:
+            cmd_input.value = self.history[self.history_index]
+        cmd_input.focus()
+
+    def _update_history_panel(self) -> None:
+        """Update right-hand history with highlight."""
+        history_widget = self.query_one("#history", Static)
+
+        lines = []
+        for i, cmd in enumerate(self.history):
+            text = f"{i+1:>3}: {escape(cmd)}"
+            if self.history_index is not None and self.history_index == i:
+                # Highlight current selection
+                text = f"[bold reverse]{text}[/]"
+            lines.append(text)
+
+        history_widget.update("\n".join(lines))
+
+    def _update_variables_panel(self) -> None:
+        text = f" AI model: {self.model}\n K = {self.manager.k}\n history_depth = {self.manager.history_depth}"
+        kvalue_widget = self.query_one("#variables", Static)
+        kvalue_widget.update(text)
+
+    @work  # Runs in a worker. waiting won't freeze the UI
     async def open_checklist(self, tools_list: list[str], active_tools_num: int) -> None:
         """
         Function used in '/edit_tools' command.
         It creates a dialog with all the tools.
         """
 
-        # create the checklist dialog
+        # Create the checklist dialog
         selected = await self.push_screen_wait(CheckListModal(tools_list, active_tools_num))
 
         if selected is None:
@@ -304,17 +324,18 @@ class VulcanConsole(App):
         else:
 
             for tool_tmp in tools_list:
-                # remove "- "
+                # Remove "- "
                 tool = tool_tmp[2:]
                 if tool_tmp in selected:
-                    self.manager.registry.activate_tool(tool)
+                    if self.manager.registry.activate_tool(tool):
+                        self._log(f"Activated tool [bold]'{tool}'[/bold]", log_color=2)
                 else:
                     if self.manager.registry.deactivate_tool(tool):
                         self._log(f"Deactivated tool [bold]'{tool}'[/bold]", log_color=2)
 
     def open_radiolist(self, option_list: list[str], tool: str = "") -> str:
         """
-        Function used top open a RadioList ModalScreen in the suggestion
+        Function used to open a RadioList ModalScreen in the suggestion
         string process.
 
         Used when the user inputs a wrong topic, service, action, ...
@@ -361,6 +382,7 @@ class VulcanConsole(App):
                 "/[bold]change_k <int>[/bold] - Change the 'k' value for the top_k algorithm selection or show the current value if no <int> is provided\n"
                 "/[bold]history <int>[/bold]  - Change the history depth or show the current value if no <int> is provided\n"
                 "/[bold]show_history[/bold]   - Show the current history\n"
+                "/[bold]clear_history[/bold]  - Clear the history\n"
                 "/[bold]plan[/bold]           - Show the last generated plan\n"
                 "/[bold]rerun[/bold]          - Rerun the last plan\n"
                 "/[bold]bb[/bold]             - Show the last blackboard state\n"
@@ -417,6 +439,7 @@ class VulcanConsole(App):
         new_k = int(args[0])
         self.manager.k = new_k
         self.manager.update_k_index(new_k)
+        self._update_variables_panel()
 
     def cmd_history_index(self, args) -> None:
         if len(args) == 0:
@@ -430,6 +453,7 @@ class VulcanConsole(App):
 
         new_hist = int(args[0])
         self.manager.update_history_depth(new_hist)
+        self._update_variables_panel()
 
     def cmd_show_history(self, _) -> None:
         if not self.manager.history:
@@ -441,6 +465,24 @@ class VulcanConsole(App):
             history_msg += f"{i+1}. User: {user_text}\n   Plan summary: {plan_summary}\n"
 
         self._log(history_msg, log_color=2)
+
+    def cmd_clear_history(self, _) -> None:
+        """Clear all history and reset UI."""
+
+        # Reset history storage
+        self.history.clear()
+        self.history_index = None
+
+        # Update right panel (empty)
+        history_widget = self.query_one("#history", Static)
+        history_widget.update("")
+
+        # Update left terminal log (empty)
+        log = self.query_one("#logcontent", Static)
+        log.update("")
+
+        # Add feedback line
+        self._log("History cleared.")
 
     def cmd_plan(self, _) -> None:
         if self.last_plan:
@@ -508,7 +550,6 @@ class VulcanConsole(App):
 
     def _log(self, text: str,
             log_type: str = "", log_color: int = -1,
-            print_args_idx: int=-1,
             subprocess_flag: bool = False) -> None:
 
         msg = ""
@@ -580,31 +621,32 @@ class VulcanConsole(App):
         if not cmd:
             return
 
+        cmd_input = self.query_one("#cmd", Input)
+
         try:
             if event.input.id != "cmd":
                 return
             user_input = (event.value or "").strip()
 
-            # the the user_input in the history navigation list (used when the up, down keys are pressed)
+            # The the user_input in the history navigation list (used when the up, down keys are pressed)
             self.history.append(user_input)
+            self.history_index = len(self.history)
+            self._update_history_panel()
             event.input.value = ""
             event.input.focus()
 
-            # reset tab state
+            # Reset tab state
             self.tab_matches = []
             self.tab_index = 0
 
             if not user_input:
-                self.cmd_input.focus()
+                cmd_input.focus()
                 return
 
-            # Terminal history inputs navigation
-            self.history_index = None
-
-            # echo what the user typed (keep this if you like the prompt arrow)
+            # Echo what the user typed (keep this if you like the prompt arrow)
             self.print_command_prompt(cmd)
 
-            # If it doesn't start with '/', just print it as output and stop here
+            # If it start with '/', just print it as output and stop here
             if user_input.startswith("/"):
                 self.handle_command(user_input)
                 return
@@ -627,7 +669,7 @@ class VulcanConsole(App):
 
         handler = self.commands.get(cmd)
         if handler is None:
-            # only complain for slash-commands
+            # Only complain for slash-commands
             self._log(f"Unknown command: [b]{cmd}[/]. Type '/help'.", log_color=2)
         else:
             try:
@@ -663,47 +705,53 @@ class VulcanConsole(App):
 
     async def on_key(self, event: events.Key) -> None:
         """
-        Handle Up/Down for history navigation.
+        Handle keys.
+
+        Navigate throw history: "up", "down"
+        Autocomplete command: "tab"
+        Delete the word before: "Ctrl + w"
+        Delethe the word after: "Ctrl + delete", "escape"
+        Paste the copied text in the clipboard to the input terminal: "Ctrl + v"
         """
 
         key = event.key
         cmd_input = self.query_one("#cmd", Input)
 
-        # NAVIGATE
-        if key in ("up", "down"):
+        # # NAVIGATE
+        # if key in ("up", "down"):
 
-            # Only handle history navigation if input is focused
-            if self.focused is not cmd_input:
-                return
+        #     # Only handle history navigation if input is focused
+        #     if self.focused is not cmd_input:
+        #         return
 
-            if not self.history:
-                return
+        #     if not self.history:
+        #         return
 
-            # Initialize history index if not already set
-            if not hasattr(self, "_history_index") or self.history_index is None:
-                self.history_index = len(self.history)
+        #     # Initialize history index if not already set
+        #     if not hasattr(self, "history_index") or self.history_index is None:
+        #         self.history_index = len(self.history)
 
-            # store the command input if it is new
-            if self.history_index == len(self.history):
-                self.terminal_input = cmd_input.value
+        #     # Store the command input if it is new
+        #     if self.history_index == len(self.history):
+        #         self.terminal_input = cmd_input.value
 
-            if key == "up" and self.history_index > 0:
-                self.history_index -= 1
-            elif key == "down" and self.history_index < len(self.history):
-                self.history_index += 1
-            else:
-                return  # ignore if out of range
+        #     if key == "up" and self.history_index > 0:
+        #         self.history_index -= 1
+        #     elif key == "down" and self.history_index < len(self.history):
+        #         self.history_index += 1
+        #     else:
+        #         return  # Ignore if out of range
 
-            # Update input value based on history
-            if 0 <= self.history_index < len(self.history):
-                cmd_input.value = self.history[self.history_index]
-            else:
-                cmd_input.value = self.terminal_input
+        #     # Update input value based on history
+        #     if 0 <= self.history_index < len(self.history):
+        #         cmd_input.value = self.history[self.history_index]
+        #     else:
+        #         cmd_input.value = self.terminal_input
 
-            # Move cursor to end
-            cmd_input.cursor_position = len(cmd_input.value)
-            event.stop()
-            return
+        #     # Move cursor to end
+        #     cmd_input.cursor_position = len(cmd_input.value)
+        #     event.stop()
+        #     return
 
         # AUTOCOMPLETE: Tab
         if key == "tab":
@@ -854,12 +902,37 @@ class VulcanConsole(App):
     def action_stop_streaming_task(self):
 
         if self.stream_task != None and not self.stream_task.done():
-            self.stream_task.cancel() # triggers CancelledError in the task
+            self.stream_task.cancel() # Triggers CancelledError in the task
             self.stream_task = None
 
         else:
             self._log("Press (Ctrl+Q) to exit.", log_color=3)
 
+    def action_history_prev(self) -> None:
+        if not self.history:
+            return
+
+        if self.history_index is None:
+            self.history_index = len(self.history) - 1
+        else:
+            self.history_index = max(0, self.history_index - 1)
+
+        self._apply_history_to_input()
+        self._update_history_panel()
+
+    def action_history_next(self) -> None:
+        if not self.history:
+            return
+
+        if self.history_index is None:
+            self.history_index = len(self.history)
+        elif self.history_index >= len(self.history) - 1:
+            self.history_index = len(self.history)
+        else:
+            self.history_index += 1
+
+        self._apply_history_to_input()
+        self._update_history_panel()
 
     # endregion
 
@@ -886,6 +959,7 @@ class VulcanConsole(App):
         # Print in textual terminal:
         # Manager initialized with model '<model>'
         self._log(f"Manager initialized with model [bold]'{self.model}[/bold]'", log_color=2)
+        self._update_variables_panel()
 
     def get_images(self, user_input: str) -> None:
         parts = user_input.split()
@@ -922,6 +996,8 @@ def main() -> None:
 
     # TODO. change
     args = parser.parse_args()
+    """console = VulcanConsole("turtle_tools", user_context, node)
+    console.run()"""
     console = VulcanConsole(model=args.model, k=args.k, iterative=args.iterative)
     if args.register_from_file:
         for file in args.register_from_file:

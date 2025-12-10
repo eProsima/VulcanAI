@@ -41,7 +41,7 @@ class GeminiModel(IModel):
         except Exception as e:
             # Print in textual terminal:
             # [MANAGER] ERROR. Missing Gemini API Key: <exception>
-            self.logger(f"ERROR. Missing Gemini API Key: {e}", log_color=0)
+            self.logger(f"ERROR. Missing Gemini API Key: {e}", log_type="manager", log_color=0)
 
     def _inference(
         self,
@@ -71,30 +71,18 @@ class GeminiModel(IModel):
         messages = self._build_messages(user_content, history)
 
         # Configuration for content generation
-        try:
-            cfg = gtypes.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=response_cls,
-                system_instruction=[system_prompt],
-                candidate_count=1,
-            )
+        cfg = gtypes.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=response_cls,
+            system_instruction=[system_prompt],
+            candidate_count=1,
+        )
 
-            response = self.model.models.generate_content(
-                model=self.model_name,
-                contents=messages,
-                config=cfg,
-            )
-        except Exception as e:
-            # Print in textual terminal:
-            # [MANAGER] ERROR. Gemini API: <exception>
-            self.logger(f"ERROR. Gemini API: {e}", log_type="manager", log_color=0)
-            return None
-        finally:
-            # Notify hooks of request end
-            try:
-                self.hooks.on_request_end()
-            except Exception as e:
-                pass
+        response = self.model.models.generate_content(
+            model=self.model_name,
+            contents=messages,
+            config=cfg,
+        )
 
         # Extract parsed object safely
         parsed_response: Optional[T] = None
@@ -104,7 +92,7 @@ class GeminiModel(IModel):
             # Print in textual terminal:
             # [MANAGER] ERROR. Failed to get parsed goal from Gemini response, falling back to text: <exception>
             self.logger(f"ERROR. Failed to get parsed goal from Gemini response, " + \
-                        f"falling back to text: {e}", log_color=0)
+                        f"falling back to text: {e}", log_type="manager", log_color=0)
         finally:
             # Notify hooks of request end
             try:
@@ -130,7 +118,7 @@ class GeminiModel(IModel):
                     # Print in textual terminal:
                     # [MANAGER] ERROR. Failed to parse raw <response_cls.__name__> JSON: <exception>
                     self.logger(f"ERROR. Failed to parse raw {response_cls.__name__} JSON: {e}",
-                                log_color=0)
+                                log_type="manager", log_color=0)
         end = time.time()
         # Print in textual terminal:
         # [MANAGER] Gemini response time <time> seconds

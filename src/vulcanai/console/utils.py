@@ -14,17 +14,13 @@
 
 
 import asyncio
+import difflib
+import heapq
 import subprocess
 import sys
 import time
-# To remove possible errors in textual terminal
-# Subscribed to [/turtle1/pose] -> Subscribed to \[/turtle1/pose]
-from textual.markup import escape
+from textual.markup import escape # To remove potential errors in textual terminal
 from textual.timer import Timer
-
-
-import heapq
-import difflib
 
 color_tool = "#EB921E"
 
@@ -127,8 +123,7 @@ class SpinnerHook:
 
         # Update the spinner message line
         if self.spinner_line_index is not None:
-            self.console.log_lines_dq[self.spinner_line_index] += \
-                f"[{self.update_color}] Query finished![/{self.update_color}]"
+            self.console.log_lines_dq.pop()
             self.spinner_line_index = None
             self.console.render_log()
 

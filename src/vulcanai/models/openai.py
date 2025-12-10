@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 from openai import OpenAI
 from typing import Any, Dict, Iterable, Optional, Type, TypeVar
 import mimetypes
@@ -41,7 +40,7 @@ class OpenAIModel(IModel):
         except Exception as e:
             # Print in textual terminal:
             # [MANAGER] ERROR. Missing OpenAI API Key: <exception>
-            self.logger(f"ERROR. Missing OpenAI API Key: {e}", log_color=0)
+            self.logger(f"ERROR. Missing OpenAI API Key: {e}", log_type="manager", log_color=0)
 
     def _inference(
         self,

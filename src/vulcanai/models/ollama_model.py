@@ -39,7 +39,7 @@ class OllamaModel(IModel):
         except Exception as e:
             # Print in textual terminal:
             # [MANAGER] ERROR. Missing a API Key: <exception>
-            self.logger(f"ERROR. Missing a API Key: {e}", log_color=0)
+            self.logger(f"ERROR. Missing a API Key: {e}", log_type="manager", log_color=0)
 
     def _inference(
         self,
@@ -79,7 +79,7 @@ class OllamaModel(IModel):
         except Exception as e:
             # Print in textual terminal:
             # [MANAGER] ERROR. Ollama API: <exception>
-            self.logger(f"ERROR. Ollama API: {e}", log_color=0)
+            self.logger(f"ERROR. Ollama API: {e}", log_type="manager", log_color=0)
             return None
         finally:
             # Notify hooks of request end
