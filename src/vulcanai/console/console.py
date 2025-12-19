@@ -169,8 +169,8 @@ class VulcanConsole(App):
         self.tab_matches = []
         # Current index in the tab matches
         self.tab_index = 0
-        current_path = os.path.dirname(os.path.abspath(__file__))
-        self.manager.register_tools_from_file(f"{current_path}/../tools/default_tools.py")
+        # current_path = os.path.dirname(os.path.abspath(__file__))
+        # self.manager.register_tools_from_file(f"{current_path}/../tools/default_tools.py")
 
         self.manager.bb["console"] = self
         self.logger = VulcanAILogger.log_manager
