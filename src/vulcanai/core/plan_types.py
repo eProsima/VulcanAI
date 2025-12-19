@@ -78,7 +78,7 @@ class GlobalPlan(BaseModel):
     def __str__(self) -> str:
         lines = []
         if self.summary:
-            lines.append(f"- [bold]Plan Summary[/bold]: {self.summary}\n")
+            lines.append(f"- <bold>Plan Summary</bold>: {self.summary}\n")
 
         color_tool = "#15B606"
         color_variable = "#C49C00"
@@ -87,50 +87,50 @@ class GlobalPlan(BaseModel):
 
         for i, node in enumerate(self.plan, 1):
             # - PlanNode <i>: kind=<SEQUENCE/PARALLEL>
-            lines.append(f"- PlanNode {i}: [{color_variable}]kind[/{color_variable}]=" + \
-                         f"[{color_value}]{node.kind}[/{color_value}]")
+            lines.append(f"- PlanNode {i}: <{color_variable}>kind</{color_variable}>=" + \
+                         f"<{color_value}>{node.kind}</{color_value}>")
 
             if node.condition:
             #     Condition: <node.condition>
-                lines.append(f"\tCondition: [{color_value}]{node.condition}[/{color_value}]")
+                lines.append(f"\tCondition: <{color_value}>{node.condition}</{color_value}>")
             if node.retry:
             #     Retry: <node.retry>
-                lines.append(f"\t[{color_error}]Retry[/{color_error}]: " + \
-                             f"[{color_value}]{node.retry}[/{color_value}]")
+                lines.append(f"\t<{color_error}>Retry</{color_error}>: " + \
+                             f"<{color_value}>{node.retry}</{color_value}>")
             if node.timeout_ms:
             #     Timeout: <node.timeout_ms> ms
-                lines.append(f"\t[{color_error}]Timeout[/{color_error}]: " + \
-                             f"[{color_value}]{node.timeout_ms} ms[/{color_value}]")
+                lines.append(f"\t<{color_error}>Timeout</{color_error}>: " + \
+                             f"<{color_value}>{node.timeout_ms} ms</{color_value}>")
             if node.success_criteria:
             #     Succes Criteria: <node.success_criteria>
-                lines.append(f"\[{color_tool}]tSuccess Criteria[/{color_tool}]: " + \
-                             f"[{color_value}]{node.success_criteria}[/{color_value}]")
+                lines.append(f"\<{color_tool}>tSuccess Criteria</{color_tool}>: " + \
+                             f"<{color_value}>{node.success_criteria}</{color_value}>")
             if node.on_fail:
             #     On Fail: <node.on_fail.kind> with <len(node.on_fail.steps)> steps
-                lines.append(f"\tOn Fail: [{color_value}]{node.on_fail.kind}[/{color_value}] with " + \
-                             f"[{color_value}]{len(node.on_fail.steps)} steps[/{color_value}]")
+                lines.append(f"\tOn Fail: <{color_value}>{node.on_fail.kind}</{color_value}> with " + \
+                             f"<{color_value}>{len(node.on_fail.steps)} steps</{color_value}>")
             for j, step in enumerate(node.steps, 1):
                 #arg_str: <key_0>=<val_0>, ..., <key_n-1>=<val_n-1>
-                arg_str = ", ".join([f"[{color_variable}]{a.key}[/{color_variable}]=" + \
-                                     f"[{color_value}]{a.val}[/{color_value}]" for a in step.args]) \
-                                        if step.args else f"[{color_value}]no args[/{color_value}]"
+                arg_str = ", ".join([f"<{color_variable}>{a.key}</{color_variable}>=" + \
+                                     f"<{color_value}>{a.val}</{color_value}>" for a in step.args]) \
+                                        if step.args else f"<{color_value}>no args</{color_value}>"
             #     Step <num_step>: <tool>(<arg_str>)
-                lines.append(f"\tStep {j}: [{color_tool}]{step.tool}[/{color_tool}]({arg_str})")
+                lines.append(f"\tStep {j}: <{color_tool}>{step.tool}</{color_tool}>({arg_str})")
                 if step.condition:
             #       Condition: <step.condition>
-                    lines.append(f"\t  Condition: [{color_value}]{step.condition}[/{color_value}]")
+                    lines.append(f"\t  Condition: <{color_value}>{step.condition}</{color_value}>")
                 if step.retry:
             #       Condition: <step.condition>
-                    lines.append(f"\t  [{color_error}]Retry[/{color_error}]: " + \
-                                 f"[{color_value}]{step.retry}[/{color_value}]")
+                    lines.append(f"\t  <{color_error}>Retry</{color_error}>: " + \
+                                 f"<{color_value}>{step.retry}</{color_value}>")
                 if step.timeout_ms:
             #       Timeout: <step.timeout_ms> ms
-                    lines.append(f"\t  [{color_error}]Timeout[/{color_error}]: " + \
-                                 f"[{color_value}]{step.timeout_ms} ms[/{color_value}]")
+                    lines.append(f"\t  <{color_error}>Timeout</{color_error}>: " + \
+                                 f"<{color_value}>{step.timeout_ms} ms</{color_value}>")
                 if step.success_criteria:
             #       Success Criteria: <step.success_criteria>
-                    lines.append(f"\t  [{color_tool}]Success Criteria[/{color_tool}]: " + \
-                                 f"[{color_value}]{step.success_criteria}[/{color_value}]")
+                    lines.append(f"\t  <{color_tool}>Success Criteria</{color_tool}>: " + \
+                                 f"<{color_value}>{step.success_criteria}</{color_value}>")
         return "\n".join(lines)
 
 
@@ -151,7 +151,7 @@ class GoalSpec(BaseModel):
     def __str__(self) -> str:
         lines = []
         if self.summary:
-            lines.append(f"- [bold]Goal Summary[/bold]: {self.summary}")
+            lines.append(f"- <bold>Goal Summary</bold>: {self.summary}")
         if self.mode:
             lines.append(f"- Verification Mode: {self.mode}")
 

@@ -100,15 +100,19 @@ class ToolManager:
                     self.validator.validate(plan)
                 except Exception as e:
                     # Print in textual terminal:
-                    # [VALIDATOR] error. Plan validation error: <exception>
-                    self.logger(f"ERROR. Plan validation: {e}", log_type="validator", log_color=0)
+                    # [MANAGER] error. Plan validation error: <exception>
+                    # TODO. danip
+                    #self.logger(f"ERROR. Plan validation: {e}", log_type="manager", log_color=0)
+                    self.logger.log_validator(f"Plan validation: {e}", error=True)
                     raise e
             # Execute plan
             ret = self.execute_plan(plan)
         except Exception as e:
             # Print in textual terminal:
-            # [VALIDATOR] ERROR. Handling user request: <exception>
-            self.logger(f"ERROR. Handling user request: {e}", log_type="manager", log_color=0)
+            # [MANAGER] ERROR. Handling user request: <exception>
+            # TODO. danip
+            #self.logger(f"ERROR. Handling user request: {e}", log_type="manager", log_color=0)
+            self.logger.log_manager(f"Error handling user request: {e}", error=True)
             ret = {"error": str(e)}
 
         return ret
@@ -138,7 +142,9 @@ class ToolManager:
         # Print in textual terminal:
         # [VALIDATOR] Plan received:
         # <plan>
-        self.logger(f"Plan received:\n{plan}", log_type="manager")
+        # TODO. danip
+        #self.logger(f"Plan received:\n{plan}", log_type="manager")
+        self.logger.log_manager(f"Plan received:\n{plan}")
         # Save to history
         if plan:
             self._add_to_history(user_prompt, plan.summary)
@@ -175,8 +181,9 @@ class ToolManager:
         if not tools:
             # Print in textual terminal:
             # [VALIDATOR] ERROR. No tools available in the registry.
-            self.logger("ERROR. No tools available in the registry.",
-                        log_type="manager", log_color=0)
+            # TODO. danip
+            #self.logger("ERROR. No tools available in the registry.", log_type="manager", log_color=0)
+            self.logger.log_manager(f"No tools available in the registry.", error=True)
             return "", ""
         tool_descriptions = []
         for tool in tools:
@@ -210,7 +217,9 @@ class ToolManager:
         self.history_depth = max(0, int(new_depth))
         # Print in textual terminal:
         # [VALIDATOR] Updated history depth to <new_depth>
-        self.logger(f"Updated history depth to {new_depth}", log_type="manager", log_color=2)
+        # TODO. danip
+        #self.logger(f"Updated history depth to {new_depth}", log_type="manager", log_color=2)
+        self.logger.log_manager(f"Updated history depth to {new_depth}", color="console")
         if len(self.history) > self.history_depth:
             if self.history_depth <= 0:
                 self.history = []
@@ -226,7 +235,9 @@ class ToolManager:
         self.k = max(1, int(new_k))
         # Print in textual terminal:
         # [VALIDATOR] Updated k index to <new_k>
-        self.logger(f"Updated k index to {new_k}", log_type="manager", log_color=2)
+        # TODO. danip
+        #self.logger(f"Updated k index to {new_k}", log_type="manager", log_color=2)
+        self.logger.log_manager(f"Updated k index to {new_k}", color="console")
 
     def _get_prompt_template(self) -> str:
         template = """

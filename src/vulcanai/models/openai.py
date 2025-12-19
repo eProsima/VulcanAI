@@ -40,7 +40,7 @@ class OpenAIModel(IModel):
         except Exception as e:
             # Print in textual terminal:
             # [MANAGER] ERROR. Missing OpenAI API Key: <exception>
-            self.logger(f"ERROR. Missing OpenAI API Key: {e}", log_type="manager", log_color=0)
+            self.logger.log_manager(f"Missing OpenAI API Key: {e}", error=True)
 
     def _inference(
         self,
@@ -79,7 +79,7 @@ class OpenAIModel(IModel):
         except Exception as e:
             # Print in textual terminal:
             # [MANAGER] ERROR. OpenAI API: <exception>
-            self.logger(f"ERROR. OpenAI API: {e}", log_type="manager", log_color=0)
+            self.logger.log_manager(f"OpenAI API: {e}", error=True)
             return None
         finally:
             # Notify hooks of request end
@@ -95,21 +95,19 @@ class OpenAIModel(IModel):
         except Exception as e:
             # Print in textual terminal:
             # [MANAGER] ERROR. Failed to parse response into <response_cls.__name__>: <exepction>
-            self.logger(f"ERROR. Failed to parse response into {response_cls.__name__}: {e}",
-                        log_type="manager", log_color=0)
+            self.logger.log_manager(f"Failed to parse response into {response_cls.__name__}: {e}", error=True)
 
         end = time.time()
         # Print in textual terminal:
         # [MANAGER] GPT response time: <time> seconds
-        self.logger(f"GPT response time: [{self.class_color}]{end - start:.3f} seconds[/{self.class_color}]",
-                    log_type="manager")
+        self.logger.log_manager(f"GPT response time: <{self.class_color}>{end - start:.3f} seconds</{self.class_color}>")
         try:
             input_tokens = completion.usage.prompt_tokens
             output_tokens = completion.usage.completion_tokens
             # Print in textual terminal:
             # [MANAGER] Prompt tokens: <num_1>, Completion tokens: <num_2>
-            self.logger(f"Prompt tokens: [{self.class_color}]{input_tokens}[/{self.class_color}], " + \
-                        f"Completion tokens: [{self.class_color}]{output_tokens}[/{self.class_color}]", log_type="manager")
+            self.logger.log_manager(f"Prompt tokens: <{self.class_color}>{input_tokens}</{self.class_color}>, " + \
+                        f"Completion tokens: <{self.class_color}>{output_tokens}</{self.class_color}>")
         except Exception:
             pass
 
@@ -135,8 +133,7 @@ class OpenAIModel(IModel):
 
                         # Print in textual terminal:
                         # [MANAGER] Fail soft. Image '<image_path>' could not be encoded: <exception>
-                        self.logger(f"Fail soft. Image '{image_path}' could not be encoded: {e}",
-                                    log_type="manager", log_color=0)
+                        self.logger.log_manager(f"Fail soft. Image '{image_path}' could not be encoded: {e}", error=True)
         return content
 
     def _build_messages(

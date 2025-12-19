@@ -27,10 +27,170 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.events import MouseEvent
 from textual.markup import escape  # To remove potential errors in textual terminal
-from textual.widgets import Input, Static
+from textual.widgets import Input, Static, TextArea
 
 from vulcanai.console.modal_screens import CheckListModal, RadioListModal, ReverseSearchModal
 from vulcanai.console.utils import attach_ros_logger_to_console, common_prefix, SpinnerHook, StreamToTextual
+
+from vulcanai.console.CustomLogTextArea import CustomLogTextArea
+
+
+class VulcanAILogger:
+
+    """Logger class for VulcanAI components."""
+
+    def __init__(self, console):
+        self.console = console
+
+        self.vulcanai_theme = {
+            "registry": "#068399",
+            "manager": "#0d87c0",
+            "executor": "#15B606",
+            "validator": "#C49C00",
+            "error": "#FF0000",
+            "console": "#8F6296",
+        }
+
+    def parse_color(self, msg):
+        ret = ""
+
+        i = 0
+        n = len(msg)
+        while i < n:
+            if msg[i] == '[':
+                tmp = ""
+                i += 1
+                end = ""
+                if msg[i] == '/':
+                    i += 1
+                    end = "/"
+
+                while i < n and msg[i] != ']':
+                    tmp += msg[i]
+                    i += 1
+
+                style = f"[{end}{tmp}]"
+                if tmp in self.vulcanai_theme:
+                    style = f"<{end}{self.vulcanai_theme[tmp]}>"
+                ret += f"{style}"
+
+            else:
+                ret += msg[i]
+
+            i += 1
+
+        return ret
+
+
+    def log_manager(self, msg: str, error: bool = False, color: str = ""):
+        if error:
+            prefix = f"[error][MANAGER] [ERROR][/error]"
+        else:
+            prefix = f"<bold>[manager][MANAGER][/manager]</bold>"
+
+        color_begin = color_end = color
+        if color != "":
+            color_begin = f"<{color}>"
+            color_end = f"</{color}>"
+
+        msg = f"{prefix} {color_begin}{msg}{color_end}"
+
+        processed_msg = self.parse_color(msg)
+        self.console._log(processed_msg)
+
+    def log_executor(self, msg: str, error: bool = False, tool: bool = False, tool_name: str = '', color: str = ""):
+        if error:
+            prefix = f"[error][EXECUTOR] [ERROR][/error]"
+        elif tool:
+            self.log_tool(msg, tool_name=tool_name)
+            return
+        else:
+            prefix = f"[executor][EXECUTOR][/executor]"
+
+        color_begin = color_end = color
+        if color != "":
+            color_begin = f"<{color}>"
+            color_end = f"</{color}>"
+
+        msg = f"{prefix} {color_begin}{msg}{color_end}"
+
+        processed_msg = self.parse_color(msg)
+        self.console._log(processed_msg)
+
+    def log_tool(self, msg: str, tool_name: str = '', error: bool = False, color: str = ""):
+        if tool_name:
+            tag = f"[TOOL <italic>{tool_name}</italic>]"
+        else:
+            tag = '[TOOL]'
+        if error:
+            prefix = f"[error]{tag} [ERROR][/error]"
+        else:
+            prefix = f"[validator]{tag}[/validator]"
+
+        color_begin = color_end = color
+        if color != "":
+            color_begin = f"<{color}>"
+            color_end = f"</{color}>"
+
+        msg = f"{prefix} {color_begin}{msg}{color_end}"
+
+        processed_msg = self.parse_color(msg)
+        self.console._log(processed_msg)
+
+    def log_registry(self, msg: str, error: bool = False, color: str = ""):
+        if error:
+            prefix = f"<bold>[error][REGISTRY] [ERROR][/error]</bold>"
+        else:
+            prefix = f"<bold>[registry][REGISTRY][/registry]</bold>"
+
+        color_begin = color_end = color
+        if color != "":
+            color_begin = f"<{color}>"
+            color_end = f"</{color}>"
+
+        msg = f"{prefix} {color_begin}{msg}{color_end}"
+
+        processed_msg = self.parse_color(msg)
+        self.console._log(processed_msg)
+
+    def log_validator(self, msg: str, error: bool = False, color: str = ""):
+        if error:
+            prefix = f"[error][VALIDATOR] [ERROR][/error]"
+        else:
+            prefix= f"[validator][VALIDATOR][/validator]"
+
+        color_begin = color_end = color
+        if color != "":
+            color_begin = f"<{color}>"
+            color_end = f"</{color}>"
+
+        msg = f"{prefix} {color_begin}{msg}{color_end}"
+
+        processed_msg = self.parse_color(msg)
+        self.console._log(processed_msg)
+
+    def log_error(self, msg: str, color: str = ""):
+
+        color_begin = color_end = color
+        if color != "":
+            color_begin = f"<{color}>"
+            color_end = f"</{color}>"
+
+        msg = f"[error][ERROR][/error] {color_begin}{msg}{color_end}"
+
+        processed_msg = self.parse_color(msg)
+        self.console._log(processed_msg)
+
+    def log_msg(self, msg: str, color: str = ""):
+
+        color_begin = color_end = color
+        if color != "":
+            color_begin = f"<{color}>"
+            color_end = f"</{color}>"
+
+        processed_msg = self.parse_color(f"{color_begin}{msg}{color_end}")
+        self.console._log(processed_msg)
+
 
 class VulcanConsole(App):
 
@@ -45,17 +205,17 @@ class VulcanConsole(App):
     }
 
     #left {
-        width: 3fr;
+        width: 1fr;
     }
 
     #right {
-        width: 1fr;
+        width: 48;
         layout: vertical;
         border: tall #56AA08;
         padding: 0;
     }
 
-    #logview {
+    #logcontent {
         height: 1fr;
     }
 
@@ -86,6 +246,7 @@ class VulcanConsole(App):
         Binding("ctrl+c", "stop_streaming_task", "Stop Streaming"),
         Binding("up", "history_prev", show=False),
         Binding("down", "history_next", show=False),
+        Binding("f3", "copy", "Copy selection"),
     ]
 
     def __init__(self, tools_from_entrypoints: str = "", user_context: str = "", main_node = None,
@@ -116,6 +277,11 @@ class VulcanConsole(App):
         self.stream_task = None
         self.suggestion_index = -1
 
+        self.left_pannel = None
+
+        self.logger = VulcanAILogger(self)
+
+
     async def on_mouse_down(self, event: MouseEvent) -> None:
         """
         Function used to paste the string for the user clipboard
@@ -127,6 +293,8 @@ class VulcanConsole(App):
             event.stop()
 
     async def on_mount(self) -> None:
+        # TODO. danip
+        self.left_pannel = self.query_one("#logcontent", CustomLogTextArea)
 
         # Disable terminal input
         self.set_input_enabled(False)
@@ -135,25 +303,10 @@ class VulcanConsole(App):
 
         self.loop = asyncio.get_running_loop()
 
-#         vulcanai_tittle_slant = \
-# """
-#  _    __      __                 ___    ____
-# | |  / /_  __/ /________  ____  /   |  /  _/
-# | | / / / / / / ___/ __ `/ __ \/ /| |  / /
-# | |/ / /_/ / / /__/ /_/ / / / / ___ |_/ /
-# |___/\__,_/_/\___/\__,_/_/ /_/_/  |_/___/
-# """
-
-#         self._log(f"{vulcanai_tittle_slant}", log_color=1)
-
         await asyncio.sleep(0)
         asyncio.create_task(self.bootstrap())
 
     def compose(self) -> ComposeResult:
-        # with VerticalScroll(id="logview"):
-        #     yield Static("", id="logcontent")
-        # yield Input(placeholder="> ", id="cmd")
-
 
         vulcanai_title_slant = """[#56AA08]\
  _    __      __                 ___    ____
@@ -166,8 +319,7 @@ class VulcanConsole(App):
         with Horizontal():
             # LEFT
             with Vertical(id="left"):
-                with VerticalScroll(id="logview"):
-                    yield Static("", id="logcontent")
+                yield CustomLogTextArea(id="logcontent")
                 yield Input(placeholder="> ", id="cmd")
 
             # RIGHT
@@ -256,12 +408,16 @@ class VulcanConsole(App):
                     self.last_plan = result.get("plan", None)
                     self.last_bb = result.get("blackboard", None)
 
-                    self._log(f"Output of plan: {result.get('blackboard', {None})}", log_color=2)
+                    bb_ret = result.get('blackboard', {None})
+                    bb_ret = str(bb_ret).replace('<', '\'').replace('>', '\'')
+
+
+                    self._log(f"Output of plan: {bb_ret}", log_color=2)
                 except KeyboardInterrupt:
-                    self._log("[yellow]Exiting...[/yellow]")
+                    self._log("<yellow>Exiting...</yellow>")
                     return
                 except EOFError:
-                    self._log("[yellow]Exiting...[/yellow]")
+                    self._log("<yellow>Exiting...</yellow>")
                     return
 
         # This is the main thread, here is where the hook is started for queries
@@ -274,8 +430,8 @@ class VulcanConsole(App):
         if user_input == "":
             self.is_ready = True
             self._log("VulcanAI Interactive Console", log_color=2)
-            self._log("Type [bold]'exit'[/bold] to quit.", log_color=2)
-            self._log("")
+            self._log("Type <bold>'exit'</bold> to quit.", log_color=2)
+            #self._log("")
 
         # Activate the terminal input
         self.set_input_enabled(True)
@@ -328,10 +484,10 @@ class VulcanConsole(App):
                 tool = tool_tmp[2:]
                 if tool_tmp in selected:
                     if self.manager.registry.activate_tool(tool):
-                        self._log(f"Activated tool [bold]'{tool}'[/bold]", log_color=2)
+                        self._log(f"Activated tool <bold>'{tool}'</bold>", log_color=2)
                 else:
                     if self.manager.registry.deactivate_tool(tool):
-                        self._log(f"Deactivated tool [bold]'{tool}'[/bold]", log_color=2)
+                        self._log(f"Deactivated tool <bold>'{tool}'</bold>", log_color=2)
 
     def open_radiolist(self, option_list: list[str], tool: str = "") -> str:
         """
@@ -351,12 +507,12 @@ class VulcanConsole(App):
 
             color_tmp = "#EB921E"
             if selected is None:
-                self._log(f"[bold {color_tmp}]\[TOOL[italic]{tool}[/italic]][/bold {color_tmp}] " + \
+                self._log(f"<bold {color_tmp}>[TOOL<italic>{tool}</italic>]</bold {color_tmp}> " + \
                           f"Suggestion cancelled")
                 self.suggestion_index = -2
                 return
 
-            self._log(f"[bold {color_tmp}]\[TOOL[italic]{tool}[/italic]][/bold {color_tmp}] " + \
+            self._log(f"<bold {color_tmp}>[TOOL<italic>{tool}</italic>]</bold {color_tmp}> " + \
                       f"Selected suggestion: \"{option_list[selected]}\"")
             self.suggestion_index = selected
 
@@ -374,45 +530,48 @@ class VulcanConsole(App):
     def cmd_help(self, _) -> None:
         table = "\n".join(
             [
-                "[bold]Available commands:[/bold]\n"
+                "___________________\n"
+                "<bold>Available commands:</bold>\n"
                 "‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾\n"
-                "/[bold]help[/bold]           - Show this help message\n"
-                "/[bold]tools[/bold]          - List available tools\n"
-                "/[bold]edit_tools[/bold]     - Edit the list of available tools\n"
-                "/[bold]change_k <int>[/bold] - Change the 'k' value for the top_k algorithm selection or show the current value if no <int> is provided\n"
-                "/[bold]history <int>[/bold]  - Change the history depth or show the current value if no <int> is provided\n"
-                "/[bold]show_history[/bold]   - Show the current history\n"
-                "/[bold]clear_history[/bold]  - Clear the history\n"
-                "/[bold]plan[/bold]           - Show the last generated plan\n"
-                "/[bold]rerun[/bold]          - Rerun the last plan\n"
-                "/[bold]bb[/bold]             - Show the last blackboard state\n"
-                "/[bold]clear[/bold]          - Clears the console screen\n"
-                "/[bold]exit[/bold]           - Exit the console\n"
-                "[bold]Query any other text[/bold] to process it with the LLM and execute the plan generated.\n\n"
-                "Add --image=<path> to include images in the query. It can be used multiple times to add more images.\n"
-                "Example: '<user_prompt> --image=/path/to/image1 --image=/path/to/image2'\n"
-                "\n"
-                "[bold]Available keybinds:[/bold]\n"
+                "/<bold>help</bold>           - Show this help message\n"
+                "/<bold>tools</bold>          - List available tools\n"
+                "/<bold>edit_tools</bold>     - Edit the list of available tools\n"
+                "/<bold>change_k 'int'</bold> - Change the 'k' value for the top_k algorithm selection or show the current value if no 'int' is provided\n"
+                "/<bold>history 'int'</bold>  - Change the history depth or show the current value if no 'int' is provided\n"
+                "/<bold>show_history</bold>   - Show the current history\n"
+                "/<bold>clear_history</bold>  - Clear the history\n"
+                "/<bold>plan</bold>           - Show the last generated plan\n"
+                "/<bold>rerun</bold>          - Rerun the last plan\n"
+                "/<bold>bb</bold>             - Show the last blackboard state\n"
+                "/<bold>clear</bold>          - Clears the console screen\n"
+                "/<bold>exit</bold>           - Exit the console\n"
+                "<bold>Query any other text</bold> to process it with the LLM and execute the plan generated.\n\n"
+                "Add --image='path' to include images in the query. It can be used multiple times to add more images.\n"
+                "Example: 'user_prompt' --image=/path/to/image1 --image=/path/to/image2'\n"
+                "___________________\n"
+                "<bold>Available keybinds:</bold>\n"
                 "‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾\n"
-                "[bold]F2[/bold]                - Show this help message\n"
-                "[bold]Ctrl+Q[/bold]            - Exit the console\n"
-                "[bold]Ctrl+L[/bold]            - Clears the console screen\n"
-                "[bold]Ctrl+U[/bold]            - Clears the entire command line input\n"
-                "[bold]Ctrl+K[/bold]            - Clears from the cursor to then end of the line\n"
-                "[bold]Ctrl+W[/bold]            - Delete the word before the cursor\n"
-                "[bold]Ctrl+<left/right>[/bold] - Move cursor backward/forward by one word\n"
-                "[bold]Ctrl+R[/bold]            - Reverse search through command history (try typing part of a previous command).\n"
+                "<bold>F2</bold>                - Show this help message\n"
+                "<bold>Ctrl+Q</bold>            - Exit the console\n"
+                "<bold>Ctrl+L</bold>            - Clears the console screen\n"
+                "<bold>Ctrl+U</bold>            - Clears the entire command line input\n"
+                "<bold>Ctrl+K</bold>            - Clears from the cursor to then end of the line\n"
+                "<bold>Ctrl+W</bold>            - Delete the word before the cursor\n"
+                "<bold>Ctrl+'left/right'</bold> - Move cursor backward/forward by one word\n"
+                "<bold>Ctrl+R</bold>            - Reverse search through command history (try typing part of a previous command).\n"
             ]
         )
         self._log(table, log_color=2)
 
     def cmd_tools(self, _) -> None:
-        tmp_msg = f"Available tools (current index k={self.manager.k}):"
-        tool_msg = f"[bold]{tmp_msg}[/bold]\n"
-        tool_msg += "‾" * len(tmp_msg) +'\n'
+        tmp_msg = f"(current index k={self.manager.k})"
+
+        tool_msg = ("_" * len(tmp_msg)) + '\n'
+        tool_msg += f"<bold>Available tools:</bold>\n"
+        tool_msg += tmp_msg + '\n' + ("‾" * len(tmp_msg)) + '\n'
 
         for tool in self.manager.registry.tools.values():
-            tool_msg += f"- [bold]{tool.name}:[/bold] {tool.description}\n"
+            tool_msg += f"- <bold>{tool.name}:</bold> {tool.description}\n"
         self._log(tool_msg, log_color=2)
 
     def cmd_edit_tools(self, _) -> None:
@@ -432,7 +591,7 @@ class VulcanConsole(App):
             self._log(f"Current 'k' is {self.manager.k}", log_color=2)
             return
         if len(args) != 1 or not args[0].isdigit():
-            self._log(f"Usage: /change_k <int> - Actual 'k' is {self.manager.k}",
+            self._log(f"Usage: /change_k 'int' - Actual 'k' is {self.manager.k}",
                       log_type="error", log_color=2)
             return
 
@@ -447,7 +606,7 @@ class VulcanConsole(App):
                       log_color=2)
             return
         if len(args) != 1 or not args[0].isdigit():
-            self._log(f"Usage: /history <int> - Actual 'history depth' is {self.manager.history_depth}",
+            self._log(f"Usage: /history 'int' - Actual 'history depth' is {self.manager.history_depth}",
                       log_type="error", log_color=2)
             return
 
@@ -478,8 +637,9 @@ class VulcanConsole(App):
         history_widget.update("")
 
         # Update left terminal log (empty)
-        log = self.query_one("#logcontent", Static)
-        log.update("")
+        #log = self.query_one("#logcontent", Static)
+        #log.update("")
+        #self.left_pannel.update("")
 
         # Add feedback line
         self._log("History cleared.")
@@ -509,7 +669,8 @@ class VulcanConsole(App):
 
     def cmd_clear(self, _) -> None:
         self.log_lines_dq.clear()
-        self.query_one("#logcontent", Static).update("")
+        self.left_pannel.clear_console()
+        #self.query_one("#logcontent", Static).update("")
 
     def cmd_quit(self, _) -> None:
         self.exit()
@@ -531,8 +692,8 @@ class VulcanConsole(App):
         color_begin = ""
         color_end = ""
         if color != "":
-            color_begin = f"[{color}]"
-            color_end = f"[/{color}]"
+            color_begin = f"<{color}>"
+            color_end = f"</{color}>"
 
 
         # Append each line; deque automatically truncates old ones
@@ -540,36 +701,52 @@ class VulcanConsole(App):
             line_processed = line
             if subprocess_flag:
                 line_processed = escape(line)
-            self.log_lines_dq.append(f"{color_begin}{line_processed}{color_end}")
+            #self.log_lines_dq.append(f"{color_begin}{line_processed}{color_end}")
+            text = f"{color_begin}{line_processed}{color_end}"
+            self.left_pannel.append_marked(text)
 
-    def render_log(self) -> None:
-        log_static = self.query_one("#logcontent", Static)
-        log_static.update("\n".join(self.log_lines_dq))
+    def replace_line(self, input: str, row: int,
+            color: str = "",
+            subprocess_flag: bool = False) -> None:
 
-        self.query_one("#logview", VerticalScroll).scroll_end(animate=False)
+        # Split incoming text into individual lines
+        lines = input.splitlines()
+
+        color_begin = ""
+        color_end = ""
+        if color != "":
+            color_begin = f"<{color}>"
+            color_end = f"</{color}>"
+
+
+        # Append each line; deque automatically truncates old ones
+        for line in lines:
+            line_processed = line
+            if subprocess_flag:
+                line_processed = escape(line)
+            #self.log_lines_dq.append(f"{color_begin}{line_processed}{color_end}")
+            text = f"{color_begin}{line_processed}{color_end}"
+            self.left_pannel.replace_row(text, row)
+
+    def delete_last_line(self):
+        self.left_pannel.delete_last_row()
+
+    def render_log(self, text: str = "") -> None:
+        # log_area = self.query_one("#logcontent", TextArea)
+
+        # # Set the full content
+        # log_area.text = "\n".join(self.log_lines_dq)
+        if text == "":
+            self.left_pannel.append_marked(self.log_lines_dq[-1])
+        else:
+            self.left_pannel.append_marked(text)
+
+        # Keep view pinned to bottom (like tail -f)
+        #log_area.scroll_end(animate=False)
 
     def _log(self, text: str,
             log_type: str = "", log_color: int = -1,
             subprocess_flag: bool = False) -> None:
-
-        msg = ""
-
-        color_type = ""
-
-        if log_type == "register":
-            color_tmp = "#068399"
-            msg = f"[bold {color_tmp}]\[REGISTRY][/bold {color_tmp}] "
-        elif log_type == "manager":
-            color_tmp = "#0d87c0"
-            msg = f"[bold {color_tmp}]\[MANAGER][/bold {color_tmp}] "
-        elif log_type == "executor":
-            color_tmp = "#15B606"
-            msg = f"[bold {color_tmp}]\[EXECUTOR][/bold {color_tmp}] "
-        elif log_type == "validator":
-            msg = "[bold orange_red1]\[VALIDATOR][/bold orange_red1] "
-        elif log_type == "error":
-            msg = "[bold red]\[ERROR][/bold red] "
-
 
         if log_color == 0:
             color_type = "#FF0000"
@@ -582,13 +759,12 @@ class VulcanConsole(App):
         elif log_color == 4:
             color_type = "#069899"
         else:
-            msg += f"{text}"
-            self.add_line_dq(msg, subprocess_flag=subprocess_flag)
-            self.render_log()
-            return
+            color_type = ""
 
-        self.add_line_dq(text, color=color_type, subprocess_flag=subprocess_flag)
-        self.render_log()
+        self.add_line_dq(text, subprocess_flag=subprocess_flag, color=color_type)
+        #self.render_log(text="")
+        #self.render_log(text=text)
+        return
 
     def print_command_prompt(self, cmd: str=""):
         """
@@ -597,7 +773,7 @@ class VulcanConsole(App):
         """
 
         color_user = "#91DD16"
-        self._log(f"[bold {color_user}]\[USER] >>>[/bold {color_user}] {cmd}")
+        self._log(f"<bold {color_user}>[USER] >>></bold {color_user}> {cmd}")
 
     # endregion
 
@@ -655,10 +831,10 @@ class VulcanConsole(App):
             asyncio.create_task(self.bootstrap(user_input))
 
         except KeyboardInterrupt:
-            self._log("[yellow]Exiting...[/yellow]")
+            self._log("<yellow>Exiting...</yellow>")
             return
         except EOFError:
-            self._log("[yellow]Exiting...[/yellow]")
+            self._log("<yellow>Exiting...</yellow>")
             return
 
     def handle_command(self, user_input: str) -> None:
@@ -716,42 +892,6 @@ class VulcanConsole(App):
 
         key = event.key
         cmd_input = self.query_one("#cmd", Input)
-
-        # # NAVIGATE
-        # if key in ("up", "down"):
-
-        #     # Only handle history navigation if input is focused
-        #     if self.focused is not cmd_input:
-        #         return
-
-        #     if not self.history:
-        #         return
-
-        #     # Initialize history index if not already set
-        #     if not hasattr(self, "history_index") or self.history_index is None:
-        #         self.history_index = len(self.history)
-
-        #     # Store the command input if it is new
-        #     if self.history_index == len(self.history):
-        #         self.terminal_input = cmd_input.value
-
-        #     if key == "up" and self.history_index > 0:
-        #         self.history_index -= 1
-        #     elif key == "down" and self.history_index < len(self.history):
-        #         self.history_index += 1
-        #     else:
-        #         return  # Ignore if out of range
-
-        #     # Update input value based on history
-        #     if 0 <= self.history_index < len(self.history):
-        #         cmd_input.value = self.history[self.history_index]
-        #     else:
-        #         cmd_input.value = self.terminal_input
-
-        #     # Move cursor to end
-        #     cmd_input.cursor_position = len(cmd_input.value)
-        #     event.stop()
-        #     return
 
         # AUTOCOMPLETE: Tab
         if key == "tab":
@@ -934,6 +1074,17 @@ class VulcanConsole(App):
         self._apply_history_to_input()
         self._update_history_panel()
 
+    def action_copy(self) -> None:
+        ta = self.query_one("#logcontent", TextArea)
+
+        selected = ta.selected_text  # <-- modern Textual API :contentReference[oaicite:2]{index=2}
+        if not selected:
+            self.notify("No selection")
+            return
+
+        pyperclip.copy(selected)     # <-- system clipboard
+        self.notify("Copied with pyperclip")
+
     # endregion
 
     def run_console(self) -> None:
@@ -952,13 +1103,13 @@ class VulcanConsole(App):
 
         # Print in textual terminal:
         # Initializing Manager '<PlanManager/IterativeManager>' ...
-        self._log(f"Initializing Manager [bold]'{ConsoleManager.__name__}'[/bold] ...", log_color=2)
+        self._log(f"Initializing Manager <bold>'{ConsoleManager.__name__}'</bold>...", log_color=2)
 
-        self.manager = ConsoleManager(model=self.model, k=self.k, logger=self._log)
+        self.manager = ConsoleManager(model=self.model, k=self.k, logger=self.logger)
 
         # Print in textual terminal:
         # Manager initialized with model '<model>'
-        self._log(f"Manager initialized with model [bold]'{self.model}[/bold]'", log_color=2)
+        self._log(f"Manager initialized with model <bold>'{self.model}</bold>'", log_color=2)
         self._update_variables_panel()
 
     def get_images(self, user_input: str) -> None:

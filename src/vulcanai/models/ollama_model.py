@@ -107,8 +107,8 @@ class OllamaModel(IModel):
             output_tokens = completion.eval_count
             # Print in textual terminal:
             # [MANAGER] Prompt tokens: <num_1>, Completion tokens: <num_2>
-            self.logger(f"Prompt tokens: [{self.class_color}]{input_tokens}[/{self.class_color}], " + \
-                        f"Completion tokens: [{self.class_color}]{output_tokens}[/{self.class_color}]", log_type="manager")
+            self.logger(f"Prompt tokens: <{self.class_color}>{input_tokens}</{self.class_color}>, " + \
+                        f"Completion tokens: <{self.class_color}>{output_tokens}</{self.class_color}>", log_type="manager")
         except Exception:
             pass
 

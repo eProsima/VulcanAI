@@ -63,7 +63,10 @@ class SpinnerHook:
 
         # Spinner states
         self.spinner_timer: Timer | None = None
-        self.spinner_frames = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"]
+        # NOTE. Textual current version does not support extended ASCII characters
+        # in TextArea highlights
+        #self.spinner_frames = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"]
+        self.spinner_frames = ["|", "/", "-", "\\"]
         self.spinner_frame_index = 0
         self.spinner_line_index: int | None = None
 
@@ -81,14 +84,14 @@ class SpinnerHook:
             return
 
         # Initialized the class variables
-        self.console._log(f"[{self.color}]{text}[/{self.color}]")
+        self.console._log(f"<{self.update_color}>⠋</{self.update_color}> <{self.color}>{text}</{self.color}>")
         self.spinner_line_index = len(self.console.log_lines_dq) - 1
         self.spinner_frame_index = 0
 
         # Update every 0.1s
-        self.spinner_timer = self.console.set_interval(0.1, self.update_spinner)
+        self.spinner_timer = self.console.set_interval(0.25, self.update_spinner)
         # Update the terminal
-        self.console.render_log()
+        #self.console.render_log()
 
     def update_spinner(self) -> None:
         """
@@ -103,12 +106,15 @@ class SpinnerHook:
         self.spinner_frame_index = (self.spinner_frame_index + 1) % len(self.spinner_frames)
 
         # Update that specific line only
-        self.console.log_lines_dq[self.spinner_line_index] = \
-            f"[{self.update_color}]{frame}[/{self.update_color}] " + \
-            f"[{self.color}]{self.text}[/{self.color}]"
+        #self.console.log_lines_dq[self.spinner_line_index] \
+        text = f"<{self.update_color}>{frame}</{self.update_color}> " + \
+                f"<{self.color}>{self.text}</{self.color}>"
+
+        # latest
+        self.console.replace_line(text, -1)
 
         # Update the terminal
-        self.console.render_log()
+        #self.console.render_log()
 
     def on_request_end(self) -> None:
         """
@@ -123,9 +129,10 @@ class SpinnerHook:
 
         # Update the spinner message line
         if self.spinner_line_index is not None:
-            self.console.log_lines_dq.pop()
+            #self.console.log_lines_dq.pop()
+            self.console.delete_last_line()
             self.spinner_line_index = None
-            self.console.render_log()
+            #self.console.render_log()
 
 
 def attach_ros_logger_to_console(console, node):
@@ -136,13 +143,13 @@ def attach_ros_logger_to_console(console, node):
     logger = node.get_logger()
 
     def info_hook(msg, *args, **kwargs):
-        console.call_from_thread(console._log, f"[gray]\[ROS] \[INFO] {msg}[/gray]")
+        console.call_from_thread(console._log, f"<gray>[ROS] [INFO] {msg}</gray>")
 
     def warn_hook(msg, *args, **kwargs):
-        console.call_from_thread(console._log, f"[gray]\[ROS] \[WARN] {msg}[/gray]")
+        console.call_from_thread(console._log, f"<gray>[ROS] [WARN] {msg}</gray>")
 
     def error_hook(msg, *args, **kwargs):
-        console.call_from_thread(console._log, f"[gray]\[ROS] \[ERROR] {msg}[/gray]")
+        console.call_from_thread(console._log, f"<gray>[ROS] [ERROR] {msg}</gray>")
 
     logger.info = info_hook
     logger.warning = warn_hook
@@ -212,7 +219,7 @@ async def run_streaming_cmd_async(console, args: list[str],
             line_count += 1
             if max_lines is not None and line_count >= max_lines:
                 console._log(f"{print_header} " + \
-                    f"[yellow]Stopping: [bold]reached max_lines = {max_lines}[/bold][/yellow]"
+                    f"<yellow>Stopping: <bold>reached max_lines = {max_lines}</bold></yellow>"
                 )
                 console.set_stream_task(None)
                 process.terminate()
@@ -221,7 +228,7 @@ async def run_streaming_cmd_async(console, args: list[str],
             # Check duration
             if max_duration and (time.monotonic() - start_time) >= max_duration:
                 console._log(f"{print_header} " + \
-                    f"[yellow]Stopping: [bold]exceeded max_duration = {max_duration}s[/bold] [/yellow]"
+                    f"<yellow>Stopping: <bold>exceeded max_duration = {max_duration}s</bold> </yellow>"
                 )
                 console.set_stream_task(None)
                 process.terminate()
@@ -230,13 +237,13 @@ async def run_streaming_cmd_async(console, args: list[str],
 
     except asyncio.CancelledError:
         # Task was cancelled → stop the subprocess
-        console._log(f"{print_header} [yellow][bold]Cancellation received:[/bold] terminating subprocess...[/yellow]")
+        console._log(f"{print_header} <yellow><bold>Cancellation received:</bold> terminating subprocess...</yellow>")
         process.terminate()
         raise
     # Not necessary, textual terminal get the keyboard input
     except KeyboardInterrupt:
         # Ctrl+C pressed → stop subprocess
-        console._log(f"{print_header} [yellow][bold]Ctrl+C received:[/bold] terminating subprocess...[/yellow]")
+        console._log(f"{print_header} <yellow><bold>Ctrl+C received:</bold> terminating subprocess...</yellow>")
         process.terminate()
 
     finally:
@@ -253,7 +260,7 @@ async def run_streaming_cmd_async(console, args: list[str],
 def execute_subprocess(console, tool_name, base_args, max_duration, max_lines):
 
     stream_task = None
-    tool_header_str = f"[bold {color_tool}]\[TOOL [italic]{tool_name}[/italic]][/bold {color_tool}]"
+    tool_header_str = f"<bold {color_tool}>[TOOL <italic>{tool_name}</italic>]</bold {color_tool}>"
 
     def _launcher() -> None:
         nonlocal stream_task
@@ -299,7 +306,7 @@ def execute_subprocess(console, tool_name, base_args, max_duration, max_lines):
 
 
     console.set_stream_task(stream_task)
-    console._log(f"{tool_header_str} [yellow][bold]Subprocess created![/bold][/yellow]")
+    console._log(f"{tool_header_str} <yellow><bold>Subprocess created!</bold></yellow>")
 
 def run_oneshot_cmd(args: list[str]) -> str:
     try:
@@ -369,7 +376,7 @@ def suggest_string(console, tool_name, string_name, input_string, real_string_li
 
     if input_string not in real_string_list:
 
-        tool_header_str = f"[bold {color_tool}]\[TOOL [italic]{tool_name}[/italic]][/bold {color_tool}]"
+        tool_header_str = f"<bold {color_tool}>[TOOL <italic>{tool_name}</italic>]</bold {color_tool}>"
 
         console._log(f"{tool_header_str} {string_name}: \"{input_string}\" does not exists")
 

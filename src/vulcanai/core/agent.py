@@ -138,24 +138,24 @@ class Agent:
             from vulcanai.models.openai import OpenAIModel
             # Print in textual terminal:
             # [MANAGER] Using OpenAI API with model: <model_name>
-            self.logger(f"Using OpenAI API with model: " + \
-                        f"[{self.class_color}]{model_name}[/{self.class_color}]", log_type="manager")
+            self.logger.log_manager(f"Using OpenAI API with model: " + \
+                        f"<{self.class_color}>{model_name}</{self.class_color}>")
             self.model = OpenAIModel(model_name, self.logger)
 
         elif self.brand == Brand.gemini:
             from vulcanai.models.gemini import GeminiModel
             # Print in textual terminal:
             # [MANAGER] Using Gemini API with model: <model_name>
-            self.logger(f"Using Gemini API with model: " + \
-                        f"[{self.class_color}]{model_name}[/{self.class_color}]", log_type="manager")
+            self.logger.log_manager(f"Using Gemini API with model: " + \
+                        f"<{self.class_color}>{model_name}</{self.class_color}>")
             self.model = GeminiModel(model_name, self.logger)
 
         elif self.brand == Brand.ollama:
             from vulcanai.models.ollama_model import OllamaModel
             # Print in textual terminal:
             # [MANAGER] Using Ollama API with model: <model_name>
-            self.logger(f"Using Ollama API with model: " + \
-                        f"[{self.class_color}]{model_name}[/{self.class_color}]", log_type="manager")
+            self.logger.log_manager(f"Using Ollama API with model: " + \
+                        f"<{self.class_color}>{model_name}</{self.class_color}>")
             self.model = OllamaModel(model_name, self.logger)
 
         else:
@@ -168,14 +168,21 @@ class Agent:
                 self.model.hooks = hooks
                 # Print in textual terminal:
                 # [MANAGER] LLM hooks set.
-                self.logger("LLM hooks set.", log_type="manager")
+                # TODO. danip
+                #self.logger("LLM hooks set.",
+                #            log_type="manager")
+                self.logger.log_manager("LLM hooks set.")
             except Exception as e:
                 # Print in textual terminal:
                 # [MANAGER] ERROR. Failed to set LLM hooks: <exception>
-                self.logger(f"ERROR. Failed to set LLM hooks: {e}",
-                            log_type="manager", log_color=0)
+                # TODO. danip
+                #self.logger(f"ERROR. Failed to set LLM hooks: {e}",
+                #            log_type="manager", log_color=0)
+                self.logger.log_manager(f"Failed to set LLM hooks: {e}", error=True)
         else:
             # Print in textual terminal:
             # [MANAGER] ERROR. LLM model not initialized, cannot set hooks.
-            self.logger("ERROR. LLM model not initialized, cannot set hooks.",
-                        log_type="manager", log_color=0)
+            # TODO. danip
+            #self.logger("ERROR. LLM model not initialized, cannot set hooks.",
+            #            log_type="manager", log_color=0)
+            self.logger.log_manager("LLM model not initialized, cannot set hooks.", error=True)
