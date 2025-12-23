@@ -101,8 +101,8 @@ class VulcanConsole(App):
         # -- Main variables --
         # Manager instance
         self.manager = None
-        # Last generated plan
-        self.last_plan = None
+        # List of generated plans
+        self.plans_list = []
         # Last generated blackboard state
         self.last_bb = None
         # Spinner hook for LLM requests
@@ -316,7 +316,7 @@ class VulcanConsole(App):
                     return
 
                 # Store the plan and blackboard state
-                self.last_plan = result.get("plan", None)
+                self.plans_list.append(result.get("plan", None))
                 self.last_bb = result.get("blackboard", None)
 
                 # Print the backboard state
@@ -368,9 +368,16 @@ class VulcanConsole(App):
         # Get the history widget
         history_widget = self.query_one("#history", Static)
 
+        plan_count = 0
         lines = []
         for i, cmd in enumerate(self.history):
-            text = f"{i+1:>3}: {escape(cmd)}"
+            cmd_esc = escape(cmd)
+            prefix = ""
+            if len(cmd_esc) > 0 and cmd_esc[0] != '/':
+                prefix = f" [#56AA08][Plan {plan_count}][/#56AA08]\n"
+                plan_count += 1
+
+            text = f"{prefix} {i+1}: {escape(cmd)}"
             if self.history_index is not None and self.history_index == i:
                 # Highlight current selection
                 text = f"[bold reverse]{text}[/]"
@@ -549,28 +556,69 @@ class VulcanConsole(App):
         # Empty right panel 'history'
         history_widget = self.query_one("#history", Static)
         history_widget.update("")
+        # Clear the list of plans
+        self.plans_list.clear()
 
         # Add feedback line
         self.logger.log_msg("History cleared.")
 
     def cmd_plan(self, _) -> None:
-        if self.last_plan:
+        if len(self.plans_list) > 0:
             self.logger.log_console("<bold>Last generated plan:</bold>")
-            self.logger.log_console(str(self.last_plan), color="white")
+            self.logger.log_console(str(self.plans_list[-1]), color="white")
         else:
             self.logger.log_console("No plan has been generated yet.")
 
-    def cmd_rerun(self, _) -> None:
-        if self.last_plan:
-            self.logger.log_console("Rerunning last plan...")
-            result = self.manager.executor.run(self.last_plan, self.manager.bb)
-            self.last_bb = result.get("blackboard", None)
-            # Parse the blackboard to avoid <...> issues in textual
-            last_bb_parsed = str(self.last_bb)
-            last_bb_parsed = last_bb_parsed.replace('<', '\'').replace('>', '\'')
-            self.logger.log_console(f"Output of rerun: {last_bb_parsed}")
+    def cmd_rerun(self, args) -> None:
+        self._rerun_worker(args)  # start worker (dont await)
+
+    @work(thread=True)
+    async def _rerun_worker(self, args) -> None:
+        """
+        Worker function used to run the command "rerun".
+        It has to be a worker(thead=True) because the call 'self.manager.executor.run'
+        might have a "call_from_thread" in the tool executed,
+        and it is only valid in non Textual app Threads (separated Thread).
+
+        @work runs on the app's event loop (app thread) and is for async, non-blocking code.
+        @work(thread=True) runs in a separate OS thread and is for blocking.
+
+        e.g.:
+        'move_turtle' tool contains a 'call_from_thread'
+        'ros2_topic' tool does not contains a 'call_from_thread'
+        """
+        selected_plan = 0
+        if len(args) == 0:
+            # no index specified. Last plan selected
+            selected_plan = len(self.plans_list) - 1
+        elif len(args) != 1 or not args[0].isdigit():
+            # self.call_from_thread(self.logger.log_console, "Usage: /rerun 'int'")
+            self.logger.log_console("Usage: /rerun 'int'")
+            return
         else:
+            selected_plan = int(args[0])
+            if selected_plan < -1:
+                self.logger.log_console("Usage: /rerun 'int' [int >= -1].")
+                return
+
+        if not self.plans_list:
             self.logger.log_console("No plan to rerun.")
+            return
+
+        self.logger.log_console(f"Rerunning {selected_plan}-th plan...")
+
+        # Execute the plan
+        result = self.manager.executor.run(self.plans_list[selected_plan], self.manager.bb)
+
+        last_bb = result.get("blackboard", None)
+        last_bb_parsed = str(last_bb).replace("<", "'").replace(">", "'")
+
+        # UI updates must happen on the app thread:
+        def apply_result():
+            self.last_bb = last_bb
+            self.logger.log_console(f"Output of rerun: {last_bb_parsed}")
+
+        self.call_from_thread(apply_result)
 
     def cmd_blackboard_state(self, _) -> None:
         if self.last_bb:
@@ -1093,15 +1141,6 @@ def main() -> None:
 
 
     args = parser.parse_args()
-
-    # console = VulcanConsole(model=args.model, k=args.k, iterative=args.iterative)
-    # if args.register_from_file:
-    #     for file in args.register_from_file:
-    #         console.manager.register_tools_from_file(file)
-    # if args.register_from_entry_point:
-    #     for entry_point in args.register_from_entry_point:
-    #         console.manager.register_tools_from_entry_points(entry_point)
-    # console.run_console()
 
     console = VulcanConsole(register_from_file=args.register_from_file,
                             tools_from_entrypoints=args.register_from_entry_point,
