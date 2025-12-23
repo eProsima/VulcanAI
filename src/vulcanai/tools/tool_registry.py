@@ -37,7 +37,7 @@ class HelpTool(ITool):
     """A tool that provides help information."""
     name = "help"
     description = "Provides help information for using the library. It can list all available tools or" \
-                    " give info about the usage of a specific tool if <tool_name> is provided as an argument."
+                    " give info about the usage of a specific tool if 'tool_name' is provided as an argument."
     tags = ["help", "info", "documentation", "usage", "developer", "manual", "available tools"]
     input_schema = [("tool", "string")]
     output_schema = {"info": "str"}
@@ -74,7 +74,8 @@ class HelpTool(ITool):
 class ToolRegistry:
 
     # Color of the class [REGISTRY] in the textual terminal
-    class_color = "#068399"
+    # TODO. danip
+    #class_color = "#068399"
 
     """Holds all known tools and performs vector search over metadata."""
     def __init__(self, embedder=None, logger=None):
@@ -107,9 +108,7 @@ class ToolRegistry:
             self.validation_tools.append(tool.name)
         emb = self.embedder.embed(self._doc(tool))
         self._index.append((tool.name, emb))
-        # Print in textual terminal:
-        # [REGISTRY] Registered tool: <tool>
-        self.logger(f"Registered tool: [{self.class_color}]{tool.name}[/{self.class_color}]", log_type="register")
+        self.logger.log_registry(f"Registered tool: [registry]{tool.name}[/registry]")
         self.help_tool.available_tools = self.tools
         if solve_deps:
             # Get class of tool
@@ -123,10 +122,8 @@ class ToolRegistry:
             return False
         # Check if the tool is deactivated
         if tool_name not in self.deactivated_tools:
-            # Print in textual terminal:
-            # [REGISTRY] ERROR. Tool '<name>' not found in the deactivated tools list.
-            self.logger(f"ERROR. Tool [{self.class_color}]'{tool_name}'[/{self.class_color}] " + \
-                        f"not found in the deactivated tools list.", log_color=0)
+            self.logger.log_registry(f"Tool [registry]'{tool_name}'[/registry] " + \
+                        f"not found in the deactivated tools list.", error=True)
             return False
 
         # Add the tool to the active tools
@@ -144,10 +141,8 @@ class ToolRegistry:
             return False
         # Check if the tool is active
         if tool_name not in self.tools:
-            # Print in textual terminal:
-            # [REGISTRY] ERROR. Tool '<name>' not found in the active tools list.
-            self.logger(f"ERROR. Tool [{self.class_color}]'{tool_name}'[/{self.class_color}] "+ \
-                        f"not found in the active tools list.", log_color=0)
+            self.logger.log_registry(f"Tool [registry]'{tool_name}'[/registry] "+ \
+                        f"not found in the active tools list.", error=True)
             return False
 
         # Add the tool to the deactivated tools
@@ -180,10 +175,7 @@ class ToolRegistry:
         for dep_name in tool.dependencies:
             dep_tool = self.tools.get(dep_name)
             if dep_tool is None:
-                # Print in textual terminal:
-                # [REGISTRY] ERROR. Dependency '<dep_name>' for tool '<tool_name>' not found
-                self.logger(f"ERROR. Dependency '{dep_name}' for tool '{tool.name}' not found.",
-                            log_type="register", log_color=0)
+                self.logger.log_registry(f"ERROR. Dependency '{dep_name}' for tool '{tool.name}' not found.", error=True)
             else:
                 tool.resolved_deps[dep_name] = dep_tool
 
@@ -202,9 +194,7 @@ class ToolRegistry:
             spec.loader.exec_module(module)
             self._loaded_modules.append(module)
         except Exception as e:
-            # Print in textual terminal:
-            # [REGISTRY] ERROR. Could not load tools from <path>}: <exception>
-            self.logger(f"ERROR. Could not load tools from {path}: {e}", log_type="register", log_color=0)
+            self.logger.log_registry(f"Could not load tools from {path}: {e}", error=True)
     def discover_tools_from_file(self, path: str):
         """Load tools from a Python file and register them."""
         self._load_tools_from_file(path)
@@ -227,9 +217,7 @@ class ToolRegistry:
     def top_k(self, query: str, k: int = 5, validation: bool = False) -> list[ITool]:
         """Return top-k tools most relevant to the query."""
         if not self._index:
-            # Print in textual terminal:
-            # [REGISTRY] ERROR. No tools registered.
-            self.logger("ERROR. No tools registered.", log_type="register", log_color=0)
+            self.logger.log_registry("No tools registered.", error=True)
             return []
 
         # Filter tools based on validation flag
@@ -242,9 +230,9 @@ class ToolRegistry:
         active_names: set = val_names if validation else nonval_names
         if not active_names:
             # If there is no tool for the requested category, be explicit and return []
-            self.logger(
-                f"ERROR. No matching tools for the requested mode ({'validation' if validation else 'action'}).",
-                log_type="register", log_color=0
+            self.logger.log_registry(
+                f"No matching tools for the requested mode ({'validation' if validation else 'action'}).",
+                error=True
             )
             return []
         # If k > number of ALL tools, return required tools
@@ -255,10 +243,8 @@ class ToolRegistry:
         if not filtered_index:
             # Index might be stale; log and return []
 
-            # Print in textual terminal:
-            # [REGISTRY] ERROR. Index has no entries for the selected tool subset..
-            self.logger("ERROR. Index has no entries for the selected tool subset.",
-                        log_type="register", log_color=0)
+            self.logger.log_registry("Index has no entries for the selected tool subset.",
+                        error=True)
             return []
         # If k > number of required tools, return required tools
         if k > len(filtered_index):

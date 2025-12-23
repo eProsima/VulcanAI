@@ -99,19 +99,11 @@ class ToolManager:
                 try:
                     self.validator.validate(plan)
                 except Exception as e:
-                    # Print in textual terminal:
-                    # [MANAGER] error. Plan validation error: <exception>
-                    # TODO. danip
-                    #self.logger(f"ERROR. Plan validation: {e}", log_type="manager", log_color=0)
                     self.logger.log_validator(f"Plan validation: {e}", error=True)
                     raise e
             # Execute plan
             ret = self.execute_plan(plan)
         except Exception as e:
-            # Print in textual terminal:
-            # [MANAGER] ERROR. Handling user request: <exception>
-            # TODO. danip
-            #self.logger(f"ERROR. Handling user request: {e}", log_type="manager", log_color=0)
             self.logger.log_manager(f"Error handling user request: {e}", error=True)
             ret = {"error": str(e)}
 
@@ -139,13 +131,9 @@ class ToolManager:
 
         # Query LLM
         plan = self.llm.inference_plan(system_prompt, user_prompt, images, self.history)
-        # Print in textual terminal:
-        # [VALIDATOR] Plan received:
-        # <plan>
-        # TODO. danip
-        #self.logger(f"Plan received:\n{plan}", log_type="manager")
         self.logger.log_manager(f"Plan received:\n{plan}")
         # Save to history
+        # TODO. danip
         if plan:
             self._add_to_history(user_prompt, plan.summary)
         return plan
@@ -179,10 +167,6 @@ class ToolManager:
         """
         tools = self.registry.top_k(user_text, self.k)
         if not tools:
-            # Print in textual terminal:
-            # [VALIDATOR] ERROR. No tools available in the registry.
-            # TODO. danip
-            #self.logger("ERROR. No tools available in the registry.", log_type="manager", log_color=0)
             self.logger.log_manager(f"No tools available in the registry.", error=True)
             return "", ""
         tool_descriptions = []
@@ -215,10 +199,6 @@ class ToolManager:
         :param new_depth: The new history depth.
         """
         self.history_depth = max(0, int(new_depth))
-        # Print in textual terminal:
-        # [VALIDATOR] Updated history depth to <new_depth>
-        # TODO. danip
-        #self.logger(f"Updated history depth to {new_depth}", log_type="manager", log_color=2)
         self.logger.log_manager(f"Updated history depth to {new_depth}", color="console")
         if len(self.history) > self.history_depth:
             if self.history_depth <= 0:
@@ -233,10 +213,6 @@ class ToolManager:
         :param new_k: The new k index.
         """
         self.k = max(1, int(new_k))
-        # Print in textual terminal:
-        # [VALIDATOR] Updated k index to <new_k>
-        # TODO. danip
-        #self.logger(f"Updated k index to {new_k}", log_type="manager", log_color=2)
         self.logger.log_manager(f"Updated k index to {new_k}", color="console")
 
     def _get_prompt_template(self) -> str:

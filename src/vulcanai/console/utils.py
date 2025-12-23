@@ -37,15 +37,10 @@ class StreamToTextual:
         if not data:
             return
 
-        # optional: still write to real stdout/stderr
-        self.real_stream.write(data)
-        self.real_stream.flush()
-
         if data.strip():
             # Ensure update happens on the app thread
             #self.app.call_from_thread(self.app.append_log_text, data)
             self.app.call_from_thread(self.app.add_line_dq, data)
-            self.app.render_log()
 
     def flush(self):
         self.real_stream.flush()
@@ -84,14 +79,13 @@ class SpinnerHook:
             return
 
         # Initialized the class variables
-        self.console._log(f"<{self.update_color}>⠋</{self.update_color}> <{self.color}>{text}</{self.color}>")
-        self.spinner_line_index = len(self.console.log_lines_dq) - 1
+        self.console._log(f"<{self.update_color}>|</{self.update_color}> <{self.color}>{text}</{self.color}>")
+        self.spinner_line_index = -1
         self.spinner_frame_index = 0
 
         # Update every 0.1s
         self.spinner_timer = self.console.set_interval(0.25, self.update_spinner)
-        # Update the terminal
-        #self.console.render_log()
+
 
     def update_spinner(self) -> None:
         """
@@ -106,15 +100,11 @@ class SpinnerHook:
         self.spinner_frame_index = (self.spinner_frame_index + 1) % len(self.spinner_frames)
 
         # Update that specific line only
-        #self.console.log_lines_dq[self.spinner_line_index] \
         text = f"<{self.update_color}>{frame}</{self.update_color}> " + \
                 f"<{self.color}>{self.text}</{self.color}>"
 
         # latest
         self.console.replace_line(text, -1)
-
-        # Update the terminal
-        #self.console.render_log()
 
     def on_request_end(self) -> None:
         """
@@ -129,10 +119,8 @@ class SpinnerHook:
 
         # Update the spinner message line
         if self.spinner_line_index is not None:
-            #self.console.log_lines_dq.pop()
             self.console.delete_last_line()
             self.spinner_line_index = None
-            #self.console.render_log()
 
 
 def attach_ros_logger_to_console(console, node):
@@ -143,13 +131,13 @@ def attach_ros_logger_to_console(console, node):
     logger = node.get_logger()
 
     def info_hook(msg, *args, **kwargs):
-        console.call_from_thread(console._log, f"<gray>[ROS] [INFO] {msg}</gray>")
+        console.call_from_thread(console.logger.log_msg, f"<gray>[ROS] [INFO] {msg}</gray>")
 
     def warn_hook(msg, *args, **kwargs):
-        console.call_from_thread(console._log, f"<gray>[ROS] [WARN] {msg}</gray>")
+        console.call_from_thread(console.logger.log_msg, f"<gray>[ROS] [WARN] {msg}</gray>")
 
     def error_hook(msg, *args, **kwargs):
-        console.call_from_thread(console._log, f"<gray>[ROS] [ERROR] {msg}</gray>")
+        console.call_from_thread(console.logger.log_msg, f"<gray>[ROS] [ERROR] {msg}</gray>")
 
     logger.info = info_hook
     logger.warning = warn_hook
@@ -186,7 +174,7 @@ async def run_streaming_cmd_async(console, args: list[str],
         max_duration: float = 60,
         max_lines: int = 1000,
         echo: bool = True,
-        print_header="") -> str:
+        tool_name="") -> str:
 
 
     # Unpack the command
@@ -218,18 +206,21 @@ async def run_streaming_cmd_async(console, args: list[str],
             # Count the line
             line_count += 1
             if max_lines is not None and line_count >= max_lines:
-                console._log(f"{print_header} " + \
-                    f"<yellow>Stopping: <bold>reached max_lines = {max_lines}</bold></yellow>"
-                )
+                # TODO. danip
+                # console._log(f"{print_header} " + \
+                #     f"<yellow>Stopping: <bold>reached max_lines = {max_lines}</bold></yellow>"
+                # )
+                console.logger.log_tool(f"[tool]Stopping:[/tool] Reached max_lines = {max_lines}", tool_name=tool_name)
                 console.set_stream_task(None)
                 process.terminate()
                 break
 
             # Check duration
             if max_duration and (time.monotonic() - start_time) >= max_duration:
-                console._log(f"{print_header} " + \
-                    f"<yellow>Stopping: <bold>exceeded max_duration = {max_duration}s</bold> </yellow>"
-                )
+                # console._log(f"{print_header} " + \
+                #     f"<yellow>Stopping: <bold>exceeded max_duration = {max_duration}s</bold> </yellow>"
+                # )
+                console.logger.log_tool(f"[tool]Stopping:[/tool] Exceeded max_duration = {max_duration}s", tool_name=tool_name)
                 console.set_stream_task(None)
                 process.terminate()
                 break
@@ -237,20 +228,23 @@ async def run_streaming_cmd_async(console, args: list[str],
 
     except asyncio.CancelledError:
         # Task was cancelled → stop the subprocess
-        console._log(f"{print_header} <yellow><bold>Cancellation received:</bold> terminating subprocess...</yellow>")
+        #console._log(f"{print_header} <yellow><bold>Cancellation received:</bold> terminating subprocess...</yellow>")
+        console.logger.log_tool(f"[tool]Cancellation received:[/tool] terminating subprocess...", tool_name=tool_name)
         process.terminate()
         raise
     # Not necessary, textual terminal get the keyboard input
     except KeyboardInterrupt:
         # Ctrl+C pressed → stop subprocess
-        console._log(f"{print_header} <yellow><bold>Ctrl+C received:</bold> terminating subprocess...</yellow>")
+        #console._log(f"{print_header} <yellow><bold>Ctrl+C received:</bold> terminating subprocess...</yellow>")
+        console.logger.log_tool(f"[tool]Ctrl+C received:[/tool] terminating subprocess...", tool_name=tool_name)
         process.terminate()
 
     finally:
         try:
             await asyncio.wait_for(process.wait(), timeout=3.0)
         except asyncio.TimeoutError:
-            console._log(f"{print_header} Subprocess didn't exit in time → killing it.", log_color=0)
+            #console.logger.log_msg(f"{print_header} Subprocess didn't exit in time → killing it.", error=True)
+            console.logger.log_tool(f"Subprocess didn't exit in time → killing it.", tool_name=tool_name, error=True)
             process.kill()
             await process.wait()
 
@@ -260,7 +254,6 @@ async def run_streaming_cmd_async(console, args: list[str],
 def execute_subprocess(console, tool_name, base_args, max_duration, max_lines):
 
     stream_task = None
-    tool_header_str = f"<bold {color_tool}>[TOOL <italic>{tool_name}</italic>]</bold {color_tool}>"
 
     def _launcher() -> None:
         nonlocal stream_task
@@ -272,7 +265,7 @@ def execute_subprocess(console, tool_name, base_args, max_duration, max_lines):
                 base_args,
                 max_duration=max_duration,
                 max_lines=max_lines,
-                print_header=tool_header_str
+                tool_name=tool_name#tool_header_str
             )
         )
 
@@ -287,7 +280,7 @@ def execute_subprocess(console, tool_name, base_args, max_duration, max_lines):
             try:
                 task.result()
             except Exception as e:
-                console._log(f"Echo task error: {e!r}\n", log_color=0)
+                console.logger.log_msg(f"Echo task error: {e!r}\n", error=True)
                 #result["output"] = False
                 return
 
@@ -304,9 +297,9 @@ def execute_subprocess(console, tool_name, base_args, max_duration, max_lines):
         # We *are* in the loop → just launch directly.
         _launcher()
 
-
+    # Store the task in the console to be able to cancel it later
     console.set_stream_task(stream_task)
-    console._log(f"{tool_header_str} <yellow><bold>Subprocess created!</bold></yellow>")
+    console.logger.log_tool("[tool]Subprocess created![tool]", tool_name=tool_name)
 
 def run_oneshot_cmd(args: list[str]) -> str:
     try:
@@ -376,15 +369,14 @@ def suggest_string(console, tool_name, string_name, input_string, real_string_li
 
     if input_string not in real_string_list:
 
-        tool_header_str = f"<bold {color_tool}>[TOOL <italic>{tool_name}</italic>]</bold {color_tool}>"
-
-        console._log(f"{tool_header_str} {string_name}: \"{input_string}\" does not exists")
+        #console._log(f"{tool_header_str} {string_name}: \"{input_string}\" does not exists")
+        console.logger.log_tool(f"{string_name}: \"{input_string}\" does not exists", tool_name=tool_name)
 
         # Get the suggestions list sorted by similitud value
         _, topic_sim_list = _get_suggestions(real_string_list, input_string)
 
         # Open the ModalScreen
-        console.open_radiolist(topic_sim_list, f" {tool_name}")
+        console.open_radiolist(topic_sim_list, f"{tool_name}")
 
         # Wait for the user to select and item in the
         # RadioList ModalScreen

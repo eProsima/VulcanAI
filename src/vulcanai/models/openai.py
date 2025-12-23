@@ -20,14 +20,16 @@ import time
 from vulcanai.core.plan_types import AIValidation, GlobalPlan, GoalSpec
 from vulcanai.models.model import IModel, IModelHooks
 
+# TODO. danip
+from pathlib import Path
+import json
+from typing import Type, TypeVar
+from pydantic import BaseModel
+
 # Generic type variable for response classes
 T = TypeVar('T', GlobalPlan, GoalSpec, AIValidation)
 
-
 class OpenAIModel(IModel):
-
-    # Color of the class [MANAGER] in the textual terminal
-    class_color = "#0d87c0"
 
     """ Wrapper for OpenAI models. """
     def __init__(self, model_name: str, logger=None, hooks: Optional[IModelHooks] = None):
@@ -38,9 +40,12 @@ class OpenAIModel(IModel):
         try:
             self.model = OpenAI()
         except Exception as e:
-            # Print in textual terminal:
-            # [MANAGER] ERROR. Missing OpenAI API Key: <exception>
             self.logger.log_manager(f"Missing OpenAI API Key: {e}", error=True)
+
+    def load_parsed(self, path: Path, model_cls: Type[T]) -> T:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return model_cls.model_validate(data)
+
 
     def _inference(
         self,
@@ -61,6 +66,7 @@ class OpenAIModel(IModel):
         :param history: Optional (user_text, plan_summary) tuples to reconstruct conversational context.
         :return: Parsed response object of type T, or None on error.
         """
+
         start = time.time()
 
         # Build user content (text + optional images)
@@ -77,8 +83,6 @@ class OpenAIModel(IModel):
                 response_format=response_cls,
             )
         except Exception as e:
-            # Print in textual terminal:
-            # [MANAGER] ERROR. OpenAI API: <exception>
             self.logger.log_manager(f"OpenAI API: {e}", error=True)
             return None
         finally:
@@ -93,21 +97,15 @@ class OpenAIModel(IModel):
         try:
             parsed = completion.choices[0].message.parsed
         except Exception as e:
-            # Print in textual terminal:
-            # [MANAGER] ERROR. Failed to parse response into <response_cls.__name__>: <exepction>
             self.logger.log_manager(f"Failed to parse response into {response_cls.__name__}: {e}", error=True)
 
         end = time.time()
-        # Print in textual terminal:
-        # [MANAGER] GPT response time: <time> seconds
-        self.logger.log_manager(f"GPT response time: <{self.class_color}>{end - start:.3f} seconds</{self.class_color}>")
+        self.logger.log_manager(f"GPT response time: [manager]{end - start:.3f} seconds[/manager]")
         try:
             input_tokens = completion.usage.prompt_tokens
             output_tokens = completion.usage.completion_tokens
-            # Print in textual terminal:
-            # [MANAGER] Prompt tokens: <num_1>, Completion tokens: <num_2>
-            self.logger.log_manager(f"Prompt tokens: <{self.class_color}>{input_tokens}</{self.class_color}>, " + \
-                        f"Completion tokens: <{self.class_color}>{output_tokens}</{self.class_color}>")
+            self.logger.log_manager(f"Prompt tokens: [manager]{input_tokens}[/manager], " + \
+                        f"Completion tokens: [manager]{output_tokens}[/manager]")
         except Exception:
             pass
 
@@ -131,8 +129,6 @@ class OpenAIModel(IModel):
                     except Exception as e:
                         # Fail soft on a single bad image but continue with others
 
-                        # Print in textual terminal:
-                        # [MANAGER] Fail soft. Image '<image_path>' could not be encoded: <exception>
                         self.logger.log_manager(f"Fail soft. Image '{image_path}' could not be encoded: {e}", error=True)
         return content
 

@@ -6,6 +6,8 @@ from rich.style import Style
 from textual.app import App, ComposeResult
 from textual.widgets import TextArea
 
+import threading
+
 
 class CustomLogTextArea(TextArea):
     """
@@ -18,16 +20,22 @@ class CustomLogTextArea(TextArea):
     """
 
     BINDINGS = [
-        ("f4", "copy_selection", "Copy selection"),
+        ("f3", "copy_selection", "Copy selection"),
     ]
+
+    # Maximum number of lines to keep in the log
+    MAX_LINES = 500
 
     # <tag>body</tag>
     TAG_RE = re.compile(r"<(?P<tag>[A-Za-z0-9_# ]+)>(?P<body>.*?)</(?P=tag)>")
     # join tags
     TAG_TOKEN_RE = re.compile(r"</?[^>]+>")
 
+
     def __init__(self, **kwargs):
         super().__init__(read_only=True, **kwargs)
+
+        self._lock = threading.Lock()
 
         # Internal variable used by the father class (TextArea)
         #  to change the colors of the lines in the Log.
@@ -46,78 +54,111 @@ class CustomLogTextArea(TextArea):
 
     # region UTILS
 
+    def _trim_log(self) -> None:
+        """
+        Function used to trim the CustomLogTextArea to the maximum number of lines.
+
+        Keep only the last MAX_LINES lines (text + styles).
+        """
+        if self._line_count <= self.MAX_LINES:
+            # Less than max lines, nothing to do
+            return
+
+        # MAX_LINES exceeded, need to trim
+
+        # Calculate how many lines to remove
+        extra = self._line_count - self.MAX_LINES
+
+        # 1) Remove the first 'extra' lines from the TextArea document.
+        #    end=(extra, 0) means "start of line 'extra'", so it deletes lines [0..extra-1]
+        self.replace("", start=(0, 0), end=(extra, 0))
+
+        # 2) Shift styles down by 'extra' rows, and drop removed lines
+        new_styles = {}
+        for row, spans in self._lines_styles.items():
+            if row >= extra:
+                new_styles[row - extra] = spans
+        # Replace with the new styles
+        self._lines_styles = new_styles
+
+        # 3) Update line count
+        self._line_count -= extra
+
     def _rebuild_highlights(self) -> None:
         """
-        When a new line is inputed in the CustomLogTextArea,
-        by default, it is the only line highlighted with a stlye.
-        To keep the styles of the previous lines, a rebuild must
-        be executed.
+        Function used to rebuild the highlights of the TextArea based on the current
+        _lines_styles mapping.
+
+        Each time a new line is added, or a line is modified, this function should be called
+        to update the _highlights variable used by the TextArea to render the styles.
         """
 
-        # Clears the previous
+        # Clears the previous highlights
         self._highlights.clear()
 
+        # Rebuild highlights from _lines_styles
         for row, value_list in self._lines_styles.items():
             for tuple in value_list:
                 self._highlights[row].append((tuple[0], tuple[1], tuple[2]))
 
-    def join_nested_tags(self, marked: str) -> str:
+    def join_nested_tags(self, input_text: str) -> str:
         """
-        Convert nested tags.
+        Function used to join nested tags into combined tags.
 
-        example:
-            <bold><green>INFO</green></bold>
-            <bold green>INFO</bold green>
+        E.g.:
+        Input:  "<red>This is <bold>important</bold> text</red>"
+        Output: "<red bold>This is important text</red bold>"
         """
-        ret = []
-        tag_stack = []
+        out: list[str] = []
+        stack: list[str] = []
 
         pos = 0
-        # Find all tags
-        for m in self.TAG_TOKEN_RE.finditer(marked):
+        # Iterate over all tags in 'input_text'
+        for m in self.TAG_TOKEN_RE.finditer(input_text):
             # Emit text between tags
-            text = marked[pos:m.start()]
+            text = input_text[pos:m.start()]
             if text:
-                if tag_stack:
-                    combined = " ".join(tag_stack)
-                    ret.append(f"<{combined}>{text}</{combined}>")
+                if stack:
+                    combined = " ".join(stack)
+                    out.append(f"<{combined}>{text}</{combined}>")
                 else:
-                    ret.append(text)
+                    out.append(text)
 
+            # Process tag
             token = m.group(0)
             is_close = token.startswith("</")
             name = token[2:-1].strip() if is_close else token[1:-1].strip()
 
+            # Check stack
             if is_close:
-                # Remove closing tag
-                # Remove last occurrence
-                for i in range(len(tag_stack) - 1, -1, -1):
-                    if tag_stack[i] == name:
-                        del tag_stack[i]
+                # Pop matching tag (tolerant: remove last occurrence)
+                for i in range(len(stack) - 1, -1, -1):
+                    if stack[i] == name:
+                        del stack[i]
                         break
             else:
-                # Add opening tag
-                tag_stack.append(name)
+                stack.append(name)
 
             pos = m.end()
 
         # Tail text after last tag
-        tail = marked[pos:]
+        tail = input_text[pos:]
         if tail:
-            if tag_stack:
-                combined = " ".join(tag_stack)
-                ret.append(f"<{combined}>{tail}</{combined}>")
+            if stack:
+                combined = " ".join(stack)
+                out.append(f"<{combined}>{tail}</{combined}>")
             else:
-                ret.append(tail)
+                out.append(tail)
 
-        return "".join(ret)
+        return "".join(out)
 
     def _ensure_style_token(self, style: str) -> str:
         """
-        Convert a style string like:
-        "red bold italic"
-        "#49E63B bold"
-        into a registered TextArea style token.
+        Function used to ensure a style token exists in the theme.
+        If the style does not exist, it is created.
+
+        E.g.:
+        style: style string (e.g., "red bold", "#FF0000 italic", "green underline", ...)
         """
         style_list = style.split()
 
@@ -129,11 +170,14 @@ class CustomLogTextArea(TextArea):
 
         token_parts = []
 
+        # Iterate over style parts
         for st in style_list:
             if st.startswith("#"):
+                # Hex color
                 color = st
                 token_parts.append("hex_" + st[1:].upper())
             elif st in {"bold", "italic", "underline", "dim"}:
+                # Text style
                 token_parts.append(st)
                 if st == "bold":
                     bold = True
@@ -144,12 +188,14 @@ class CustomLogTextArea(TextArea):
                 elif st == "dim":
                     dim = True
             else:
-                # gray color is not supported
+                # Other colors
+
+                # Gray color is not supported
                 if st == "gray":
                     color = "#8D8D8D"
                     token_parts.append("hex_" + color[1:])
                 else:
-                    # assume named color like "red", "yellow"
+                    # Assume named color like "red", "yellow"
                     color = st
                     token_parts.append(st)
 
@@ -171,106 +217,153 @@ class CustomLogTextArea(TextArea):
 
     # region LOG
 
-    def append_line(self, text: str, style: str = "white") -> None:
-        self.append_marked(f"<{style}>{text}</{style}>")
+    def append_line(self, text: str) -> None:
+        """
+        Function used to append a new line to the CustomLogTextArea.
 
-    def append_marked(self, marked: str) -> None:
+        The 'text' parameter can include tags to specify styles.
+        E.g.:
+        "<red>This is red text</red>"
+        "<green bold>This is green bold text</green bold>"
+        """
+
+        # 'text' without tags
         plain = ""
-        spans = []  # (start_col, end_col, token)
+        # Spans -> Multiple styles (start_col, end_col, token)
+        spans = []
+        # Position cursor in 'text'
         cursor = 0
 
-        marked = self.join_nested_tags(marked)
+        # First, join nested tags into combined tags
+        # for easier parsing.
+        text = self.join_nested_tags(text)
 
-        for m in self.TAG_RE.finditer(marked):
-            plain += marked[cursor:m.start()]
-
+        # Parse tags and build plain text + 'spans'
+        # TAG_RE.finditer finds all tags in 'text'
+        for m in self.TAG_RE.finditer(text):
+            # Append text before the current tag
+            plain += text[cursor:m.start()]
+            # Get tag and body
             tag = m.group("tag")
             body = m.group("body")
-
+            # Record span
             start = len(plain)
+            # Append body in plain text
             plain += body
             end = len(plain)
-
+            # Get or create style token
             token = self._ensure_style_token(tag)
             spans.append((start, end, token))
-
+            # Move cursor after the current tag
             cursor = m.end()
 
-        plain += marked[cursor:]
+        # Append remaining text after last tag
+        plain += text[cursor:]
 
-        # Append via document API to keep row tracking consistent
-        # Only add a newline before the new line if there is already content
-        insert_text = ("\n" if self.document.text else "") + plain
-        self.insert(insert_text, location=self.document.end)
+        # Append the new line with styles
+        # Use a lock to avoid race conditions when multiple threads
+        #   try to write to the console at the same time.
+        # This can happen when VulcanAI and ROS nodes are logging simultaneously.
+        #
+        # e.g., VulcanAI manager logging and ROS listener logging.
+        # [EXECUTOR] Invoking 'move_turtle' with args: ...
+        # [ROS] [INFO] Publishing message 1 to ...
+        with self._lock:
 
-        row = self._line_count
-        self._line_count += 1
+            # Append via document API to keep row tracking consistent
+            # Only add a newline before the new line if there is already content
+            insert_text = ("\n" if self.document.text else "") + plain
+            self.insert(insert_text, location=self.document.end)
 
-        self._lines_styles[row] = []
-        for start, end, token in spans:
-            self._lines_styles[row].append((start, end, token))
+            # Track styles for the new line (always at the end)
+            row = self._line_count
+            self._line_count += 1
 
-        # Move the cursor at the end of the terminal
-        # to apply autoscroll when writting a line
-        self.move_cursor(self.document.end)
+            # Store styles
+            # Each line may have multiple styles (spans)
+            self._lines_styles[row] = []
+            for start, end, token in spans:
+                self._lines_styles[row].append((start, end, token))
 
-        self._rebuild_highlights()
-        self.refresh()
+            # Trim now
+            self._trim_log()
 
-    def replace_row(self, marked: str, row: int) -> None:
+            # Move the cursor at the end of the terminal
+            # to apply autoscroll when writting a line
+            self.move_cursor(self.document.end)
+
+            # Rebuild highlights and refresh
+            self._rebuild_highlights()
+            self.refresh()
+
+    def replace_line(self, text: str, row: int) -> None:
         """
-        Function used to replace a specific row in the CustomLogTextArea.
-        Only used in the updated() function of the query SpinnerHook.
+        Function used to replace a line in the CustomLogTextArea.
+
+        The 'text' parameter can include tags to specify styles.
+        E.g.:
+        "<red>This is red text</red>"
+        "<green bold>This is green bold text</green bold>"
         """
+
         plain = ""
         spans = []  # (start_col, end_col, token)
         cursor = 0
 
+        # If row is -1, replace the last line
         if row == -1:
             row = self._line_count - 1
 
-        marked = self.join_nested_tags(marked)
+        # First, join nested tags into combined tags
+        text = self.join_nested_tags(text)
 
-        for m in self.TAG_RE.finditer(marked):
-            plain += marked[cursor:m.start()]
+        # Parse tags and build plain text + 'spans'
+        for m in self.TAG_RE.finditer(text):
+            plain += text[cursor:m.start()]
 
             tag = m.group("tag")
             body = m.group("body")
 
+            # Position span
             start = len(plain)
             plain += body
             end = len(plain)
 
+            # Get or create style token
             token = self._ensure_style_token(tag)
             spans.append((start, end, token))
 
             cursor = m.end()
 
-        plain += marked[cursor:]
+        # Append remaining text after last tag
+        plain += text[cursor:]
 
+        # Check if the replace row is the last line
         if row < self._line_count - 1:
             # It is not the last line, replace up to (row+1, 0)
             self.replace(plain + "\n", start=(row, 0), end=(row + 1, 0))
         else:
-            # If it is the last line, replace up to end of that line
+            # It is the last line, replace up to end of that line
             old = self.document.get_line(row)
             self.replace(plain, start=(row, 0), end=(row, len(old)))
 
+        # Update styles for the replaced line
         self._lines_styles[row] = []
         for start, end, token in spans:
             self._lines_styles[row].append((start, end, token))
 
+        # Rebuild highlights and refresh
         self._rebuild_highlights()
         self.refresh()
 
     def delete_last_row(self) -> None:
         """
-        Function used to delete the last row in the CustomLogTextArea.
-
-        Only used in the end() function of the query SpinnerHook.
+        Function used to delete the last line in the CustomLogTextArea.
+        Used when a AI query is completed. To remove the "Querying..." line.
         """
 
         if self._line_count == 0:
+            # No lines, does nothing.
             return
 
         last_row = self._line_count - 1
@@ -290,9 +383,11 @@ class CustomLogTextArea(TextArea):
                 end=(0, len(self.document.get_line(0))),
             )
 
+        # Decrease line count and remove styles
         self._line_count -= 1
         self._lines_styles.pop(last_row, None)
 
+        # Rebuild highlights and refresh
         self._rebuild_highlights()
         self.refresh()
 
@@ -300,17 +395,17 @@ class CustomLogTextArea(TextArea):
 
     def clear_console(self) -> None:
         """
-        Clear the CustomLogTextArea
+        Function used to clear the entire CustomLogTextArea.
         """
 
-        """# Clear using editor API
-        self.delete((0, 0), self.document.end)"""
-
+        # Clear internal structures
         self._highlights.clear()
 
+        # Clear the document
         self._line_count = 0
         self._lines_styles.clear()
 
+        # Refresh and clear the TextArea
         self.refresh()
         self.clear()
 
@@ -319,121 +414,11 @@ class CustomLogTextArea(TextArea):
         Action: Copies the selected text of the CustomLogTextArea
         """
 
-        # "self.selected_text" is an inherence variable
-        #   from the father TextArea
+        # Check if there is selected text
+        if self.selected_text == "":
+            self.notify("No text selected to copy!")
+            return
+
+        # Copy to clipboard, using pyperclip library
         pyperclip.copy(self.selected_text)
-
         self.notify("Selected area copied to clipboard!")
-
-
-class ConsoleDemo(App):
-
-    CSS = """
-    Screen {
-        layout: horizontal;
-    }
-
-    #left {
-        width: 1fr;
-    }
-
-    #right {
-        width: 48;
-        layout: vertical;
-        border: tall #56AA08;
-    }
-
-    #logview {
-        height: 1fr;
-    }
-
-    #cmd {
-        dock: bottom;
-    }
-
-    #history_title {
-        content-align: center middle;
-        margin: 0;
-        padding: 0;
-    }
-
-    #history_scroll {
-        height: 1fr;      /* fill remaining space */
-        margin: 1;
-    }
-
-    #history {
-        width: 100%;
-    }
-    """
-
-    BINDINGS = [
-        ("i", "log_info", "Log info"),
-        ("w", "log_warn", "Log warn"),
-        ("e", "log_error", "Log error"),
-        ("ctrl+l", "clear", "Clear"),
-    ]
-
-
-    def __init__(self):
-        super().__init__() # Textual lib
-
-        self.left_pannel = None
-
-    def compose(self) -> ComposeResult:
-        from textual.containers import Horizontal, Vertical, VerticalScroll
-        from textual.widgets import Static, Input
-        from textual.widgets import Input, TextArea
-
-
-        vulcanai_title_slant = """[#56AA08]\
- _    __      __                 ___    ____
-| |  / /_  __/ /________  ____  /   |  /  _/
-| | / / / / / / ___/ __ `/ __ \/ /| |  / /
-| |/ / /_/ / / /__/ /_/ / / / / ___ |_/ /
-|___/\__,_/_/\___/\__,_/_/ /_/_/  |_/___/[/#56AA08]
-"""
-
-        with Horizontal():
-            # LEFT
-            with Vertical(id="left"):
-                yield CustomLogTextArea(id="logcontent")
-                yield Input(placeholder="> ", id="cmd")
-
-            # RIGHT
-            with Vertical(id="right"):
-                yield Static(vulcanai_title_slant, id="history_title")
-                yield Static(f" AI model: OpenAi\n K = 7\n history_depth = 10", id="variables")
-                #with VerticalScroll(id="history_scroll"):
-                yield TextArea("", id="history", read_only=True)
-
-    def on_mount(self) -> None:
-        self.left_pannel = self.query_one("#logcontent", CustomLogTextArea)
-        self.left_pannel.append_line("ready", style="green")
-
-    def action_log_info(self) -> None:
-        #self.left_pannel.append_line("INFO connected", style="#4AD428")
-        self.left_pannel.append_marked("<green>INFO</green> <yellow>connected</yellow>")
-
-    def action_log_warn(self) -> None:
-        self.left_pannel.append_line("WARN retrying", style="yellow")
-        self.left_pannel.append_line("(extra message) WARN retrying")
-
-    def action_log_error(self) -> None:
-        self.left_pannel.append_line("ERROR timeout", style="red")
-
-    def action_clear(self) -> None:
-        self.left_pannel.clear_console()
-
-    def run_console(self) -> None:
-        """
-        Run function for the VulcanAI
-        """
-
-        self.run()
-
-
-if __name__ == "__main__":
-    console = ConsoleDemo()
-
-    console.run_console()

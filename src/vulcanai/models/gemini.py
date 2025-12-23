@@ -27,9 +27,6 @@ T = TypeVar('T', GlobalPlan, GoalSpec, AIValidation)
 
 class GeminiModel(IModel):
 
-    # Color of the class [MANAGER] in the textual terminal
-    class_color = "#0d87c0"
-
     """ Wrapper for most of Google models, Gemini mainly. """
     def __init__(self, model_name:str, logger=None, hooks: Optional[IModelHooks] = None):
         super().__init__()
@@ -39,9 +36,7 @@ class GeminiModel(IModel):
         try:
             self.model = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
         except Exception as e:
-            # Print in textual terminal:
-            # [MANAGER] ERROR. Missing Gemini API Key: <exception>
-            self.logger(f"ERROR. Missing Gemini API Key: {e}", log_type="manager", log_color=0)
+            self.logger.log_manager(f"ERROR. Missing Gemini API Key: {e}", error=True)
 
     def _inference(
         self,
@@ -89,10 +84,8 @@ class GeminiModel(IModel):
         try:
             parsed_response = response.parsed
         except Exception as e:
-            # Print in textual terminal:
-            # [MANAGER] ERROR. Failed to get parsed goal from Gemini response, falling back to text: <exception>
-            self.logger(f"ERROR. Failed to get parsed goal from Gemini response, " + \
-                        f"falling back to text: {e}", log_type="manager", log_color=0)
+            self.logger.log_manager(f"ERROR. Failed to get parsed goal from Gemini response, " + \
+                        f"falling back to text: {e}", error=True)
         finally:
             # Notify hooks of request end
             try:
@@ -115,22 +108,16 @@ class GeminiModel(IModel):
                     import json
                     parsed_response = GoalSpec(**json.loads(raw))
                 except Exception as e:
-                    # Print in textual terminal:
-                    # [MANAGER] ERROR. Failed to parse raw <response_cls.__name__> JSON: <exception>
-                    self.logger(f"ERROR. Failed to parse raw {response_cls.__name__} JSON: {e}",
-                                log_type="manager", log_color=0)
+                    self.logger.log_manager(f"ERROR. Failed to parse raw {response_cls.__name__} JSON: {e}",
+                                error=True)
         end = time.time()
-        # Print in textual terminal:
-        # [MANAGER] Gemini response time <time> seconds
-        self.logger(f"Gemini response time: {end - start:.3f} seconds")
+        self.logger.log_manager(f"Gemini response time: {end - start:.3f} seconds")
         usage = getattr(response, "usage_metadata", None)
         if usage:
             input_tokens = usage.prompt_token_count
             output_tokens = usage.candidates_token_count
-            # Print in textual terminal:
-            # [MANAGER] Prompt tokens: <num_1>, Completion tokens: <num_2>
-            self.logger(f"Prompt tokens: <{self.class_color}>{input_tokens}</{self.class_color}>, " + \
-                        f"Completion tokens: <{self.class_color}>{output_tokens}</{self.class_color}>", log_type="manager")
+            self.logger.log_manager(f"Prompt tokens: [manager]{input_tokens}[/manager], " + \
+                        f"Completion tokens: [manager]{output_tokens}[/manager]")
 
         return parsed_response
 
@@ -144,10 +131,8 @@ class GeminiModel(IModel):
                     import requests
                     img = requests.get(image_path)
                     if img.status_code != 200:
-                        # Print in textual terminal:
-                        # [MANAGER] Fail soft. Image '<image_path>' could not be encoded: <exception>
-                        self.logger(f"ERROR. Failed to fetch image from URL '{image_path}' ",
-                                    log_type="manager", log_color=0)
+                        self.logger.log_manager(f"ERROR. Failed to fetch image from URL '{image_path}' ",
+                                    error=True)
                         continue
                     content.append(gtypes.Part.from_bytes(data=img.content, mime_type=img.headers.get("Content-Type", "image/png")))
                 else:
@@ -161,10 +146,8 @@ class GeminiModel(IModel):
                     except Exception as e:
                         # Fail soft on a single bad image but continue with others
 
-                        # Print in textual terminal:
-                        # [MANAGER] Fail soft. Image '<image_path>' could not be encoded: <exception>
-                        self.logger(f"Fail soft. Image '{image_path}' could not be encoded: {e}",
-                                    log_type="manager", log_color=0)
+                        self.logger.log_manager(f"Fail soft. Image '{image_path}' could not be encoded: {e}",
+                                    error=True)
         return content
 
 

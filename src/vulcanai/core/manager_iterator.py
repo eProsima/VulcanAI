@@ -79,14 +79,12 @@ class IterativeManager(ToolManager):
             self.goal = self._get_goal_from_user_request(user_text, context)
             self._timeline.append({"iteration": self.iter, "event": TimelineEvent.GOAL_SET.value})
         except Exception as e:
-            # TODO. danip
             self.logger.log_msg(f"Error getting goal from user request: {e}", error=True)
             return {"error": "Error getting goal from user request."}
 
         skip_verification_step = False
         while self.iter < self.max_iters:
             self.iter += 1
-            # TODO. danip
             self.logger.log_msg(f"--- Iteration {self.iter} ---")
             try:
                 # Check progress toward the goal and stop if achieved
@@ -98,14 +96,12 @@ class IterativeManager(ToolManager):
                 # Get plan from LLM
                 plan = self.get_plan_from_user_request(user_text, context)
                 if not plan:
-                    # TODO. danip
                     self.logger.log_msg(f"Error getting plan from model", error=True)
                     self._timeline.append({"iteration": self.iter, "event": TimelineEvent.PLAN_GENERATION_FAILED.value})
                     skip_verification_step = True
                     continue
                 plan_str = str(plan.plan)
                 if plan_str in self._used_plans:
-                    # TODO. danip
                     self.logger.log_msg("LLM produced a repeated plan. Stopping iterations.", error=True)
                     self._timeline.append({"iteration": self.iter, "event": TimelineEvent.PLAN_REPEATED.value})
                     skip_verification_step = True
@@ -117,7 +113,6 @@ class IterativeManager(ToolManager):
                     try:
                         self.validator.validate(plan)
                     except Exception as e:
-                        # TODO. danip
                         self.logger.log_msg(f"Plan validation error. Asking for new plan: {e}")
                         self._timeline.append({"iteration": self.iter, "event": TimelineEvent.PLAN_NOT_VALID.value, "detail": str(e)})
                         continue
@@ -139,11 +134,9 @@ class IterativeManager(ToolManager):
 
                 # If execution was successful, return the result
                 if not ret.get("success", False):
-                    # TODO. danip
                     self.logger.log_msg(f"Iteration {self.iter} failed.", error=True)
 
             except Exception as e:
-                # TODO. danip
                 self.logger.log_msg(f"Error handling user request: {e}", error=True)
                 return {"error": str(e), "timeline": self._timeline}
 
@@ -199,7 +192,6 @@ class IterativeManager(ToolManager):
         """Override the prompt building method to include iteration information."""
         tools = self.registry.top_k(user_text, self.k)
         if not tools:
-            # TODO. danip
             self.logger.log_msg("No tools available in the registry.", error=True)
             return "", ""
         tool_descriptions = []
@@ -397,7 +389,6 @@ validation = AIValidation(
 
         # Query LLM
         goal = self.llm.inference_goal(system_prompt, user_prompt, self.history)
-        # TODO. danip
         self.logger.log_msg(f"Goal received:\n{goal}")
 
         if not goal:
@@ -427,7 +418,6 @@ validation = AIValidation(
     def _set_single_tool_params(self, tool_name: str, args: List[ArgValue]):
         """Set the parameters of the single tool plan."""
         if not self._single_tool_plan or not self._single_tool_plan.plan:
-            # TODO. danip
             self.logger.log_msg("Single tool plan is not initialized properly.", error=True)
             return
         self._single_tool_plan.plan[0].steps[0].tool = tool_name
@@ -446,7 +436,6 @@ validation = AIValidation(
         if mode == "objective":
             # Check if goal is already achieved
             if self._is_goal_achieved():
-                # TODO. danip
                 self.logger.log_msg("Goal achieved in objective mode. Stopping iterations.")
                 return True
             else:
@@ -469,7 +458,6 @@ validation = AIValidation(
                     images_paths.extend(self.bb.get(tool.name, {}).get("images", []))
             # Build prompt to check if goal is achieved
             system_prompt, user_prompt = self._build_validation_prompt(instruction, evidence)
-            # TODO. danip
             self.logger.log_msg(f"Running perceptual verification with instruction: {instruction} - Evidence: {evidence_keys} - Images: {images_paths}")
 
             try:
@@ -478,15 +466,12 @@ validation = AIValidation(
                 self.bb["ai_validation"] = validation
                 self.bb["goal_achieved"] = success
                 if success:
-                    # TODO. danip
                     self.logger.log_msg(f"Goal achieved in perceptual mode. Stopping iterations. - {validation}")
                     return True
                 else:
-                    # TODO. danip
                     self.logger.log_msg(f"Goal not achieved in perceptual mode. - {validation}")
                     return False
             except Exception as e:
-                # TODO. danip
                 self.logger.log_msg(f"Error during perceptual verification: {e}", error=True)
                 return False
 
@@ -499,7 +484,6 @@ validation = AIValidation(
         if self._timeline and len(self._timeline) > 0:
             last_event = self._timeline[-1].get('event', "N/A")
             if last_event not in (TimelineEvent.PLAN_EXECUTED.value, TimelineEvent.GOAL_SET.value):
-                # TODO. danip
                 self.logger.log_msg("Skipping verification tools as no plan has been executed in this iteration.")
                 return
         for verify_tool in self.goal.verify_tools:
@@ -507,21 +491,17 @@ validation = AIValidation(
             tool_args = verify_tool.args
             tool = self.registry.tools.get(tool_name)
             if not tool:
-                # TODO. danip
                 self.logger.log_msg(f"Verification tool '{tool_name}' not found in registry.", error=True)
                 continue
             try:
                 self.bb
                 self._set_single_tool_params(tool_name, tool_args)
-                # TODO. danip
                 self.logger.log_msg(f"Running verification tool: {tool_name}")
                 result = self.execute_plan(self._single_tool_plan)
                 if not result.get("success"):
                     self.bb[tool_name] = {"error": "Validation tool execution failed"}
-                    # TODO. danip
                     self.logger.log_msg(f"Error running verification tool '{tool_name}'. BB entry of this tool will be empty.", error=True)
             except Exception as e:
-                # TODO. danip
                 self.logger.log_msg(f"Error running verification tool '{tool_name}': {e}", error=True)
                 continue
 
