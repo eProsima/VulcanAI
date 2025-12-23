@@ -357,6 +357,7 @@ class VulcanConsole(App):
             cmd_input.value = self.history[self.history_index]
 
         # Focus the input box
+        cmd_input.cursor_position = len(cmd_input.value)
         cmd_input.focus()
 
     def _update_history_panel(self) -> None:
