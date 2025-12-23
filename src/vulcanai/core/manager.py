@@ -133,7 +133,6 @@ class ToolManager:
         plan = self.llm.inference_plan(system_prompt, user_prompt, images, self.history)
         self.logger.log_manager(f"Plan received:\n{plan}")
         # Save to history
-        # TODO. danip
         if plan:
             self._add_to_history(user_prompt, plan.summary)
         return plan

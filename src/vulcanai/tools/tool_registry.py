@@ -74,8 +74,6 @@ class HelpTool(ITool):
 class ToolRegistry:
 
     # Color of the class [REGISTRY] in the textual terminal
-    # TODO. danip
-    #class_color = "#068399"
 
     """Holds all known tools and performs vector search over metadata."""
     def __init__(self, embedder=None, logger=None):

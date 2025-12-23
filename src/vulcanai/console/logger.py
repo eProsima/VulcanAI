@@ -104,7 +104,7 @@ class VulcanAILogger:
         msg = f"{prefix} {color_begin}{msg}{color_end}"
 
         processed_msg = self.parse_color(msg)
-        self.console._log(processed_msg)
+        self.console.add_line(processed_msg)
 
     def log_executor(self, msg: str, error: bool = False, tool: bool = False, tool_name: str = '', color: str = ""):
         if error:
@@ -123,7 +123,7 @@ class VulcanAILogger:
         msg = f"{prefix} {color_begin}{msg}{color_end}"
 
         processed_msg = self.parse_color(msg)
-        self.console._log(processed_msg)
+        self.console.add_line(processed_msg)
 
     def log_tool(self, msg: str, tool_name: str = '', error: bool = False, color: str = ""):
         if tool_name:
@@ -143,7 +143,7 @@ class VulcanAILogger:
         msg = f"{prefix} {color_begin}{msg}{color_end}"
 
         processed_msg = self.parse_color(msg)
-        self.console._log(processed_msg)
+        self.console.add_line(processed_msg)
 
     def log_registry(self, msg: str, error: bool = False, color: str = ""):
         if error:
@@ -159,7 +159,7 @@ class VulcanAILogger:
         msg = f"{prefix} {color_begin}{msg}{color_end}"
 
         processed_msg = self.parse_color(msg)
-        self.console._log(processed_msg)
+        self.console.add_line(processed_msg)
 
     def log_validator(self, msg: str, error: bool = False, color: str = ""):
         if error:
@@ -175,7 +175,7 @@ class VulcanAILogger:
         msg = f"{prefix} {color_begin}{msg}{color_end}"
 
         processed_msg = self.parse_color(msg)
-        self.console._log(processed_msg)
+        self.console.add_line(processed_msg)
 
     def log_error(self, msg: str, color: str = ""):
 
@@ -187,7 +187,7 @@ class VulcanAILogger:
         msg = f"[error][ERROR][/error] {color_begin}{msg}{color_end}"
 
         processed_msg = self.parse_color(msg)
-        self.console._log(processed_msg)
+        self.console.add_line(processed_msg)
 
     def log_console(self, msg: str, color: str = ""):
         if color == "":
@@ -195,10 +195,10 @@ class VulcanAILogger:
 
         processed_msg = self.parse_color(msg)
         if color == "":
-            self.console._log(processed_msg)
+            self.console.add_line(processed_msg)
         else:
             log_color = self.vulcanai_theme.get(color, "")
-            self.console._log(processed_msg, color=2 if log_color != "" else -1)
+            self.console.add_line(processed_msg, self.vulcanai_theme["console"] if log_color != "" else "")
 
     def log_warning(self, msg: str, color: str = ""):
         prefix = f"<bold>[warning][WARN][/warning]</bold>"
@@ -211,7 +211,7 @@ class VulcanAILogger:
         msg = f"{prefix} {color_begin}{msg}{color_end}"
 
         processed_msg = self.parse_color(msg)
-        self.console._log(processed_msg)
+        self.console.add_line(processed_msg)
 
     def log_msg(self, msg: str, error: bool = False, color: str = ""):
         if error:
@@ -223,6 +223,6 @@ class VulcanAILogger:
             color_end = f"</{color}>"
 
         processed_msg = self.parse_color(f"{color_begin}{msg}{color_end}")
-        self.console._log(processed_msg)
+        self.console.add_line(processed_msg)
 
     # endregion

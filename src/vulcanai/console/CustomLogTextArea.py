@@ -35,6 +35,8 @@ class CustomLogTextArea(TextArea):
     def __init__(self, **kwargs):
         super().__init__(read_only=True, **kwargs)
 
+        # Lock used to avoid data races in 'self._lines_styles'
+        #   when VulcanAI and ROS threads writes at the same time
         self._lock = threading.Lock()
 
         # Internal variable used by the father class (TextArea)

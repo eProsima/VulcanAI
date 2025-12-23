@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import importlib
 import pyperclip  # To paste the clipboard into the terminal
 import sys
 
@@ -33,6 +32,8 @@ from vulcanai.console.modal_screens import CheckListModal, RadioListModal, Rever
 from vulcanai.console.utils import attach_ros_logger_to_console, common_prefix, SpinnerHook, StreamToTextual
 
 from vulcanai.console.CustomLogTextArea import CustomLogTextArea
+
+import threading
 
 
 class VulcanConsole(App):
@@ -140,6 +141,7 @@ class VulcanConsole(App):
         self.stream_task = None
         # Suggestion index for RadioListModal
         self.suggestion_index = -1
+        self.suggestion_index_changed = threading.Event()
 
 
     async def on_mouse_down(self, event: MouseEvent) -> None:
@@ -251,9 +253,6 @@ class VulcanConsole(App):
 
             # -- Register tools --
             # Default tools
-            # TODO. remove
-            # tools_module = importlib.import_module("vulcanai.tools.default_tools")
-            # self.manager.register_tools_from_file(tools_module.__file__)
 
             # File paths tools
             for tool_file_path in self.register_from_file:
@@ -298,7 +297,6 @@ class VulcanConsole(App):
 
             user_input: (str) The user input to process.
             """
-
             # Disable terminal input
             self.set_input_enabled(False)
 
@@ -350,7 +348,6 @@ class VulcanConsole(App):
 
         Used in the history navigation actions (up/down keys).
         """
-
         # Get the input box
         cmd_input = self.query_one("#cmd", Input)
         if self.history_index is None or self.history_index == len(self.history):
@@ -367,7 +364,6 @@ class VulcanConsole(App):
         Function used to update the right panel 'history' widget with
         the current history list of written commands/queries.
         """
-
         # Get the history widget
         history_widget = self.query_one("#history", Static)
 
@@ -386,7 +382,6 @@ class VulcanConsole(App):
         Function used to update the right panel 'variables' widget with
         the current variables info (model, k, history_depth).
         """
-
         text = f" AI model: {self.model}\n K = {self.manager.k}\n history_depth = {self.manager.history_depth}"
         kvalue_widget = self.query_one("#variables", Static)
         kvalue_widget.update(text)
@@ -397,7 +392,6 @@ class VulcanConsole(App):
         Function used to open a Checklist ModalScreen in the console.
         Used in the /edit_tools command.
         """
-
         # Create the checklist dialog
         selected = await self.push_screen_wait(CheckListModal(tools_list, active_tools_num))
 
@@ -420,35 +414,24 @@ class VulcanConsole(App):
                     if self.manager.registry.deactivate_tool(tool):
                         self.logger.log_console(f"Deactivated tool <bold>'{tool}'</bold>")
 
-    # TODO. danip
-    def open_radiolist(self, option_list: list[str], tool: str = "") -> str:
+    @work
+    async def open_radiolist(self, option_list: list[str], tool: str = "") -> str:
         """
         Function used to open a RadioList ModalScreen in the console.
         Used in the tool suggestion selection, for default tools.
         """
+        # Create the checklist dialog
+        selected = await self.push_screen_wait(RadioListModal(option_list))
 
-        def _radiolist_callback(selected: str | None):
-            """
-            Docstring for _radiolist_callback
+        if selected is None:
+            self.logger.log_tool(f"Suggestion cancelled", tool_name=tool)
+            self.suggestion_index = -2
+            return
 
-            :param selected: Description
-            :type selected: str | None
-            """
+        self.logger.log_tool(f"Selected suggestion: \"{option_list[selected]}\"", tool_name=tool)
+        self.suggestion_index = selected
+        self.suggestion_index_changed.set() # signal change
 
-            if selected is None:
-                self.logger.log_tool(f"Suggestion cancelled", tool_name=tool)
-                self.suggestion_index = -2
-                return
-
-            self.logger.log_tool(f"Selected suggestion: \"{option_list[selected]}\"", tool_name=tool)
-            self.suggestion_index = selected
-
-        self.app.call_from_thread(
-            lambda: self.push_screen(
-                RadioListModal(option_list),
-                callback=_radiolist_callback,
-            )
-        )
 
     # endregion
 
@@ -558,8 +541,6 @@ class VulcanConsole(App):
             self.logger.log_msg(f"<bold>Plan summary:</bold> {plan_summary}\n")
 
     def cmd_clear_history(self, _) -> None:
-        """Clear all history and reset UI."""
-
         # Reset history
         self.history.clear()
         self.history_index = None
@@ -610,10 +591,12 @@ class VulcanConsole(App):
 
     # region Logging
 
-    def add_line_dq(self, input: str,
+    def add_line(self, input: str,
             color: str = "",
             subprocess_flag: bool = False) -> None:
-
+        """
+        Function used to write an input in the VulcanAI terminal.
+        """
         # Split incoming text into individual lines
         lines = input.splitlines()
 
@@ -635,7 +618,9 @@ class VulcanConsole(App):
     def replace_line(self, input: str, row: int,
             color: str = "",
             subprocess_flag: bool = False) -> None:
-
+        """
+        Function used to replace a line of the VulcanAI terminal.
+        """
         # Split incoming text into individual lines
         lines = input.splitlines()
 
@@ -644,7 +629,6 @@ class VulcanConsole(App):
         if color != "":
             color_begin = f"<{color}>"
             color_end = f"</{color}>"
-
 
         # Append each line; deque automatically truncates old ones
         for line in lines:
@@ -655,35 +639,16 @@ class VulcanConsole(App):
             self.left_pannel.replace_line(text, row)
 
     def delete_last_line(self):
+        """
+        Function used to remove the last line in the VulcanAI terminal.
+        """
         self.left_pannel.delete_last_row()
-
-    def _log(self, text: str,
-            log_type: str = "", color: int = -1,
-            subprocess_flag: bool = False) -> None:
-
-        if color == 0:
-            color_type = "#FF0000"
-        elif color == 1:
-            color_type = "#56AA08"
-        elif color == 2:
-            color_type = "#8F6296"
-        elif color == 3:
-            color_type = "#C49C00"
-        elif color == 4:
-            color_type = "#069899"
-        else:
-            color_type = ""
-
-        self.add_line_dq(text, subprocess_flag=subprocess_flag, color=color_type)
-
-        return
 
     def print_command_prompt(self, cmd: str="", extra_prefix: str="") -> None:
         """
         Function used to print the command prompt with the user command.
         "[USER] >>> 'command_input'
         """
-
         color_user = "#91DD16"
         self.logger.log_msg(f"{extra_prefix}<bold {color_user}>[USER] >>></bold {color_user}> {cmd}")
 
@@ -695,7 +660,6 @@ class VulcanConsole(App):
         """
         Function used to enable/disable the terminal input box.
         """
-
         cmd = self.query_one("#cmd", Input)
         cmd.disabled = not enabled
         if enabled:
@@ -706,7 +670,6 @@ class VulcanConsole(App):
         Function called when the user submits a command in the input box.
         It handles the command, queries and updates the history.
         """
-
         if not self.is_ready:
             # Console not ready yet
             return
@@ -766,7 +729,6 @@ class VulcanConsole(App):
         1. If the command is known, execute it.
         2. If the command is unknown, print an error message.
         """
-
         # Parse as a command
         parts = user_input.split()
         cmd = parts[0].lower()
@@ -786,7 +748,6 @@ class VulcanConsole(App):
         """
         Function used to paste the clipboard content into the terminal input box.
         """
-
         # Get the input box
         cmd_input = self.query_one("#cmd", Input)
 
@@ -818,14 +779,13 @@ class VulcanConsole(App):
     async def on_key(self, event: events.Key) -> None:
         """
         Function used to handle key events in the terminal input box.
-        
+
         It handles:
             - "tab": Autocomplete command.
             - "ctr+w": Delete the word before the cursor.
             - "ctrl+delete", "escape": Delete the word after the curso.
             - "ctrl+v": Paste the clipboard content into the terminal input box.
         """
-
         key = event.key
         cmd_input = self.query_one("#cmd", Input)
 
@@ -963,7 +923,6 @@ class VulcanConsole(App):
         with this variable the user can finish the execution of the
         task by using the signal "Ctrl + C"
         """
-
         self.stream_task = input_stream
 
     # endregion
@@ -977,7 +936,6 @@ class VulcanConsole(App):
 
         Binding("ctrl+l", "clear_log", ...),
         """
-
         self.cmd_clear(_=None)
 
     def action_show_help(self) -> None:
@@ -987,7 +945,6 @@ class VulcanConsole(App):
 
         Binding("f2", "show_help", ...),
         """
-
         self.print_command_prompt("/help")
         self.cmd_help(_=None)
 
@@ -998,7 +955,6 @@ class VulcanConsole(App):
 
         Binding("ctrl+r", "reverse_search", ...)
         """
-
         if not self.history:
             return
 
@@ -1022,7 +978,6 @@ class VulcanConsole(App):
 
         Binding("ctrl+c", "stop_streaming_task", ...),
         """
-
         if self.stream_task != None and not self.stream_task.done():
             # Cancel the streaming task
             self.stream_task.cancel() # Triggers CancelledError in the task
@@ -1039,7 +994,6 @@ class VulcanConsole(App):
 
         Binding("up", "history_prev", ...),
         """
-
         if not self.history:
             # No history, do nothing
             return
@@ -1060,7 +1014,6 @@ class VulcanConsole(App):
 
         Binding("down", "history_next", ...),
         """
-
         if not self.history:
             # No history, do nothing
             return
@@ -1081,7 +1034,6 @@ class VulcanConsole(App):
         """
         Function used to run VulcanAI.
         """
-
         self.run()
 
 
@@ -1089,7 +1041,6 @@ class VulcanConsole(App):
         """
         Function used to initialize VulcanAI Manager.
         """
-
         if self.iterative:
             from vulcanai.core.manager_iterator import IterativeManager as ConsoleManager
         else:
@@ -1107,7 +1058,6 @@ class VulcanConsole(App):
         """
         Function used to get the images added by the user in the LLM query.
         """
-
         parts = user_input.split()
         images = []
 

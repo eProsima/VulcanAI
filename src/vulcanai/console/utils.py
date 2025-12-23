@@ -22,8 +22,6 @@ import time
 from textual.markup import escape # To remove potential errors in textual terminal
 from textual.timer import Timer
 
-color_tool = "#EB921E"
-
 class StreamToTextual:
     """
     Class used to redirect the stdout/stderr streams in the textual terminal
@@ -40,7 +38,7 @@ class StreamToTextual:
         if data.strip():
             # Ensure update happens on the app thread
             #self.app.call_from_thread(self.app.append_log_text, data)
-            self.app.call_from_thread(self.app.add_line_dq, data)
+            self.app.call_from_thread(self.app.add_line, data)
 
     def flush(self):
         self.real_stream.flush()
@@ -79,7 +77,7 @@ class SpinnerHook:
             return
 
         # Initialized the class variables
-        self.console._log(f"<{self.update_color}>|</{self.update_color}> <{self.color}>{text}</{self.color}>")
+        self.console.add_line(f"<{self.update_color}>|</{self.update_color}> <{self.color}>{text}</{self.color}>")
         self.spinner_line_index = -1
         self.spinner_frame_index = 0
 
@@ -201,15 +199,11 @@ async def run_streaming_cmd_async(console, args: list[str],
             # Print the line
             if echo:
                 line_processed = escape(line)
-                console._log(line_processed)#, subprocess_flag=True)
+                console.add_line(line_processed)
 
             # Count the line
             line_count += 1
             if max_lines is not None and line_count >= max_lines:
-                # TODO. danip
-                # console._log(f"{print_header} " + \
-                #     f"<yellow>Stopping: <bold>reached max_lines = {max_lines}</bold></yellow>"
-                # )
                 console.logger.log_tool(f"[tool]Stopping:[/tool] Reached max_lines = {max_lines}", tool_name=tool_name)
                 console.set_stream_task(None)
                 process.terminate()
@@ -217,9 +211,6 @@ async def run_streaming_cmd_async(console, args: list[str],
 
             # Check duration
             if max_duration and (time.monotonic() - start_time) >= max_duration:
-                # console._log(f"{print_header} " + \
-                #     f"<yellow>Stopping: <bold>exceeded max_duration = {max_duration}s</bold> </yellow>"
-                # )
                 console.logger.log_tool(f"[tool]Stopping:[/tool] Exceeded max_duration = {max_duration}s", tool_name=tool_name)
                 console.set_stream_task(None)
                 process.terminate()
@@ -228,14 +219,12 @@ async def run_streaming_cmd_async(console, args: list[str],
 
     except asyncio.CancelledError:
         # Task was cancelled → stop the subprocess
-        #console._log(f"{print_header} <yellow><bold>Cancellation received:</bold> terminating subprocess...</yellow>")
         console.logger.log_tool(f"[tool]Cancellation received:[/tool] terminating subprocess...", tool_name=tool_name)
         process.terminate()
         raise
     # Not necessary, textual terminal get the keyboard input
     except KeyboardInterrupt:
         # Ctrl+C pressed → stop subprocess
-        #console._log(f"{print_header} <yellow><bold>Ctrl+C received:</bold> terminating subprocess...</yellow>")
         console.logger.log_tool(f"[tool]Ctrl+C received:[/tool] terminating subprocess...", tool_name=tool_name)
         process.terminate()
 
@@ -243,7 +232,6 @@ async def run_streaming_cmd_async(console, args: list[str],
         try:
             await asyncio.wait_for(process.wait(), timeout=3.0)
         except asyncio.TimeoutError:
-            #console.logger.log_msg(f"{print_header} Subprocess didn't exit in time → killing it.", error=True)
             console.logger.log_tool(f"Subprocess didn't exit in time → killing it.", tool_name=tool_name, error=True)
             process.kill()
             await process.wait()
@@ -369,7 +357,7 @@ def suggest_string(console, tool_name, string_name, input_string, real_string_li
 
     if input_string not in real_string_list:
 
-        #console._log(f"{tool_header_str} {string_name}: \"{input_string}\" does not exists")
+        #console.add_line(f"{tool_header_str} {string_name}: \"{input_string}\" does not exists")
         console.logger.log_tool(f"{string_name}: \"{input_string}\" does not exists", tool_name=tool_name)
 
         # Get the suggestions list sorted by similitud value
@@ -380,8 +368,7 @@ def suggest_string(console, tool_name, string_name, input_string, real_string_li
 
         # Wait for the user to select and item in the
         # RadioList ModalScreen
-        while console.suggestion_index == -1:
-            time.sleep(0.01)
+        console.suggestion_index_changed.wait()
 
         # Check if the user cancelled the suggestion
         if console.suggestion_index >= 0:
@@ -389,6 +376,7 @@ def suggest_string(console, tool_name, string_name, input_string, real_string_li
 
         # Reset suggestion index
         console.suggestion_index = -1
+        console.suggestion_index_changed.clear()
 
     return ret
 

@@ -20,12 +20,6 @@ import time
 from vulcanai.core.plan_types import AIValidation, GlobalPlan, GoalSpec
 from vulcanai.models.model import IModel, IModelHooks
 
-# TODO. danip
-from pathlib import Path
-import json
-from typing import Type, TypeVar
-from pydantic import BaseModel
-
 # Generic type variable for response classes
 T = TypeVar('T', GlobalPlan, GoalSpec, AIValidation)
 
@@ -41,11 +35,6 @@ class OpenAIModel(IModel):
             self.model = OpenAI()
         except Exception as e:
             self.logger.log_manager(f"Missing OpenAI API Key: {e}", error=True)
-
-    def load_parsed(self, path: Path, model_cls: Type[T]) -> T:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return model_cls.model_validate(data)
-
 
     def _inference(
         self,
@@ -66,7 +55,6 @@ class OpenAIModel(IModel):
         :param history: Optional (user_text, plan_summary) tuples to reconstruct conversational context.
         :return: Parsed response object of type T, or None on error.
         """
-
         start = time.time()
 
         # Build user content (text + optional images)
