@@ -18,13 +18,16 @@ This file contains the default tools given by VulcanAI.
 It contains atomic tools used to call ROS2 CLI.
 """
 
-import subprocess
 from vulcanai import AtomicTool, CompositeTool, vulcanai_tool
 from vulcanai.console.utils import execute_subprocess, run_oneshot_cmd
 
-import time
+import importlib
+import json
 import rclpy
+import subprocess
 from std_msgs.msg import String
+import time
+
 
 """
 - ros2 node
@@ -74,24 +77,19 @@ from std_msgs.msg import String
         set       Set parameter
 
 
-???
- |
- V
+- ros2 pkg
+    Commands:
+        executables  Output a list of package specific executables
+        list         Output a list of available packages
+        prefix       Output the prefix path of a package
+        xml          Output the XML of the package manifest or a specific ta
 
-Commands:
 
-  ros2 bag        Various rosbag related sub-commands
-  ros2 component  Various component related sub-commands
-  ros2 daemon     Various daemon related sub-commands
-  ros2 doctor     Check ROS setup and other potential issues
-  ros2 interface  Show information about ROS interfaces
-  ros2 launch     Run a launch file
-  ros2 lifecycle  Various lifecycle related sub-commands
-  ros2 multicast  Various multicast related sub-commands
-  ros2 pkg        Various package related sub-commands
-  ros2 run        Run a package specific executable
-  ros2 security   Various security related sub-commands
-  ros2 wtf        Use `wtf` as alias to `doctor`
+- ros2 interfaces
+    Commands:
+        list      List all interface types available
+        package   Output a list of available interface types within one package
+        packages  Output a list of packages that provide interfaces
 """
 
 
@@ -742,19 +740,19 @@ class Ros2PkgTool(AtomicTool):
 
         command = command.lower()
 
-        # -- Run `ros2 pkg list` --------------------------------------------
+        # -- Run `ros2 pkg list` ----------------------------------------------
         if command == "list":
             pkg_name_list = run_oneshot_cmd(["ros2", "pkg", "list"])
             pkg_name_list = pkg_name_list.splitlines()
             result["output"] = pkg_name_list
 
-        # -- Run `ros2 pkg executables` --------------------------------------------
+        # -- Run `ros2 pkg executables` ---------------------------------------
         elif command == "executables":
             pkg_name_list = run_oneshot_cmd(["ros2", "pkg", "executables"])
             pkg_name_list = pkg_name_list.splitlines()
             result["output"] = pkg_name_list
 
-        # -- Run `ros2 pkg executables <package>` ---------------------------
+        # -- Run `ros2 pkg prefix <package_name>` -----------------------------
         elif command == "prefix":
             if not package_name:
                 raise ValueError("`command='prefix'` requires `package_name`.")
@@ -764,7 +762,7 @@ class Ros2PkgTool(AtomicTool):
             )
             result["output"] = info_output
 
-        # -- Run `ros2 pkg executables <package>` ---------------------------
+        # -- Run `ros2 pkg xml <package_name>` --------------------------------
         elif command == "xml":
             if not package_name:
                 raise ValueError("`command='xml'` requires `package_name`.")
@@ -859,6 +857,29 @@ class Ros2InterfaceTool(AtomicTool):
         return result
 
 
+def import_msg_type(type_str: str, node):
+    """
+    Dynamically import a ROS 2 message type from its string identifier.
+
+    This function resolves a ROS 2 message type expressed as a string
+    (e.g. `"std_msgs/msg/String"`) into the corresponding Python message class
+    (`std_msgs.msg.String`).
+    """
+    info_list = type_str.split("/")
+
+    if len(info_list) != 3:
+        pkg = "std_msgs"
+        msg_name = info_list[-1]
+        node.get_logger().warn(f"Cannot import ROS message type '{type_str}'. " + \
+                                "Adding default pkg 'std_msgs' instead.")
+    else:
+        pkg, _, msg_name = info_list
+
+    module = importlib.import_module(f"{pkg}.msg")
+
+    return getattr(module, msg_name)
+
+
 @vulcanai_tool
 class Ros2PublishTool(AtomicTool):
     name = "ros_publish"
@@ -868,6 +889,7 @@ class Ros2PublishTool(AtomicTool):
     input_schema = [
         ("topic", "string"),          # e.g. "chatter"
         ("message", "string"),        # payload
+        ("msg_type", "string"),       # e.g. "std_msgs/msg/String"
         ("count", "int"),             # number of messages to publish
         ("period_sec", "float"),      # delay between publishes (in seconds)
         ("qos_depth", "int"),         # publisher queue depth
@@ -879,6 +901,25 @@ class Ros2PublishTool(AtomicTool):
         "topic": "string"
     }
 
+    def msg_from_dict(self, msg, values: dict):
+        """
+        Populate a ROS 2 message instance from a Python dictionary.
+
+        This function recursively assigns values from a dictionary to the
+        corresponding fields of a ROS 2 message instance.
+
+        Supports:
+        - Primitive fields (int, float, bool, string)
+        - Nested ROS 2 messages
+
+        """
+        for field, value in values.items():
+            attr = getattr(msg, field)
+            if hasattr(attr, "__slots__"):
+                self.msg_from_dict(attr, value)
+            else:
+                setattr(msg, field, value)
+
     def run(self, **kwargs):
 
         node = self.bb.get("main_node", None)
@@ -887,9 +928,11 @@ class Ros2PublishTool(AtomicTool):
 
         topic = kwargs.get("topic", None)
         message = kwargs.get("message", "Hello from PublishTool!")
+        msg_type_str = kwargs.get("msg_type", "std_msgs/msg/String")
         count = kwargs.get("count", 100)
         period_sec = kwargs.get("period_sec", 0.1)
         qos_depth = kwargs.get("qos_depth", 10.0)
+
 
         if not topic:
             node.get_logger().error("No topic provided.")
@@ -899,12 +942,18 @@ class Ros2PublishTool(AtomicTool):
             node.get_logger().warn("Count <= 0, nothing to publish.")
             return {"published": True, "count": 0, "topic": topic}
 
-        publisher = node.create_publisher(String, topic, qos_depth)
+
+        MsgType = import_msg_type(msg_type_str, node)
+        publisher = node.create_publisher(MsgType, topic, qos_depth)
 
         published_count = 0
-        for _ in range(count):
-            msg = String()
-            msg.data = message
+        for i in range(count):
+            msg = MsgType()
+            if hasattr(msg, "data"):
+                msg.data = message
+            else:
+                payload = json.loads(message)
+                self.msg_from_dict(msg, payload)
 
             with node.node_lock:
                 node.get_logger().info(f"Publishing: '{msg.data}'")
@@ -928,9 +977,11 @@ class Ros2SubscribeTool(AtomicTool):
 
     input_schema = [
         ("topic", "string"),             # topic name
+        ("msg_type", "string"),          # e.g. "std_msgs/msg/String"
         ("max_messages", "int"),         # stop after this number of messages
         ("timeout_sec", "float"),        # stop after this seconds
         ("qos_depth", "int"),            # subscription queue depth
+        ("output_format", "string"),     # "data" | "dict"
     ]
 
     output_schema = {
@@ -941,6 +992,31 @@ class Ros2SubscribeTool(AtomicTool):
         "topic": "string",
     }
 
+
+    def msg_to_dict(self, msg):
+        """
+        Convert a ROS 2 message instance into a Python dictionary.
+
+        This function recursively converts a ROS 2 message into a dictionary
+        using ROS 2 Python introspection (`__slots__`).
+
+        Supports:
+        - Primitive fields
+        - Nested ROS 2 messages
+        """
+        out = {}
+        for field in getattr(msg, "__slots__", []):
+            key = field.lstrip("_")
+            val = getattr(msg, field)
+            if hasattr(val, "__slots__"):
+                out[key] = self.msg_to_dict(val)
+            elif isinstance(val, (list, tuple)):
+                out[key] = [self.msg_to_dict(v) if hasattr(v, "__slots__") else v for v in val]
+            else:
+                out[key] = val
+        return out
+
+
     def run(self, **kwargs):
 
         node = self.bb.get("main_node", None)
@@ -948,9 +1024,12 @@ class Ros2SubscribeTool(AtomicTool):
             raise Exception("Could not find shared node, aborting...")
 
         topic = kwargs.get("topic", None)
+        msg_type_str = kwargs.get("msg_type", "std_msgs/msg/String")
         max_messages = kwargs.get("max_messages", 100)
         timeout_sec = kwargs.get("timeout_sec", 60.0)
         qos_depth = kwargs.get("qos_depth", 10.0)
+        output_format = kwargs.get("output_format", "data")
+
 
         if not topic:
             return {"success": False, "received": 0, "messages": [], "reason": "no_topic", "topic": topic}
@@ -958,13 +1037,24 @@ class Ros2SubscribeTool(AtomicTool):
         if max_messages <= 0:
             return {"success": True, "received": 0, "messages": [], "reason": "max_messages<=0", "topic": topic}
 
+        if not msg_type_str:
+            msg_type_str = "std_msgs/msg/String"
+
         received_msgs = []
 
         def callback(msg: String):
-            received_msgs.append(msg.data)
-            node.get_logger().info(f"I heard: [{msg.data}]")
+            # received_msgs.append(msg.data)
+            # node.get_logger().info(f"I heard: [{msg.data}]")
+            if output_format == "data" and hasattr(msg, "data"):
+                received_msgs.append(msg.data)
+                node.get_logger().info(f"I heard: [{msg.data}]")
+            else:
+                d = self.msg_to_dict(msg)
+                received_msgs.append(d["data"] if "data" in d else d)
+                node.get_logger().info(f"I heard: [{d["data"]}]")
 
-        sub = node.create_subscription(String, topic, callback, qos_depth)
+        MsgType = import_msg_type(msg_type_str, node)
+        sub = node.create_subscription(MsgType, topic, callback, qos_depth)
 
         start = time.monotonic()
         reason = "timeout"
