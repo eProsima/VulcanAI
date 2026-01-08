@@ -22,6 +22,10 @@ import subprocess
 from vulcanai import AtomicTool, CompositeTool, vulcanai_tool
 from vulcanai.console.utils import execute_subprocess, run_oneshot_cmd
 
+import time
+import rclpy
+from std_msgs.msg import String
+
 """
 - ros2 node
     Commands:
@@ -853,3 +857,140 @@ class Ros2InterfaceTool(AtomicTool):
             )
 
         return result
+
+
+@vulcanai_tool
+class Ros2PublishTool(AtomicTool):
+    name = "ros_publish"
+    description = "Publish one or more String messages to a given ROS 2 topic."
+    tags = ["ros2", "publish", "message", "std_msgs"]
+
+    input_schema = [
+        ("topic", "string"),          # e.g. "chatter"
+        ("message", "string"),        # payload
+        ("count", "int"),             # number of messages to publish
+        ("period_sec", "float"),      # delay between publishes (in seconds)
+        ("qos_depth", "int"),         # publisher queue depth
+    ]
+
+    output_schema = {
+        "published": "bool",
+        "count": "int",
+        "topic": "string"
+    }
+
+    def run(self, **kwargs):
+
+        node = self.bb.get("main_node", None)
+        if node is None:
+            raise Exception("Could not find shared node, aborting...")
+
+        topic = kwargs.get("topic", None)
+        message = kwargs.get("message", "Hello from PublishTool!")
+        count = kwargs.get("count", 100)
+        period_sec = kwargs.get("period_sec", 0.1)
+        qos_depth = kwargs.get("qos_depth", 10.0)
+
+        if not topic:
+            node.get_logger().error("No topic provided.")
+            return {"published": False, "count": 0, "topic": topic}
+
+        if count <= 0:
+            node.get_logger().warn("Count <= 0, nothing to publish.")
+            return {"published": True, "count": 0, "topic": topic}
+
+        publisher = node.create_publisher(String, topic, qos_depth)
+
+        published_count = 0
+        for _ in range(count):
+            msg = String()
+            msg.data = message
+
+            with node.node_lock:
+                node.get_logger().info(f"Publishing: '{msg.data}'")
+                publisher.publish(msg)
+
+            published_count += 1
+
+            rclpy.spin_once(node, timeout_sec=0.05)
+
+            if period_sec and period_sec > 0.0:
+                time.sleep(period_sec)
+
+        return {"published": True, "count": published_count, "topic": topic}
+
+
+@vulcanai_tool
+class Ros2SubscribeTool(AtomicTool):
+    name = "ros_subscribe"
+    description = "Subscribe to a topic and stop after receiving N messages or a timeout."
+    tags = ["ros2", "subscribe", "topic", "std_msgs"]
+
+    input_schema = [
+        ("topic", "string"),             # topic name
+        ("max_messages", "int"),         # stop after this number of messages
+        ("timeout_sec", "float"),        # stop after this seconds
+        ("qos_depth", "int"),            # subscription queue depth
+    ]
+
+    output_schema = {
+        "success": "bool",
+        "received": "int",
+        "messages": "list",
+        "reason": "string",
+        "topic": "string",
+    }
+
+    def run(self, **kwargs):
+
+        node = self.bb.get("main_node", None)
+        if node is None:
+            raise Exception("Could not find shared node, aborting...")
+
+        topic = kwargs.get("topic", None)
+        max_messages = kwargs.get("max_messages", 100)
+        timeout_sec = kwargs.get("timeout_sec", 60.0)
+        qos_depth = kwargs.get("qos_depth", 10.0)
+
+        if not topic:
+            return {"success": False, "received": 0, "messages": [], "reason": "no_topic", "topic": topic}
+
+        if max_messages <= 0:
+            return {"success": True, "received": 0, "messages": [], "reason": "max_messages<=0", "topic": topic}
+
+        received_msgs = []
+
+        def callback(msg: String):
+            received_msgs.append(msg.data)
+            node.get_logger().info(f"I heard: [{msg.data}]")
+
+        sub = node.create_subscription(String, topic, callback, qos_depth)
+
+        start = time.monotonic()
+        reason = "timeout"
+
+        try:
+            while rclpy.ok():
+                # Stop conditions
+                if len(received_msgs) >= max_messages:
+                    reason = "max_messages"
+                    break
+                if (time.monotonic() - start) >= timeout_sec:
+                    reason = "timeout"
+                    break
+
+                rclpy.spin_once(node, timeout_sec=0.1)
+
+        finally:
+            try:
+                node.destroy_subscription(sub)
+            except Exception:
+                pass
+
+        return {
+            "success": True,
+            "received": len(received_msgs),
+            "messages": received_msgs,
+            "reason": reason,
+            "topic": topic,
+        }
