@@ -18,6 +18,7 @@ import argparse
 import asyncio
 import pyperclip  # To paste the clipboard into the terminal
 import sys
+import threading
 
 from textual import events, work
 from textual.app import App, ComposeResult
@@ -27,13 +28,11 @@ from textual.events import MouseEvent
 from textual.markup import escape  # To remove potential errors in textual terminal
 from textual.widgets import Input, Static
 
+from vulcanai.console.widget_custom_log_text_area import CustomLogTextArea
 from vulcanai.console.logger import VulcanAILogger
 from vulcanai.console.modal_screens import CheckListModal, RadioListModal, ReverseSearchModal
 from vulcanai.console.utils import attach_ros_logger_to_console, common_prefix, SpinnerHook, StreamToTextual
-
-from vulcanai.console.CustomLogTextArea import CustomLogTextArea
-
-import threading
+from vulcanai.console.widget_spinner import SpinnerStatus
 
 
 class VulcanConsole(App):
@@ -49,6 +48,7 @@ class VulcanConsole(App):
 
     #left {
         width: 1fr;
+        layout: vertical;
     }
 
     #right {
@@ -59,7 +59,17 @@ class VulcanConsole(App):
     }
 
     #logcontent {
-        height: 1fr;
+        height: auto;
+        min-height: 1;
+        max-height: 1fr;
+        border: tall #333333;
+    }
+
+    #llm_spinner {
+        height: 0;
+        display: none;
+        content-align: left middle;
+        padding-left: 2;
     }
 
     #cmd {
@@ -106,7 +116,8 @@ class VulcanConsole(App):
         # Last generated blackboard state
         self.last_bb = None
         # Spinner hook for LLM requests
-        self.hooks = SpinnerHook(self)
+        self.spinner_status = None
+        self.hooks = None
         # AI model
         self.model = model
         # 'k' value for top_k tools selection
@@ -162,8 +173,9 @@ class VulcanConsole(App):
         Function called when the console is mounted.
         """
 
-
         self.left_pannel = self.query_one("#logcontent", CustomLogTextArea)
+        self.spinner_status = self.query_one("#llm_spinner", SpinnerStatus)
+        self.hooks = SpinnerHook(self.spinner_status)
 
         # Disable terminal input
         self.set_input_enabled(False)
@@ -193,7 +205,10 @@ class VulcanConsole(App):
             # Left
             with Vertical(id="left"):
                 # Log Area
-                yield CustomLogTextArea(id="logcontent")
+                logcontent = CustomLogTextArea(id="logcontent")
+                yield logcontent
+                # Spinner Area
+                yield SpinnerStatus(logcontent, id="llm_spinner")
                 # Input Area
                 yield Input(placeholder="> ", id="cmd")
 
@@ -330,9 +345,6 @@ class VulcanConsole(App):
             except EOFError:
                 self.logger.log_msg("<yellow>Exiting...</yellow>")
                 return
-
-        # This is the main thread, here is where the hook is started for queries
-        self.hooks.on_request_start()
 
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, lambda: worker(user_input))

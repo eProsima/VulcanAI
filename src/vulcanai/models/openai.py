@@ -63,6 +63,12 @@ class OpenAIModel(IModel):
         # Build messages (system + optional history + current user)
         messages = self._build_messages(system_prompt, user_content, history)
 
+        # Notify hooks of request start
+        try:
+            self.hooks.on_request_start()
+        except Exception as e:
+            pass
+
         # Call OpenAI with response_format bound to the desired schema/class
         try:
             completion = self.model.chat.completions.parse(

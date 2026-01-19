@@ -1,12 +1,25 @@
+# Copyright 2026 Proyectos y Sistemas de Mantenimiento SL (eProsima).
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
 from collections import defaultdict
-import re
 import pyperclip
+import re
+import threading
 
 from rich.style import Style
-from textual.app import App, ComposeResult
 from textual.widgets import TextArea
-
-import threading
 
 
 class CustomLogTextArea(TextArea):
@@ -290,9 +303,8 @@ class CustomLogTextArea(TextArea):
             # Trim now
             self._trim_log()
 
-            # Move the cursor at the end of the terminal
-            # to apply autoscroll when writting a line
-            self.move_cursor(self.document.end)
+            # Scroll to end
+            self.scroll_end(animate=False)
 
             # Rebuild highlights and refresh
             self._rebuild_highlights()

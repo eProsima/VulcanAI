@@ -73,6 +73,12 @@ class GeminiModel(IModel):
             candidate_count=1,
         )
 
+        # Notify hooks of request start
+        try:
+            self.hooks.on_request_start()
+        except Exception as e:
+            pass
+
         response = self.model.models.generate_content(
             model=self.model_name,
             contents=messages,

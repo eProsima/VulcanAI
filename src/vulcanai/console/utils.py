@@ -43,6 +43,7 @@ class StreamToTextual:
     def flush(self):
         self.real_stream.flush()
 
+
 class SpinnerHook:
     """
     Single entrant spinner controller for console.
@@ -50,75 +51,14 @@ class SpinnerHook:
     - Stops the spinner when LLM request is over.
     """
 
-    def __init__(self, console):
+    def __init__(self, spinner_status):
+        self.spinner_status = spinner_status
 
-        self.console = console
+    def on_request_start(self, text="Querying LLM..."):
+        self.spinner_status.start(text)
 
-        # Spinner states
-        self.spinner_timer: Timer | None = None
-        # NOTE. Textual current version does not support extended ASCII characters
-        # in TextArea highlights
-        #self.spinner_frames = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"]
-        self.spinner_frames = ["|", "/", "-", "\\"]
-        self.spinner_frame_index = 0
-        self.spinner_line_index: int | None = None
-
-    def on_request_start(self, text: str = "Querying LLM...") -> None:
-        """
-        Create the spinner line at the end of the log and start updating it.
-        """
-
-        self.color = "#0d87c0"
-        self.update_color = "#15B606"
-        self.text = text
-
-        # Check if it is already running
-        if self.spinner_timer is not None:
-            return
-
-        # Initialized the class variables
-        self.console.add_line(f"<{self.update_color}>|</{self.update_color}> <{self.color}>{text}</{self.color}>")
-        self.spinner_line_index = -1
-        self.spinner_frame_index = 0
-
-        # Update every 0.1s
-        self.spinner_timer = self.console.set_interval(0.25, self.update_spinner)
-
-
-    def update_spinner(self) -> None:
-        """
-        Timer callback. Rotate the spinner frame on the stored last log line.
-        """
-
-        # Check if the spinner is not running
-        if self.spinner_line_index is None:
-            return
-
-        frame = self.spinner_frames[self.spinner_frame_index]
-        self.spinner_frame_index = (self.spinner_frame_index + 1) % len(self.spinner_frames)
-
-        # Update that specific line only
-        text = f"<{self.update_color}>{frame}</{self.update_color}> " + \
-                f"<{self.color}>{self.text}</{self.color}>"
-
-        # latest
-        self.console.replace_line(text, -1)
-
-    def on_request_end(self) -> None:
-        """
-        Stop the spinner.
-        Optional, replace the line with final_text.
-        """
-
-        # Check if the spinner is running
-        if self.spinner_timer is not None:
-            self.spinner_timer.stop()
-            self.spinner_timer = None
-
-        # Update the spinner message line
-        if self.spinner_line_index is not None:
-            self.console.delete_last_line()
-            self.spinner_line_index = None
+    def on_request_end(self):
+        self.spinner_status.stop()
 
 
 def attach_ros_logger_to_console(console, node):
@@ -379,4 +319,3 @@ def suggest_string(console, tool_name, string_name, input_string, real_string_li
         console.suggestion_index_changed.clear()
 
     return ret
-
