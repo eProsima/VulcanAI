@@ -191,13 +191,15 @@ class VulcanConsole(App):
         It is called at the beggining of the console execution.
         """
 
+        color_tmp = self.logger.vulcanai_theme["vulcanai"]
+
         vulcanai_title_slant = \
-"""[#56AA08]
+f"""[{color_tmp}]
  _    __      __                 ___    ____
 | |  / /_  __/ /________  ____  /   |  /  _/
 | | / / / / / / ___/ __ `/ __ \/ /| |  / /
 | |/ / /_/ / / /__/ /_/ / / / / ___ |_/ /
-|___/\__,_/_/\___/\__,_/_/ /_/_/  |_/___/[/#56AA08]
+|___/\__,_/_/\___/\__,_/_/ /_/_/  |_/___/[/{color_tmp}]
 """
 
         # Textual layout
@@ -383,11 +385,15 @@ class VulcanConsole(App):
         for i, cmd in enumerate(self.history):
             cmd_esc = escape(cmd)
             prefix = ""
+            tmp_color = ""
             if len(cmd_esc) > 0 and cmd_esc[0] != '/':
-                prefix = f" [#56AA08][Plan {plan_count}][/#56AA08]\n"
+                tmp_color = self.logger.vulcanai_theme["vulcanai"]
+                prefix = f" [{tmp_color}][Plan {plan_count}][/{tmp_color}]\n"
                 plan_count += 1
+            else:
+                tmp_color = self.logger.vulcanai_theme["console"]
 
-            text = f"{prefix} {i+1}: {escape(cmd)}"
+            text = f"{prefix} [{tmp_color}]{i+1}:[/{tmp_color}] {escape(cmd)}"
             if self.history_index is not None and self.history_index == i:
                 # Highlight current selection
                 text = f"[bold reverse]{text}[/]"
@@ -400,7 +406,9 @@ class VulcanConsole(App):
         Function used to update the right panel 'variables' widget with
         the current variables info (model, k, history_depth).
         """
-        text = f" AI model: {self.model}\n K = {self.manager.k}\n history_depth = {self.manager.history_depth}"
+
+
+        text = f" AI model: {self.model.replace("ollama-", "")}\n K = {self.manager.k}\n history_depth = {self.manager.history_depth}"
         kvalue_widget = self.query_one("#variables", Static)
         kvalue_widget.update(text)
 
@@ -1085,7 +1093,7 @@ class VulcanConsole(App):
 
         self.manager = ConsoleManager(model=self.model, k=self.k, logger=self.logger)
 
-        self.logger.log_console(f"Manager initialized with model <bold>'{self.model}</bold>'")
+        self.logger.log_console(f"Manager initialized with model <bold>'{self.model.replace("ollama-", "")}</bold>'")
         # Update right panel info
         self._update_variables_panel()
 

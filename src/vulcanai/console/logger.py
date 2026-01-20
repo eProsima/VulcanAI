@@ -29,6 +29,7 @@ class VulcanAILogger:
             "registry": "#068399",
             "manager": "#0d87c0",
             "executor": "#15B606",
+            "vulcanai": "#56AA08",
             "user": "#91DD16",
             "validator": "#C49C00",
             "tool": "#EB921E",
