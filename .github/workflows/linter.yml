@@ -1,0 +1,40 @@
+name: Linter & Formatter
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - "**/*.py"
+      - "pyproject.toml"
+
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ruff_linter:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Sync repository
+        uses: eProsima/eProsima-CI/external/checkout@v0
+
+      - name: Set up Python
+        uses: eProsima/eProsima-CI/external/setup-python@v0
+        with:
+          python-version: "3.12"
+
+      - name: Install Ruff
+        uses: eProsima/eProsima-CI/ubuntu/install_python_packages@v0
+        with:
+          packages: ruff==0.14.13
+
+      - name: Ruff format (check)
+        run: |
+          ruff format --check .
+
+      - name: Ruff lint (check)
+        run: |
+          ruff check .
