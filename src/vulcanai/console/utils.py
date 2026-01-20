@@ -20,7 +20,6 @@ import subprocess
 import sys
 import time
 from textual.markup import escape # To remove potential errors in textual terminal
-from textual.timer import Timer
 
 class StreamToTextual:
     """

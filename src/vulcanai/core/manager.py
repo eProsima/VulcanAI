@@ -198,7 +198,7 @@ class ToolManager:
         :param new_depth: The new history depth.
         """
         self.history_depth = max(0, int(new_depth))
-        self.logger.log_manager(f"Updated history depth to {new_depth}", color="console")
+        self.logger.log_console(f"Updated history depth to {new_depth}")
         if len(self.history) > self.history_depth:
             if self.history_depth <= 0:
                 self.history = []
@@ -212,7 +212,7 @@ class ToolManager:
         :param new_k: The new k index.
         """
         self.k = max(1, int(new_k))
-        self.logger.log_manager(f"Updated k index to {new_k}", color="console")
+        self.logger.log_console(f"Updated k index to {new_k}")
 
     def _get_prompt_template(self) -> str:
         template = """

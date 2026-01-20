@@ -1,11 +1,22 @@
-from textual.app import ComposeResult
-from textual.widgets import Input, Checkbox, Button, Label, RadioSet, RadioButton
+# Copyright 2026 Proyectos y Sistemas de Mantenimiento SL (eProsima).
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from textual import events
+from textual.app import ComposeResult
 from textual.containers import VerticalScroll, Horizontal, Vertical, Container
-
-
-# checkbox
 from textual.screen import ModalScreen
+from textual.widgets import Input, Checkbox, Button, Label, RadioSet, RadioButton
 
 
 

@@ -21,6 +21,8 @@ import threading
 from rich.style import Style
 from textual.widgets import TextArea
 
+from collections import deque
+
 
 class CustomLogTextArea(TextArea):
     """
@@ -55,21 +57,21 @@ class CustomLogTextArea(TextArea):
         # Internal variable used by the father class (TextArea)
         #  to change the colors of the lines in the Log.
         # When the function self.refresh() is called, all the styles
-        #  are refreshed (inlcudes: colors, bold, italic, ...)
+        #  are refreshed (includes: colors, bold, italic, ...)
         self._highlights = defaultdict(list)
 
         # Private variable of the number of lines
         #  that are currently being displayed
         self._line_count = 0
 
-        # Private list with all the style for the lines
+        # Private dictionary (int, list()) with all the style for the lines
         #  A row with N styles # (e.g.: N = 2: two colors, one bold and color)
         #  will have N entries.
-        self._lines_styles = {}
+        self._lines_styles = deque(maxlen=self.MAX_LINES)
 
     # region UTILS
 
-    def _trim_log(self) -> None:
+    def _trim_highlights(self) -> None:
         """
         Function used to trim the CustomLogTextArea to the maximum number of lines.
 
@@ -88,14 +90,6 @@ class CustomLogTextArea(TextArea):
         #    end=(extra, 0) means "start of line 'extra'", so it deletes lines [0..extra-1]
         self.replace("", start=(0, 0), end=(extra, 0))
 
-        # 2) Shift styles down by 'extra' rows, and drop removed lines
-        new_styles = {}
-        for row, spans in self._lines_styles.items():
-            if row >= extra:
-                new_styles[row - extra] = spans
-        # Replace with the new styles
-        self._lines_styles = new_styles
-
         # 3) Update line count
         self._line_count -= extra
 
@@ -112,7 +106,7 @@ class CustomLogTextArea(TextArea):
         self._highlights.clear()
 
         # Rebuild highlights from _lines_styles
-        for row, value_list in self._lines_styles.items():
+        for row, value_list in enumerate(self._lines_styles):
             for tuple in value_list:
                 self._highlights[row].append((tuple[0], tuple[1], tuple[2]))
 
@@ -242,6 +236,14 @@ class CustomLogTextArea(TextArea):
         "<green bold>This is green bold text</green bold>"
         """
 
+        # Check if the input text has a breakline
+        if "\n" in text or "\r" in text:
+            # Normalize line endings and split
+            lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+            for line in lines:
+                self.append_line(line)
+            return
+
         # 'text' without tags
         plain = ""
         # Spans -> Multiple styles (start_col, end_col, token)
@@ -294,14 +296,19 @@ class CustomLogTextArea(TextArea):
             row = self._line_count
             self._line_count += 1
 
+            if (self._line_count > self.MAX_LINES):
+                self._highlights.pop(self._line_count - self.MAX_LINES, None)
+
             # Store styles
             # Each line may have multiple styles (spans)
-            self._lines_styles[row] = []
+            current_line = []
             for start, end, token in spans:
-                self._lines_styles[row].append((start, end, token))
+                current_line.append((start, end, token))
+
+            self._lines_styles.append(current_line)
 
             # Trim now
-            self._trim_log()
+            self._trim_highlights()
 
             # Scroll to end
             self.scroll_end(animate=False)
@@ -310,100 +317,40 @@ class CustomLogTextArea(TextArea):
             self._rebuild_highlights()
             self.refresh()
 
-    def replace_line(self, text: str, row: int) -> None:
-        """
-        Function used to replace a line in the CustomLogTextArea.
-
-        The 'text' parameter can include tags to specify styles.
-        E.g.:
-        "<red>This is red text</red>"
-        "<green bold>This is green bold text</green bold>"
-        """
-
-        plain = ""
-        spans = []  # (start_col, end_col, token)
-        cursor = 0
-
-        # If row is -1, replace the last line
-        if row == -1:
-            row = self._line_count - 1
-
-        # First, join nested tags into combined tags
-        text = self.join_nested_tags(text)
-
-        # Parse tags and build plain text + 'spans'
-        for m in self.TAG_RE.finditer(text):
-            plain += text[cursor:m.start()]
-
-            tag = m.group("tag")
-            body = m.group("body")
-
-            # Position span
-            start = len(plain)
-            plain += body
-            end = len(plain)
-
-            # Get or create style token
-            token = self._ensure_style_token(tag)
-            spans.append((start, end, token))
-
-            cursor = m.end()
-
-        # Append remaining text after last tag
-        plain += text[cursor:]
-
-        # Check if the replace row is the last line
-        if row < self._line_count - 1:
-            # It is not the last line, replace up to (row+1, 0)
-            self.replace(plain + "\n", start=(row, 0), end=(row + 1, 0))
-        else:
-            # It is the last line, replace up to end of that line
-            old = self.document.get_line(row)
-            self.replace(plain, start=(row, 0), end=(row, len(old)))
-
-        # Update styles for the replaced line
-        self._lines_styles[row] = []
-        for start, end, token in spans:
-            self._lines_styles[row].append((start, end, token))
-
-        # Rebuild highlights and refresh
-        self._rebuild_highlights()
-        self.refresh()
-
     def delete_last_row(self) -> None:
         """
         Function used to delete the last line in the CustomLogTextArea.
         Used when a AI query is completed. To remove the "Querying..." line.
         """
+        with self._lock:
+            if self._line_count == 0:
+                # No lines, does nothing.
+                return
 
-        if self._line_count == 0:
-            # No lines, does nothing.
-            return
+            last_row = self._line_count - 1
 
-        last_row = self._line_count - 1
+            if last_row > 0:
+                # Delete the newline before the last line + the line itself
+                self.replace(
+                    "",
+                    start=(last_row - 1, len(self.document.get_line(last_row - 1))),
+                    end=(last_row, len(self.document.get_line(last_row))),
+                )
+            else:
+                # Only one line
+                self.replace(
+                    "",
+                    start=(0, 0),
+                    end=(0, len(self.document.get_line(0))),
+                )
 
-        if last_row > 0:
-            # Delete the newline before the last line + the line itself
-            self.replace(
-                "",
-                start=(last_row - 1, len(self.document.get_line(last_row - 1))),
-                end=(last_row, len(self.document.get_line(last_row))),
-            )
-        else:
-            # Only one line
-            self.replace(
-                "",
-                start=(0, 0),
-                end=(0, len(self.document.get_line(0))),
-            )
+            # Decrease line count and remove styles
+            self._line_count -= 1
+            self._lines_styles.pop()
 
-        # Decrease line count and remove styles
-        self._line_count -= 1
-        self._lines_styles.pop(last_row, None)
-
-        # Rebuild highlights and refresh
-        self._rebuild_highlights()
-        self.refresh()
+            # Rebuild highlights and refresh
+            self._rebuild_highlights()
+            self.refresh()
 
     # endregion
 
@@ -412,16 +359,17 @@ class CustomLogTextArea(TextArea):
         Function used to clear the entire CustomLogTextArea.
         """
 
-        # Clear internal structures
-        self._highlights.clear()
+        with self._lock:
+            # Clear internal structures
+            self._highlights.clear()
 
-        # Clear the document
-        self._line_count = 0
-        self._lines_styles.clear()
+            # Clear the document
+            self._line_count = 0
+            self._lines_styles.clear()
 
-        # Refresh and clear the TextArea
-        self.refresh()
-        self.clear()
+            # Refresh and clear the TextArea
+            self.refresh()
+            self.clear()
 
     def action_copy_selection(self) -> None:
         """

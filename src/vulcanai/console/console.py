@@ -103,9 +103,9 @@ class VulcanConsole(App):
     ]
 
     def __init__(self,
+                 model: str = "gpt-5-nano", k: int = 7, iterative: bool = False,
                  register_from_file:str = "", tools_from_entrypoints: str = "",
-                 user_context: str = "", main_node = None,
-                 model: str = "gpt-5-nano", k: int = 7, iterative: bool = False):
+                 user_context: str = "", main_node = None):
         super().__init__() # Textual lib
 
         # -- Main variables --
@@ -159,7 +159,7 @@ class VulcanConsole(App):
         """
         Function used to paste the string for the user clipboard
 
-        on_mouse_down() function it is called when a mouse button is pressed.
+        on_mouse_down() function is called when a mouse button is pressed.
         In this case, only the middle button is used to paste the clipboard content.
         """
 
@@ -233,8 +233,6 @@ class VulcanConsole(App):
         def worker() -> None:
             """
             Worker function to run in a separate thread.
-
-            user_input: (str) The user input to process.
             """
 
             self.init_manager()
@@ -287,7 +285,7 @@ class VulcanConsole(App):
                 self.manager.bb["main_node"] = self.main_node
                 attach_ros_logger_to_console(self, self.main_node)
             else:
-                self.logger.log_warning("No ROS node added")
+                self.logger.log_console("No ROS node added")
 
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, lambda: worker())
@@ -416,7 +414,7 @@ class VulcanConsole(App):
         selected = await self.push_screen_wait(CheckListModal(tools_list, active_tools_num))
 
         if selected is None:
-            self.logger.log_warning("Selection cancelled.")
+            self.logger.log_msg("<yellow>Selection cancelled.</yellow>")
         else:
 
             # Iterate over all tools and activate/deactivate accordingly
@@ -601,10 +599,9 @@ class VulcanConsole(App):
         """
         selected_plan = 0
         if len(args) == 0:
-            # no index specified. Last plan selected
+            # No index specified. Last plan selected
             selected_plan = len(self.plans_list) - 1
         elif len(args) != 1 or not args[0].isdigit():
-            # self.call_from_thread(self.logger.log_console, "Usage: /rerun 'int'")
             self.logger.log_console("Usage: /rerun 'int'")
             return
         else:
@@ -676,29 +673,6 @@ class VulcanConsole(App):
             text = f"{color_begin}{line_processed}{color_end}"
             self.left_pannel.append_line(text)
 
-    def replace_line(self, input: str, row: int,
-            color: str = "",
-            subprocess_flag: bool = False) -> None:
-        """
-        Function used to replace a line of the VulcanAI terminal.
-        """
-        # Split incoming text into individual lines
-        lines = input.splitlines()
-
-        color_begin = ""
-        color_end = ""
-        if color != "":
-            color_begin = f"<{color}>"
-            color_end = f"</{color}>"
-
-        # Append each line; deque automatically truncates old ones
-        for line in lines:
-            line_processed = line
-            if subprocess_flag:
-                line_processed = escape(line)
-            text = f"{color_begin}{line_processed}{color_end}"
-            self.left_pannel.replace_line(text, row)
-
     def delete_last_line(self):
         """
         Function used to remove the last line in the VulcanAI terminal.
@@ -767,7 +741,7 @@ class VulcanConsole(App):
                 return
 
             # Echo what the user typed
-            self.print_command_prompt(cmd)
+            self.logger.log_user(cmd)
 
             # If it start with '/', just print it as output and stop here
             if user_input.startswith("/"):
@@ -889,7 +863,7 @@ class VulcanConsole(App):
                 prefix, commands = common_prefix(matches)
                 new_value = prefix
                 # If the common prefix is just the original head, cycle through options
-                self.print_command_prompt(cmd_input.value)
+                self.logger.log_user(cmd_input.value)
                 self.logger.log_console(commands)
             else:
                 # Single match: complete directly
@@ -1006,7 +980,7 @@ class VulcanConsole(App):
 
         Binding("f2", "show_help", ...),
         """
-        self.print_command_prompt("/help")
+        self.logger.log_user("/help")
         self.cmd_help(_=None)
 
     def action_reverse_search(self) -> None:

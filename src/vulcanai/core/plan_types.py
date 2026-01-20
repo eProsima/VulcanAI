@@ -15,6 +15,7 @@
 from pydantic import BaseModel, Field
 from typing import List, Literal, Optional, Union
 
+from vulcanai.console.logger import VulcanAILogger
 
 Kind = Literal["SEQUENCE","PARALLEL"]
 
@@ -80,10 +81,12 @@ class GlobalPlan(BaseModel):
         if self.summary:
             lines.append(f"- <bold>Plan Summary</bold>: {self.summary}\n")
 
-        color_tool = "#15B606"
-        color_variable = "#C49C00"
-        color_value = "#069899"
-        color_error = "#CC0C0C"
+        logger = VulcanAILogger(None)
+
+        color_tool = logger.vulcanai_theme["executor"]
+        color_variable = logger.vulcanai_theme["validator"]
+        color_value = logger.vulcanai_theme["registry"]
+        color_error = logger.vulcanai_theme["error"]
 
         for i, node in enumerate(self.plan, 1):
             # - PlanNode <i>: kind=<SEQUENCE/PARALLEL>
