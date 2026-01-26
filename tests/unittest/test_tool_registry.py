@@ -12,13 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-import os
-import sys
 import hashlib
-import numpy as np
-import types
 import importlib
+import io
+import numpy as np
+import os
+import re
+import sys
+import types
+import unittest
 
 
 # Stub sentence_transformers to avoid heavy dependency during tests
@@ -229,8 +231,6 @@ class TestToolRegistry(unittest.TestCase):
 
     def test_register_composite_tool_fails_reports_error(self):
         """Test that registering a composite tool reports an error if there are no dependencies."""
-        import io
-        import re
         buf = io.StringIO()
         sys.stdout = buf
         # Check that the composite tool has no resolved deps before registration
@@ -253,8 +253,6 @@ class TestToolRegistry(unittest.TestCase):
 
     def test_register_composite_tool_solves_deps_from_file(self):
         """Test that registering a composite tool from file correctly resolves its dependencies."""
-        import io
-        import re
         r = self.ToolRegistry(embedder=self.Embedder())
         buf = io.StringIO()
         sys.stdout = buf
@@ -270,8 +268,6 @@ class TestToolRegistry(unittest.TestCase):
 
     def test_register_composite_tool_fails_from_file(self):
         """Test that registering a composite tool from file reports an error if there are no dependencies."""
-        import io
-        import re
         buf = io.StringIO()
         sys.stdout = buf
         # Register tool from test_composite_tool.py and expect errors for missing deps
