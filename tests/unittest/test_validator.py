@@ -34,7 +34,7 @@ sys.modules.setdefault('sentence_transformers', types.SimpleNamespace(SentenceTr
 
 # Make src-layout importable
 CURRENT_DIR = os.path.dirname(__file__)
-SRC_DIR = os.path.abspath(os.path.join(CURRENT_DIR, "..", "src"))
+SRC_DIR = os.path.abspath(os.path.join(CURRENT_DIR, os.path.pardir, "src"))
 if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
 
