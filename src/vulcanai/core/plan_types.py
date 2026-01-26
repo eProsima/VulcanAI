@@ -81,12 +81,10 @@ class GlobalPlan(BaseModel):
         if self.summary:
             lines.append(f"- <bold>Plan Summary</bold>: {self.summary}\n")
 
-        logger = VulcanAILogger(None)
-
-        color_tool = logger.vulcanai_theme["executor"]
-        color_variable = logger.vulcanai_theme["validator"]
-        color_value = logger.vulcanai_theme["registry"]
-        color_error = logger.vulcanai_theme["error"]
+        color_tool = VulcanAILogger.vulcanai_theme["executor"]
+        color_variable = VulcanAILogger.vulcanai_theme["validator"]
+        color_value = VulcanAILogger.vulcanai_theme["registry"]
+        color_error = VulcanAILogger.vulcanai_theme["error"]
 
         for i, node in enumerate(self.plan, 1):
             # - PlanNode <i>: kind=<SEQUENCE/PARALLEL>

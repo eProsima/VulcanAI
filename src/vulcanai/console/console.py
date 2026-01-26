@@ -191,7 +191,7 @@ class VulcanConsole(App):
         It is called at the beggining of the console execution.
         """
 
-        color_tmp = self.logger.vulcanai_theme["vulcanai"]
+        color_tmp = VulcanAILogger.vulcanai_theme["vulcanai"]
 
         vulcanai_title_slant = \
 f"""[{color_tmp}]
@@ -286,8 +286,6 @@ f"""[{color_tmp}]
             if self.main_node != None:
                 self.manager.bb["main_node"] = self.main_node
                 attach_ros_logger_to_console(self, self.main_node)
-            else:
-                self.logger.log_console("No ROS node added")
 
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, lambda: worker())
@@ -387,11 +385,11 @@ f"""[{color_tmp}]
             prefix = ""
             tmp_color = ""
             if len(cmd_esc) > 0 and cmd_esc[0] != '/':
-                tmp_color = self.logger.vulcanai_theme["vulcanai"]
+                tmp_color = VulcanAILogger.vulcanai_theme["vulcanai"]
                 prefix = f" [{tmp_color}][Plan {plan_count}][/{tmp_color}]\n"
                 plan_count += 1
             else:
-                tmp_color = self.logger.vulcanai_theme["console"]
+                tmp_color = VulcanAILogger.vulcanai_theme["console"]
 
             text = f"{prefix} [{tmp_color}]{i+1}:[/{tmp_color}] {escape(cmd)}"
             if self.history_index is not None and self.history_index == i:
@@ -679,21 +677,14 @@ f"""[{color_tmp}]
             if subprocess_flag:
                 line_processed = escape(line)
             text = f"{color_begin}{line_processed}{color_end}"
-            self.left_pannel.append_line(text)
+            if not self.left_pannel.append_line(text):
+                self.logger.log_console(f"Warning: Trying to add an empty line.")
 
     def delete_last_line(self):
         """
         Function used to remove the last line in the VulcanAI terminal.
         """
         self.left_pannel.delete_last_row()
-
-    def print_command_prompt(self, cmd: str="", extra_prefix: str="") -> None:
-        """
-        Function used to print the command prompt with the user command.
-        "[USER] >>> 'command_input'
-        """
-        color_user = "#91DD16"
-        self.logger.log_msg(f"{extra_prefix}<bold {color_user}>[USER] >>></bold {color_user}> {cmd}")
 
     # endregion
 

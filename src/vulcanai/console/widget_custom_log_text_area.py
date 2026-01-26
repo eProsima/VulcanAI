@@ -226,7 +226,7 @@ class CustomLogTextArea(TextArea):
 
     # region LOG
 
-    def append_line(self, text: str) -> None:
+    def append_line(self, text: str) -> bool:
         """
         Function used to append a new line to the CustomLogTextArea.
 
@@ -238,11 +238,7 @@ class CustomLogTextArea(TextArea):
 
         # Check if the input text has a breakline
         if "\n" in text or "\r" in text:
-            # Normalize line endings and split
-            lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-            for line in lines:
-                self.append_line(line)
-            return
+            return False
 
         # 'text' without tags
         plain = ""
@@ -316,6 +312,8 @@ class CustomLogTextArea(TextArea):
             # Rebuild highlights and refresh
             self._rebuild_highlights()
             self.refresh()
+
+            return True
 
     def delete_last_row(self) -> None:
         """
