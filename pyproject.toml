@@ -23,6 +23,11 @@ dependencies = [
     "sentence-transformers==5.1.0",
 ]
 
+[project.optional-dependencies]
+tests = [
+    "pytest==8.4.2",
+]
+
 [project.urls]
 "eProsima" = "https://www.eprosima.com/"
 
