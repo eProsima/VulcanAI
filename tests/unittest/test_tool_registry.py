@@ -246,7 +246,7 @@ class TestToolRegistry(unittest.TestCase):
         # Capture output to check for error messages
         sys.stdout = sys.__stdout__  # Reset stdout
         output = buf.getvalue()
-        output = re.sub(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "", output)  # Remove ANSI codes
+        output = re.sub(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])|[\r\n]+", "", output)  # Remove ANSI codes
         self.assertIn("Dependency 'go_to_pose' for tool 'complex_action' not found", output)
         self.assertIn("Dependency 'detect_object' for tool 'complex_action' not found", output)
         self.assertIn("Dependency 'speak' for tool 'complex_action' not found", output)
@@ -260,7 +260,7 @@ class TestToolRegistry(unittest.TestCase):
         r.discover_tools_from_file(os.path.join(RESOURCES_DIR, "test_composite_tool.py"))
         sys.stdout = sys.__stdout__  # Reset stdout
         output = buf.getvalue()
-        output = re.sub(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "", output)  # Remove ANSI codes
+        output = re.sub(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])|[\r\n]+", "", output)  # Remove ANSI codes
         self.assertNotIn("Dependency 'file_tool' for tool 'complex_file_action' not found", output)
         self.assertNotIn("Dependency 'new_file_tool' for tool 'complex_file_action' not found", output)
         self.assertNotIn("Dependency 'other_file_tool' for tool 'complex_file_action' not found", output)
@@ -275,7 +275,7 @@ class TestToolRegistry(unittest.TestCase):
         r.discover_tools_from_file(os.path.join(RESOURCES_DIR, "test_composite_tool.py"))
         sys.stdout = sys.__stdout__  # Reset stdout
         output = buf.getvalue()
-        output = re.sub(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "", output)  # Remove ANSI codes
+        output = re.sub(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])|[\r\n]+", "", output)  # Remove ANSI codes
         self.assertIn("Dependency 'file_tool' for tool 'complex_file_action' not found", output)
         self.assertIn("Dependency 'new_file_tool' for tool 'complex_file_action' not found", output)
         self.assertIn("Dependency 'other_file_tool' for tool 'complex_file_action' not found", output)
