@@ -12,13 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-import os
-import sys
 import hashlib
-import numpy as np
-import types
 import importlib
+import io
+import numpy as np
+import os
+import re
+import sys
+import types
+import unittest
 
 
 # Stub sentence_transformers to avoid heavy dependency during tests
@@ -34,7 +36,8 @@ sys.modules.setdefault('sentence_transformers', types.SimpleNamespace(SentenceTr
 
 # Add src/ to sys.path for src-layout imports
 CURRENT_DIR = os.path.dirname(__file__)
-SRC_DIR = os.path.abspath(os.path.join(CURRENT_DIR, "..", "src"))
+RESOURCES_DIR = os.path.abspath(os.path.join(CURRENT_DIR, os.path.pardir, "resources"))
+SRC_DIR = os.path.abspath(os.path.join(CURRENT_DIR, os.path.pardir, os.path.pardir, "src"))
 if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
 
@@ -205,7 +208,7 @@ class TestToolRegistry(unittest.TestCase):
 
     def test_register_tool_from_file(self):
         # Register tools from test_tools.py
-        self.registry.discover_tools_from_file(os.path.join(CURRENT_DIR, "resources", "test_tools.py"))
+        self.registry.discover_tools_from_file(os.path.join(RESOURCES_DIR, "test_tools.py"))
         self.assertEqual(len(self.registry.tools), 7+1)  # +1 for help tool (3 existing + 4 new)
         self.assertEqual(len(self.registry._index), 7)   # (3 existing + 4 new)
 
@@ -228,8 +231,6 @@ class TestToolRegistry(unittest.TestCase):
 
     def test_register_composite_tool_fails_reports_error(self):
         """Test that registering a composite tool reports an error if there are no dependencies."""
-        import io
-        import re
         buf = io.StringIO()
         sys.stdout = buf
         # Check that the composite tool has no resolved deps before registration
@@ -245,23 +246,21 @@ class TestToolRegistry(unittest.TestCase):
         # Capture output to check for error messages
         sys.stdout = sys.__stdout__  # Reset stdout
         output = buf.getvalue()
-        output = re.sub(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "", output)  # Remove ANSI codes
+        output = re.sub(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])|[\r\n]+", "", output)  # Remove ANSI codes
         self.assertIn("Dependency 'go_to_pose' for tool 'complex_action' not found", output)
         self.assertIn("Dependency 'detect_object' for tool 'complex_action' not found", output)
         self.assertIn("Dependency 'speak' for tool 'complex_action' not found", output)
 
     def test_register_composite_tool_solves_deps_from_file(self):
         """Test that registering a composite tool from file correctly resolves its dependencies."""
-        import io
-        import re
         r = self.ToolRegistry(embedder=self.Embedder())
         buf = io.StringIO()
         sys.stdout = buf
-        r.discover_tools_from_file(os.path.join(CURRENT_DIR, "resources", "test_tools.py"))
-        r.discover_tools_from_file(os.path.join(CURRENT_DIR, "resources", "test_composite_tool.py"))
+        r.discover_tools_from_file(os.path.join(RESOURCES_DIR, "test_tools.py"))
+        r.discover_tools_from_file(os.path.join(RESOURCES_DIR, "test_composite_tool.py"))
         sys.stdout = sys.__stdout__  # Reset stdout
         output = buf.getvalue()
-        output = re.sub(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "", output)  # Remove ANSI codes
+        output = re.sub(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])|[\r\n]+", "", output)  # Remove ANSI codes
         self.assertNotIn("Dependency 'file_tool' for tool 'complex_file_action' not found", output)
         self.assertNotIn("Dependency 'new_file_tool' for tool 'complex_file_action' not found", output)
         self.assertNotIn("Dependency 'other_file_tool' for tool 'complex_file_action' not found", output)
@@ -269,16 +268,14 @@ class TestToolRegistry(unittest.TestCase):
 
     def test_register_composite_tool_fails_from_file(self):
         """Test that registering a composite tool from file reports an error if there are no dependencies."""
-        import io
-        import re
         buf = io.StringIO()
         sys.stdout = buf
         # Register tool from test_composite_tool.py and expect errors for missing deps
         r = self.ToolRegistry(embedder=self.Embedder())
-        r.discover_tools_from_file(os.path.join(CURRENT_DIR, "resources", "test_composite_tool.py"))
+        r.discover_tools_from_file(os.path.join(RESOURCES_DIR, "test_composite_tool.py"))
         sys.stdout = sys.__stdout__  # Reset stdout
         output = buf.getvalue()
-        output = re.sub(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "", output)  # Remove ANSI codes
+        output = re.sub(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])|[\r\n]+", "", output)  # Remove ANSI codes
         self.assertIn("Dependency 'file_tool' for tool 'complex_file_action' not found", output)
         self.assertIn("Dependency 'new_file_tool' for tool 'complex_file_action' not found", output)
         self.assertIn("Dependency 'other_file_tool' for tool 'complex_file_action' not found", output)

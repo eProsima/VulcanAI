@@ -1,0 +1,61 @@
+name: test_suite
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types:
+      - review_requested
+    paths-ignore:
+      - '**.md'
+      - '**.txt'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unittests:
+    name: Unit tests (unittest)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Sync repository
+        uses: eProsima/eProsima-CI/external/checkout@v0
+
+      - name: Set up Python
+        uses: eProsima/eProsima-CI/external/setup-python@v0
+        with:
+          python-version: "3.12"
+
+      - name: Install VulcanAI library
+        run: |
+          # Update pip and install dependencies
+          python -m pip install -U pip
+          python -m pip install -e .[test]
+
+      - name: Run unit tests
+        run: |
+          python -m unittest discover -s tests/unittest -t . -p "test*.py" -v
+
+  integration:
+    name: Integration tests (pytest)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Sync repository
+        uses: eProsima/eProsima-CI/external/checkout@v0
+
+      - name: Set up Python
+        uses: eProsima/eProsima-CI/external/setup-python@v0
+        with:
+          python-version: "3.12"
+
+      - name: Install VulcanAI library
+        run: |
+          # Update pip and install dependencies
+          python -m pip install -U pip
+          python -m pip install -e .[test]
+
+      - name: Run integration tests
+        run: |
+          python -m pytest -vv tests/integration_tests
