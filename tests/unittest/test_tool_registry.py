@@ -37,7 +37,7 @@ sys.modules.setdefault('sentence_transformers', types.SimpleNamespace(SentenceTr
 # Add src/ to sys.path for src-layout imports
 CURRENT_DIR = os.path.dirname(__file__)
 RESOURCES_DIR = os.path.abspath(os.path.join(CURRENT_DIR, os.path.pardir, "resources"))
-SRC_DIR = os.path.abspath(os.path.join(CURRENT_DIR, os.path.pardir, "src"))
+SRC_DIR = os.path.abspath(os.path.join(CURRENT_DIR, os.path.pardir, os.path.pardir, "src"))
 if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
 
