@@ -24,6 +24,7 @@ class SpinnerStatus(Static):
     It implements rich's Spinner and manages its display state,
     starting and stopping it as needed through SpinnerHook.
     """
+
     def __init__(self, logcontent, **kwargs) -> None:
         super().__init__(**kwargs)
         self.logcontent = logcontent
@@ -32,7 +33,7 @@ class SpinnerStatus(Static):
         self._forced_compact = False
 
     def on_mount(self) -> None:
-        self._timer = self.set_interval(1/30, self._refresh, pause=True)
+        self._timer = self.set_interval(1 / 30, self._refresh, pause=True)
         self.display = False
         self.styles.height = 0
 

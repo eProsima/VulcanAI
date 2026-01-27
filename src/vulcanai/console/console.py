@@ -16,10 +16,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import pyperclip  # To paste the clipboard into the terminal
 import sys
 import threading
 
+import pyperclip  # To paste the clipboard into the terminal
 from textual import events, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -28,15 +28,16 @@ from textual.events import MouseEvent
 from textual.markup import escape  # To remove potential errors in textual terminal
 from textual.widgets import Input, Static
 
-from vulcanai.console.widget_custom_log_text_area import CustomLogTextArea
 from vulcanai.console.logger import VulcanAILogger
 from vulcanai.console.modal_screens import CheckListModal, RadioListModal, ReverseSearchModal
-from vulcanai.console.utils import attach_ros_logger_to_console, common_prefix, SpinnerHook, StreamToTextual
+from vulcanai.console.utils import SpinnerHook, StreamToTextual, attach_ros_logger_to_console, common_prefix
+from vulcanai.console.widget_custom_log_text_area import CustomLogTextArea
 from vulcanai.console.widget_spinner import SpinnerStatus
 
 
 class TextualLogSink:
     """A default console that prints to standard output."""
+
     def __init__(self, textual_console) -> None:
         self.console = textual_console
 
@@ -45,7 +46,6 @@ class TextualLogSink:
 
 
 class VulcanConsole(App):
-
     # CSS Styles
     # Two panels: left (log + input) and right (history + variables)
     #   Right panel: 48 characters length
@@ -111,11 +111,17 @@ class VulcanConsole(App):
         Binding("down", "history_next", show=False),
     ]
 
-    def __init__(self,
-                 model: str = "gpt-5-nano", k: int = 7, iterative: bool = False,
-                 register_from_file:str = "", tools_from_entrypoints: str = "",
-                 user_context: str = "", main_node = None):
-        super().__init__() # Textual lib
+    def __init__(
+        self,
+        model: str = "gpt-5-nano",
+        k: int = 7,
+        iterative: bool = False,
+        register_from_file: str = "",
+        tools_from_entrypoints: str = "",
+        user_context: str = "",
+        main_node=None,
+    ):
+        super().__init__()  # Textual lib
 
         # -- Main variables --
         # Manager instance
@@ -164,7 +170,6 @@ class VulcanConsole(App):
         self.suggestion_index = -1
         self.suggestion_index_changed = threading.Event()
 
-
     async def on_mouse_down(self, event: MouseEvent) -> None:
         """
         Function used to paste the string for the user clipboard
@@ -203,8 +208,7 @@ class VulcanConsole(App):
 
         color_tmp = VulcanAILogger.vulcanai_theme["vulcanai"]
 
-        vulcanai_title_slant = \
-f"""[{color_tmp}]
+        vulcanai_title_slant = f"""[{color_tmp}]
  _    __      __                 ___    ____
 | |  / /_  __/ /________  ____  /   |  /  _/
 | | / / / / / / ___/ __ `/ __ \/ /| |  / /
@@ -229,7 +233,7 @@ f"""[{color_tmp}]
                 # Title Area
                 yield Static(vulcanai_title_slant, id="history_title")
                 # Variable info Area
-                yield Static(f" Loading info...", id="variables")
+                yield Static(" Loading info...", id="variables")
                 # History Area
                 with VerticalScroll(id="history_scroll"):
                     # NOTE: markup=True so [bold reverse] works
@@ -293,7 +297,7 @@ f"""[{color_tmp}]
             self.manager.bb["console"] = self
 
             # Add the shared node to the console manager blackboard to be used by tools
-            if self.main_node != None:
+            if self.main_node is not None:
                 self.manager.bb["main_node"] = self.main_node
                 attach_ros_logger_to_console(self, self.main_node)
 
@@ -307,14 +311,14 @@ f"""[{color_tmp}]
         # Activate the terminal input
         self.set_input_enabled(True)
 
-    async def queriestrap(self, user_input: str="") -> None:
+    async def queriestrap(self, user_input: str = "") -> None:
         """
         Function used to handle user requests.
         Print information at runtime execution of a function, without blocking the main thread
         so Textual Log does not freeze.
         """
 
-        def worker(user_input: str="") -> None:
+        def worker(user_input: str = "") -> None:
             """
             Worker function to run in a separate thread.
 
@@ -343,8 +347,8 @@ f"""[{color_tmp}]
                 self.last_bb = result.get("blackboard", None)
 
                 # Print the backboard state
-                bb_ret = result.get('blackboard', None)
-                bb_ret = str(bb_ret).replace('<', '\'').replace('>', '\'')
+                bb_ret = result.get("blackboard", None)
+                bb_ret = str(bb_ret).replace("<", "'").replace(">", "'")
                 self.logger.log_console(f"Output of plan: {bb_ret}")
 
             except KeyboardInterrupt:
@@ -394,14 +398,14 @@ f"""[{color_tmp}]
             cmd_esc = escape(cmd)
             prefix = ""
             tmp_color = ""
-            if len(cmd_esc) > 0 and cmd_esc[0] != '/':
+            if len(cmd_esc) > 0 and cmd_esc[0] != "/":
                 tmp_color = VulcanAILogger.vulcanai_theme["vulcanai"]
                 prefix = f" [{tmp_color}][Plan {plan_count}][/{tmp_color}]\n"
                 plan_count += 1
             else:
                 tmp_color = VulcanAILogger.vulcanai_theme["console"]
 
-            text = f"{prefix} [{tmp_color}]{i+1}:[/{tmp_color}] {escape(cmd)}"
+            text = f"{prefix} [{tmp_color}]{i + 1}:[/{tmp_color}] {escape(cmd)}"
             if self.history_index is not None and self.history_index == i:
                 # Highlight current selection
                 text = f"[bold reverse]{text}[/]"
@@ -415,7 +419,10 @@ f"""[{color_tmp}]
         the current variables info (model, k, history_depth).
         """
 
-        text = f" AI model: {self.model.replace('ollama-', '')}\n K = {self.manager.k}\n history_depth = {self.manager.history_depth}"
+        text = (
+            f" AI model: {self.model.replace('ollama-', '')}\n K = {self.manager.k}\n"
+            f" history_depth = {self.manager.history_depth}"
+        )
         kvalue_widget = self.query_one("#variables", Static)
         kvalue_widget.update(text)
 
@@ -431,7 +438,6 @@ f"""[{color_tmp}]
         if selected is None:
             self.logger.log_msg("<yellow>Selection cancelled.</yellow>")
         else:
-
             # Iterate over all tools and activate/deactivate accordingly
             # to the selection made by the user
             for tool_tmp in tools_list:
@@ -457,14 +463,13 @@ f"""[{color_tmp}]
         selected = await self.push_screen_wait(RadioListModal(option_list))
 
         if selected is None:
-            self.logger.log_tool(f"Suggestion cancelled", tool_name=tool)
+            self.logger.log_tool("Suggestion cancelled", tool_name=tool)
             self.suggestion_index = -2
             return
 
-        self.logger.log_tool(f"Selected suggestion: \"{option_list[selected]}\"", tool_name=tool)
+        self.logger.log_tool(f'Selected suggestion: "{option_list[selected]}"', tool_name=tool)
         self.suggestion_index = selected
-        self.suggestion_index_changed.set() # signal change
-
+        self.suggestion_index_changed.set()  # signal change
 
     # endregion
 
@@ -479,8 +484,10 @@ f"""[{color_tmp}]
                 "/<bold>help</bold>           - Show this help message\n"
                 "/<bold>tools</bold>          - List available tools\n"
                 "/<bold>edit_tools</bold>     - Edit the list of available tools\n"
-                "/<bold>change_k 'int'</bold> - Change the 'k' value for the top_k algorithm selection or show the current value if no 'int' is provided\n"
-                "/<bold>history 'int'</bold>  - Change the history depth or show the current value if no 'int' is provided\n"
+                "/<bold>change_k 'int'</bold> - Change the 'k' value for the top_k algorithm selection"
+                " or show the current value if no 'int' is provided\n"
+                "/<bold>history 'int'</bold>  - Change the history depth or show the current value if no"
+                " 'int' is provided\n"
                 "/<bold>show_history</bold>   - Show the current history\n"
                 "/<bold>clear_history</bold>  - Clear the history\n"
                 "/<bold>plan</bold>           - Show the last generated plan\n"
@@ -489,7 +496,8 @@ f"""[{color_tmp}]
                 "/<bold>clear</bold>          - Clears the console screen\n"
                 "/<bold>exit</bold>           - Exit the console\n"
                 "<bold>Query any other text</bold> to process it with the LLM and execute the plan generated.\n\n"
-                "Add --image='path' to include images in the query. It can be used multiple times to add more images.\n"
+                "Add --image='path' to include images in the query. It can be used multiple times to add"
+                " more images.\n"
                 "Example: 'user_prompt' --image=/path/to/image1 --image=/path/to/image2'\n"
                 "___________________\n"
                 "<bold>Available keybinds:</bold>\n"
@@ -502,16 +510,17 @@ f"""[{color_tmp}]
                 "<bold>Ctrl+K</bold>            - Clears from the cursor to then end of the line\n"
                 "<bold>Ctrl+W</bold>            - Delete the word before the cursor\n"
                 "<bold>Ctrl+'left/right'</bold> - Move cursor backward/forward by one word\n"
-                "<bold>Ctrl+R</bold>            - Reverse search through command history (try typing part of a previous command).\n"
+                "<bold>Ctrl+R</bold>            - Reverse search through command history (try typing part of a"
+                " previous command).\n"
             ]
         )
         self.logger.log_console(table, "console")
 
     def cmd_tools(self, _) -> None:
         tmp_msg = f"(current index k={self.manager.k})"
-        tool_msg = ("_" * len(tmp_msg)) + '\n'
-        tool_msg += f"<bold>Available tools:</bold>\n"
-        tool_msg += tmp_msg + '\n' + ("‾" * len(tmp_msg)) + '\n'
+        tool_msg = ("_" * len(tmp_msg)) + "\n"
+        tool_msg += "<bold>Available tools:</bold>\n"
+        tool_msg += tmp_msg + "\n" + ("‾" * len(tmp_msg)) + "\n"
 
         for tool in self.manager.registry.tools.values():
             tool_msg += f"- <bold>{tool.name}:</bold> {tool.description}\n"
@@ -561,16 +570,16 @@ f"""[{color_tmp}]
             self.logger.log_console("No history available.")
             return
 
-        history_msg = \
-            "________________\n" + \
-            "<bold>Current history:</bold>\n" + \
-            "(oldest first)\n" + \
-            "‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾\n"
+        history_msg = (
+            "________________\n" + "<bold>Current history:</bold>\n" + "(oldest first)\n" + "‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾\n"
+        )
 
         self.logger.log_console(history_msg, "console")
         for i, (user_text, plan_summary) in enumerate(self.manager.history):
-            user_req_cmd = user_text.split('\n')
-            self.logger.log_msg(f"{i+1}. <bold>[USER] >>> {user_req_cmd[1]}</bold>\n",)
+            user_req_cmd = user_text.split("\n")
+            self.logger.log_msg(
+                f"{i + 1}. <bold>[USER] >>> {user_req_cmd[1]}</bold>\n",
+            )
             self.logger.log_msg(f"<bold>Plan summary:</bold> {plan_summary}\n")
 
     def cmd_clear_history(self, _) -> None:
@@ -649,7 +658,7 @@ f"""[{color_tmp}]
             self.logger.log_console("<bold>Lastest blackboard state:</bold>")
             # Parse the blackboard to avoid <...> issues in textual
             last_bb_parsed = str(self.last_bb)
-            last_bb_parsed = last_bb_parsed.replace('<', '\'').replace('>', '\'')
+            last_bb_parsed = last_bb_parsed.replace("<", "'").replace(">", "'")
             self.logger.log_console(last_bb_parsed)
         else:
             self.logger.log_console("No blackboard available.")
@@ -664,9 +673,7 @@ f"""[{color_tmp}]
 
     # region Logging
 
-    def add_line(self, input: str,
-            color: str = "",
-            subprocess_flag: bool = False) -> None:
+    def add_line(self, input: str, color: str = "", subprocess_flag: bool = False) -> None:
         """
         Function used to write an input in the VulcanAI terminal.
         """
@@ -679,7 +686,6 @@ f"""[{color_tmp}]
             color_begin = f"<{color}>"
             color_end = f"</{color}>"
 
-
         # Append each line; deque automatically truncates old ones
         for line in lines:
             line_processed = line
@@ -687,7 +693,7 @@ f"""[{color_tmp}]
                 line_processed = escape(line)
             text = f"{color_begin}{line_processed}{color_end}"
             if not self.left_pannel.append_line(text):
-                self.logger.log_console(f"Warning: Trying to add an empty line.")
+                self.logger.log_console("Warning: Trying to add an empty line.")
 
     def delete_last_line(self):
         """
@@ -818,7 +824,6 @@ f"""[{color_tmp}]
         cmd_input.cursor_position = cursor + len(paste_text)
         cmd_input.focus()
 
-
     async def on_key(self, event: events.Key) -> None:
         """
         Function used to handle key events in the terminal input box.
@@ -897,7 +902,7 @@ f"""[{color_tmp}]
 
             # Iterate backwards to find the start of the previous word
             while i > 0:
-                if value[i] == ' ':
+                if value[i] == " ":
                     # First space after a word
                     if first_char:
                         i += 1
@@ -916,7 +921,7 @@ f"""[{color_tmp}]
             return
 
         # - escape/ctrl+delete: Delete after cursor ---------------------------
-        if key in ("ctrl+delete", "escape") :
+        if key in ("ctrl+delete", "escape"):
             # Input value and cursor position
             value = cmd_input.value
             cursor = cmd_input.cursor_position
@@ -928,13 +933,13 @@ f"""[{color_tmp}]
 
             # Iterate forwards to find the end of the next word
             while i < n:
-                if(value[i] == ' '):
+                if value[i] == " ":
                     if first_char:
                         break
                 else:
                     first_char = True
                 i += 1
-                count +=1
+                count += 1
 
             # Update input value and cursor position
             cmd_input.value = value[:cursor] + value[i:]
@@ -1021,9 +1026,9 @@ f"""[{color_tmp}]
 
         Binding("ctrl+c", "stop_streaming_task", ...),
         """
-        if self.stream_task != None and not self.stream_task.done():
+        if self.stream_task is not None and not self.stream_task.done():
             # Cancel the streaming task
-            self.stream_task.cancel() # Triggers CancelledError in the task
+            self.stream_task.cancel()  # Triggers CancelledError in the task
             self.stream_task = None
 
         else:
@@ -1079,7 +1084,6 @@ f"""[{color_tmp}]
         """
         self.run()
 
-
     def init_manager(self) -> None:
         """
         Function used to initialize VulcanAI Manager.
@@ -1106,39 +1110,46 @@ f"""[{color_tmp}]
 
         for part in parts:
             if part.startswith("--image="):
-                images.append(part[len("--image="):])
+                images.append(part[len("--image=") :])
         return images
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="VulcanAI Interactive Console")
     parser.add_argument(
-        "--model", type=str, default="gpt-5-nano",
-        help="LLM model to used in the agent (ej: gpt-5-nano, gemini-2.0-flash, etc.)"
+        "--model",
+        type=str,
+        default="gpt-5-nano",
+        help="LLM model to used in the agent (ej: gpt-5-nano, gemini-2.0-flash, etc.)",
     )
     parser.add_argument(
-        "--register-from-file", type=str, nargs="*", default=[],
-        help="Register tools from a python file (or multiple files)"
+        "--register-from-file",
+        type=str,
+        nargs="*",
+        default=[],
+        help="Register tools from a python file (or multiple files)",
     )
     parser.add_argument(
-        "--register-from-entry-point", type=str, nargs="*", default=[],
-        help="Register tools from a python entry-point (or multiple entry-points)"
+        "--register-from-entry-point",
+        type=str,
+        nargs="*",
+        default=[],
+        help="Register tools from a python entry-point (or multiple entry-points)",
     )
+    parser.add_argument("-k", type=int, default=7, help="Maximum number of tools to pass to the LLM")
     parser.add_argument(
-        "-k", type=int, default=7,
-        help="Maximum number of tools to pass to the LLM"
+        "-i", "--iterative", action="store_true", default=False, help="Enable Iterative Manager (default: off)"
     )
-    parser.add_argument(
-        "-i", "--iterative", action="store_true", default=False,
-        help="Enable Iterative Manager (default: off)"
-    )
-
 
     args = parser.parse_args()
 
-    console = VulcanConsole(register_from_file=args.register_from_file,
-                            tools_from_entrypoints=args.register_from_entry_point,
-                            model=args.model, k=args.k, iterative=args.iterative)
+    console = VulcanConsole(
+        register_from_file=args.register_from_file,
+        tools_from_entrypoints=args.register_from_entry_point,
+        model=args.model,
+        k=args.k,
+        iterative=args.iterative,
+    )
     console.run_console()
 
 

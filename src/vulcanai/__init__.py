@@ -16,9 +16,7 @@ from importlib import import_module
 from types import ModuleType
 
 _SUBPACKAGES = ("core", "tools", "console", "models")
-_submods: dict[str, ModuleType] = {
-    name: import_module(f"{__name__}.{name}") for name in _SUBPACKAGES
-}
+_submods: dict[str, ModuleType] = {name: import_module(f"{__name__}.{name}") for name in _SUBPACKAGES}
 
 __all__ = sorted({sym for m in _submods.values() for sym in getattr(m, "__all__", ())})
 
@@ -28,11 +26,13 @@ for pkg in _SUBPACKAGES:
     for sym in getattr(mod, "__all__", ()):
         _MODULE_INDEX.setdefault(sym, mod)
 
+
 def __getattr__(name: str):
     mod = _MODULE_INDEX.get(name)
     if not mod:
         raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
     return getattr(mod, name)
+
 
 def __dir__():
     return sorted(list(globals().keys()) + __all__)

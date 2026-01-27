@@ -12,20 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import ollama
-from typing import Any, Dict, Iterable, Optional,Type, TypeVar
 import time
+from typing import Any, Dict, Iterable, Optional, Type, TypeVar
+
+import ollama
 
 from vulcanai.core.plan_types import AIValidation, GlobalPlan, GoalSpec
 from vulcanai.models.model import IModel, IModelHooks
 
 # Generic type variable for response classes
-T = TypeVar('T', GlobalPlan, GoalSpec, AIValidation)
+T = TypeVar("T", GlobalPlan, GoalSpec, AIValidation)
 
 
 class OllamaModel(IModel):
+    """Wrapper for Ollama models."""
 
-    """ Wrapper for Ollama models. """
     def __init__(self, model_name: str, logger=None, hooks: Optional[IModelHooks] = None):
         super().__init__()
         self.logger = logger
@@ -66,7 +67,7 @@ class OllamaModel(IModel):
         # Notify hooks of request start
         try:
             self.hooks.on_request_start()
-        except Exception as e:
+        except Exception:
             pass
 
         # Call Ollama with response_format bound to the desired schema/class
@@ -75,7 +76,7 @@ class OllamaModel(IModel):
                 model=self.model_name,
                 messages=messages,
                 format=response_cls.model_json_schema(),
-                options={"temperature": 0.1}
+                options={"temperature": 0.1},
             )
         except Exception as e:
             self.logger.log_manager(f"ERROR. Ollama API: {e}", error=True)
@@ -84,7 +85,7 @@ class OllamaModel(IModel):
             # Notify hooks of request end
             try:
                 self.hooks.on_request_end()
-            except Exception as e:
+            except Exception:
                 pass
 
         # Extract parsed object safely
@@ -92,16 +93,17 @@ class OllamaModel(IModel):
         try:
             parsed = response_cls.model_validate_json(completion.message.content)
         except Exception as e:
-            self.logger.log_manager(f"ERROR. Failed to parse response into {response_cls.__name__}: {e}",
-                        error=True)
+            self.logger.log_manager(f"ERROR. Failed to parse response into {response_cls.__name__}: {e}", error=True)
 
         end = time.time()
         self.logger.log_manager(f"Ollama response time: {end - start:.3f} seconds")
         try:
             input_tokens = completion.prompt_eval_count
             output_tokens = completion.eval_count
-            self.logger.log_manager(f"Prompt tokens: [manager]{input_tokens}[/manager], " + \
-                        f"Completion tokens: [manager]{output_tokens}[/manager]")
+            self.logger.log_manager(
+                f"Prompt tokens: [manager]{input_tokens}[/manager], "
+                + f"Completion tokens: [manager]{output_tokens}[/manager]"
+            )
         except Exception:
             pass
 
@@ -119,8 +121,7 @@ class OllamaModel(IModel):
                 except Exception as e:
                     # Fail soft on a single bad image but continue with others
 
-                    self.logger.log_manager(f"Fail soft. Image '{image_path}' could not be encoded: {e}",
-                                error=True)
+                    self.logger.log_manager(f"Fail soft. Image '{image_path}' could not be encoded: {e}", error=True)
             if encoded_images:
                 content["images"] = encoded_images
         return content

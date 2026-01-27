@@ -16,5 +16,6 @@ from .console import VulcanConsole
 from .logger import VulcanAILogger
 
 __all__ = [
-    "VulcanConsole", "VulcanAILogger",
+    "VulcanConsole",
+    "VulcanAILogger",
 ]

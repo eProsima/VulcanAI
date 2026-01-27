@@ -14,22 +14,27 @@
 
 import hashlib
 import importlib
-import numpy as np
 import os
 import sys
 import types
 import unittest
+
+import numpy as np
 
 
 # Stub sentence_transformers to avoid heavy dependency during tests
 class _DummySentenceTransformer:
     def __init__(self, *args, **kwargs):
         pass
+
     def encode(self, text, convert_to_numpy=True):
         return None
+
     def similarity(self, a, b):
         return None
-sys.modules.setdefault('sentence_transformers', types.SimpleNamespace(SentenceTransformer=_DummySentenceTransformer))
+
+
+sys.modules.setdefault("sentence_transformers", types.SimpleNamespace(SentenceTransformer=_DummySentenceTransformer))
 
 
 # Make src-layout importable
@@ -66,8 +71,10 @@ class TestPlanValidator(unittest.TestCase):
                 vec = np.frombuffer(h, dtype=np.uint8).astype(np.float32)[:64]
                 norm = np.linalg.norm(vec) or 1.0
                 return vec / norm
+
             def similarity(self, a: np.ndarray, b: np.ndarray) -> float:
                 return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-8))
+
         self.Embedder = LocalDummyEmbedder()
 
         # Build registry and executor
@@ -82,6 +89,7 @@ class TestPlanValidator(unittest.TestCase):
 
             def run(self):
                 return {"result": True}
+
         class DetectTool(self.AtomicTool):
             name = "detect_object"
             description = "Detect an object in the environment"
@@ -89,8 +97,10 @@ class TestPlanValidator(unittest.TestCase):
             input_schema = [("label", "string")]
             output_schema = {"found": "bool", "pose": "dict(x: float, y: float, z: float)"}
             version = "0.1"
+
             def run(self, **kwargs):
                 return {"found": True, "pose": {"x": 4.0, "y": 2.0, "z": 0.0}}
+
         class NavTool(self.AtomicTool):
             name = "go_to_pose"
             description = "Navigate robot to a target location"
@@ -98,9 +108,11 @@ class TestPlanValidator(unittest.TestCase):
             input_schema = [("x", "float"), ("y", "float"), ("z", "float")]
             output_schema = {"arrived": "bool"}
             version = "0.1"
+
             def run(self, **kwargs):
                 print(f"Run method of NavTool called with args: {kwargs}")
                 return {"arrived": True}
+
         class SpeakTool(self.AtomicTool):
             name = "speak"
             description = "Speak a text string"
@@ -108,6 +120,7 @@ class TestPlanValidator(unittest.TestCase):
             input_schema = [("text", "string")]
             output_schema = {"spoken": "bool"}
             version = "0.1"
+
             def run(self, **kwargs):
                 return {"spoken": True, "spoken_text": kwargs.get("text", "")}
 
@@ -124,6 +137,7 @@ class TestPlanValidator(unittest.TestCase):
             ]
             output_schema = {"types": "bool"}
             version = "0.1"
+
             def run(self, **kwargs):
                 return {"types": True}
 
@@ -142,9 +156,15 @@ class TestPlanValidator(unittest.TestCase):
                 self.PlanNode(
                     kind="SEQUENCE",
                     steps=[
-                        self.Step(tool="go_to_pose", args=[self.Arg(key="x", val=1.0), self.Arg(key="y", val=2.0), self.Arg(key="z", val=0.0)]),
+                        self.Step(
+                            tool="go_to_pose",
+                            args=[self.Arg(key="x", val=1.0), self.Arg(key="y", val=2.0), self.Arg(key="z", val=0.0)],
+                        ),
                         self.Step(tool="detect_object", args=[self.Arg(key="label", val="mug")]),
-                        self.Step(tool="go_to_pose", args=[self.Arg(key="x", val=3.0), self.Arg(key="y", val=4.0), self.Arg(key="z", val=0.0)]),
+                        self.Step(
+                            tool="go_to_pose",
+                            args=[self.Arg(key="x", val=3.0), self.Arg(key="y", val=4.0), self.Arg(key="z", val=0.0)],
+                        ),
                         self.Step(tool="speak", args=[self.Arg(key="text", val="I have arrived and detected a mug.")]),
                     ],
                 )
@@ -182,7 +202,14 @@ class TestPlanValidator(unittest.TestCase):
                 self.PlanNode(
                     kind="SEQUENCE",
                     steps=[
-                        self.Step(tool="go_to_pose", args=[self.Arg(key="non_existing_key", val=1.0), self.Arg(key="y", val=2.0), self.Arg(key="z", val=0.0)]),
+                        self.Step(
+                            tool="go_to_pose",
+                            args=[
+                                self.Arg(key="non_existing_key", val=1.0),
+                                self.Arg(key="y", val=2.0),
+                                self.Arg(key="z", val=0.0),
+                            ],
+                        ),
                     ],
                 )
             ],
@@ -222,7 +249,15 @@ class TestPlanValidator(unittest.TestCase):
                 self.PlanNode(
                     kind="SEQUENCE",
                     steps=[
-                        self.Step(tool="go_to_pose", args=[self.Arg(key="w", val=1.0), self.Arg(key="x", val=1.0), self.Arg(key="y", val=2.0), self.Arg(key="z", val=0.0)]),
+                        self.Step(
+                            tool="go_to_pose",
+                            args=[
+                                self.Arg(key="w", val=1.0),
+                                self.Arg(key="x", val=1.0),
+                                self.Arg(key="y", val=2.0),
+                                self.Arg(key="z", val=0.0),
+                            ],
+                        ),
                     ],
                 )
             ],
@@ -262,7 +297,10 @@ class TestPlanValidator(unittest.TestCase):
                 self.PlanNode(
                     kind="SEQUENCE",
                     steps=[
-                        self.Step(tool="go_to_pose", args=[self.Arg(key="x", val=1.0), self.Arg(key="y", val=2.0), self.Arg(key="z", val=0.0)]),
+                        self.Step(
+                            tool="go_to_pose",
+                            args=[self.Arg(key="x", val=1.0), self.Arg(key="y", val=2.0), self.Arg(key="z", val=0.0)],
+                        ),
                         self.Step(tool="speak", args=[self.Arg(key="text", val="Arrived at {{bb.missing_brace")]),
                     ],
                 )
@@ -283,7 +321,10 @@ class TestPlanValidator(unittest.TestCase):
                 self.PlanNode(
                     kind="SEQUENCE",
                     steps=[
-                        self.Step(tool="go_to_pose", args=[self.Arg(key="x", val=1.0), self.Arg(key="y", val=2.0), self.Arg(key="z", val=0.0)]),
+                        self.Step(
+                            tool="go_to_pose",
+                            args=[self.Arg(key="x", val=1.0), self.Arg(key="y", val=2.0), self.Arg(key="z", val=0.0)],
+                        ),
                         self.Step(tool="speak", args=[self.Arg(key="text", val="Arrived at bb.missing_brace}}")]),
                     ],
                 )
@@ -304,7 +345,10 @@ class TestPlanValidator(unittest.TestCase):
                 self.PlanNode(
                     kind="SEQUENCE",
                     steps=[
-                        self.Step(tool="go_to_pose", args=[self.Arg(key="x", val=1.0), self.Arg(key="y", val=2.0), self.Arg(key="z", val=0.0)]),
+                        self.Step(
+                            tool="go_to_pose",
+                            args=[self.Arg(key="x", val=1.0), self.Arg(key="y", val=2.0), self.Arg(key="z", val=0.0)],
+                        ),
                         self.Step(tool="speak", args=[self.Arg(key="text", val="Arrived at bb.missing_brace")]),
                     ],
                 )
@@ -325,13 +369,15 @@ class TestPlanValidator(unittest.TestCase):
                 self.PlanNode(
                     kind="SEQUENCE",
                     steps=[
-                        self.Step(tool="types", args=[
-                            self.Arg(key="int", val=4),
-                            self.Arg(key="integer", val=2),
-                            self.Arg(key="float", val=4.2),
-                            self.Arg(key="bool", val=True),
-                            self.Arg(key="boolean", val=False),
-                            ]
+                        self.Step(
+                            tool="types",
+                            args=[
+                                self.Arg(key="int", val=4),
+                                self.Arg(key="integer", val=2),
+                                self.Arg(key="float", val=4.2),
+                                self.Arg(key="bool", val=True),
+                                self.Arg(key="boolean", val=False),
+                            ],
                         ),
                     ],
                 )
@@ -339,21 +385,21 @@ class TestPlanValidator(unittest.TestCase):
         )
         try:
             self.validator.validate(plan)
-        except Exception as e:
+        except Exception:
             self.fail("Test 'test_validator_correct_types' should not fail")
 
         # Cast of int to float is accepted, not the other way around
         plan.plan[0].steps[0].args[2] = self.Arg(key="float", val=4)  # Pass a int instead of float
         try:
             self.validator.validate(plan)
-        except Exception as e:
+        except Exception:
             self.fail("Test 'test_validator_correct_types' should not fail for int->float cast")
 
         # Non-string types can accept string bb references
         plan.plan[0].steps[0].args[2] = self.Arg(key="float", val="{{bb.tool.float_value}}")
         try:
             self.validator.validate(plan)
-        except Exception as e:
+        except Exception:
             self.fail("Test 'test_validator_correct_types' should not fail for bb reference in string format")
 
     def test_validator_wrong_types(self):
@@ -363,14 +409,16 @@ class TestPlanValidator(unittest.TestCase):
                 self.PlanNode(
                     kind="SEQUENCE",
                     steps=[
-                        self.Step(tool="types", args=[
-                            self.Arg(key="int", val="4"),
-                            # Add only one wrong type on each test, rest should be correct
-                            self.Arg(key="integer", val=2),
-                            self.Arg(key="float", val=4.2),
-                            self.Arg(key="bool", val=True),
-                            self.Arg(key="boolean", val=False),
-                            ]
+                        self.Step(
+                            tool="types",
+                            args=[
+                                self.Arg(key="int", val="4"),
+                                # Add only one wrong type on each test, rest should be correct
+                                self.Arg(key="integer", val=2),
+                                self.Arg(key="float", val=4.2),
+                                self.Arg(key="bool", val=True),
+                                self.Arg(key="boolean", val=False),
+                            ],
                         ),
                     ],
                 )
@@ -381,7 +429,7 @@ class TestPlanValidator(unittest.TestCase):
             self.validator.validate(plan)
         except Exception as e:
             fail = True
-            self.assertIn(f"Argument 'int' of tool 'types' expects type", str(e))
+            self.assertIn("Argument 'int' of tool 'types' expects type", str(e))
         self.assertTrue(fail, "Validator did not catch non-existing key error")
 
         plan.plan[0].steps[0].args[0] = self.Arg(key="int", val=4.2)
@@ -390,63 +438,79 @@ class TestPlanValidator(unittest.TestCase):
             self.validator.validate(plan)
         except Exception as e:
             fail = True
-            self.assertIn(f"Argument 'int' of tool 'types' expects type", str(e))
+            self.assertIn("Argument 'int' of tool 'types' expects type", str(e))
         self.assertTrue(fail, "Validator did not catch non-existing key error")
 
-        plan.plan[0].steps[0] = self.Step(tool="types", args=[
-                                    self.Arg(key="int", val=4),
-                                    self.Arg(key="integer", val="2"),
-                                    self.Arg(key="float", val=4.2),
-                                    self.Arg(key="bool", val=True),
-                                    self.Arg(key="boolean", val=False)])
+        plan.plan[0].steps[0] = self.Step(
+            tool="types",
+            args=[
+                self.Arg(key="int", val=4),
+                self.Arg(key="integer", val="2"),
+                self.Arg(key="float", val=4.2),
+                self.Arg(key="bool", val=True),
+                self.Arg(key="boolean", val=False),
+            ],
+        )
         try:
             fail = False
             self.validator.validate(plan)
         except Exception as e:
             fail = True
-            self.assertIn(f"Argument 'integer' of tool 'types' expects type", str(e))
+            self.assertIn("Argument 'integer' of tool 'types' expects type", str(e))
         self.assertTrue(fail, "Validator did not catch non-existing key error")
 
-        plan.plan[0].steps[0] = self.Step(tool="types", args=[
-                                    self.Arg(key="int", val=4),
-                                    self.Arg(key="integer", val=2),
-                                    self.Arg(key="float", val="42.0"),
-                                    self.Arg(key="bool", val=True),
-                                    self.Arg(key="boolean", val=False)])
+        plan.plan[0].steps[0] = self.Step(
+            tool="types",
+            args=[
+                self.Arg(key="int", val=4),
+                self.Arg(key="integer", val=2),
+                self.Arg(key="float", val="42.0"),
+                self.Arg(key="bool", val=True),
+                self.Arg(key="boolean", val=False),
+            ],
+        )
         try:
             fail = False
             self.validator.validate(plan)
         except Exception as e:
             fail = True
-            self.assertIn(f"Argument 'float' of tool 'types' expects type", str(e))
+            self.assertIn("Argument 'float' of tool 'types' expects type", str(e))
         self.assertTrue(fail, "Validator did not catch non-existing key error")
 
-        plan.plan[0].steps[0] = self.Step(tool="types", args=[
-                                    self.Arg(key="int", val=4),
-                                    self.Arg(key="integer", val=2),
-                                    self.Arg(key="float", val=42.0),
-                                    self.Arg(key="bool", val="true"),
-                                    self.Arg(key="boolean", val=False)])
+        plan.plan[0].steps[0] = self.Step(
+            tool="types",
+            args=[
+                self.Arg(key="int", val=4),
+                self.Arg(key="integer", val=2),
+                self.Arg(key="float", val=42.0),
+                self.Arg(key="bool", val="true"),
+                self.Arg(key="boolean", val=False),
+            ],
+        )
         try:
             fail = False
             self.validator.validate(plan)
         except Exception as e:
             fail = True
-            self.assertIn(f"Argument 'bool' of tool 'types' expects type", str(e))
+            self.assertIn("Argument 'bool' of tool 'types' expects type", str(e))
         self.assertTrue(fail, "Validator did not catch non-existing key error")
 
-        plan.plan[0].steps[0] = self.Step(tool="types", args=[
-                                    self.Arg(key="int", val=4),
-                                    self.Arg(key="integer", val=2),
-                                    self.Arg(key="float", val=42.0),
-                                    self.Arg(key="bool", val=True),
-                                    self.Arg(key="boolean", val="false")])
+        plan.plan[0].steps[0] = self.Step(
+            tool="types",
+            args=[
+                self.Arg(key="int", val=4),
+                self.Arg(key="integer", val=2),
+                self.Arg(key="float", val=42.0),
+                self.Arg(key="bool", val=True),
+                self.Arg(key="boolean", val="false"),
+            ],
+        )
         try:
             fail = False
             self.validator.validate(plan)
         except Exception as e:
             fail = True
-            self.assertIn(f"Argument 'boolean' of tool 'types' expects type", str(e))
+            self.assertIn("Argument 'boolean' of tool 'types' expects type", str(e))
         self.assertTrue(fail, "Validator did not catch non-existing key error")
 
 

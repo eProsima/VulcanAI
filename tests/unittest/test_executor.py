@@ -14,23 +14,28 @@
 
 import hashlib
 import importlib
-import numpy as np
 import os
 import sys
 import time
 import types
 import unittest
 
+import numpy as np
+
 
 # Stub sentence_transformers to avoid heavy dependency during tests
 class _DummySentenceTransformer:
     def __init__(self, *args, **kwargs):
         pass
+
     def encode(self, text, convert_to_numpy=True):
         return None
+
     def similarity(self, a, b):
         return None
-sys.modules.setdefault('sentence_transformers', types.SimpleNamespace(SentenceTransformer=_DummySentenceTransformer))
+
+
+sys.modules.setdefault("sentence_transformers", types.SimpleNamespace(SentenceTransformer=_DummySentenceTransformer))
 
 
 # Make src-layout importable
@@ -67,8 +72,10 @@ class TestPlanExecutor(unittest.TestCase):
                 vec = np.frombuffer(h, dtype=np.uint8).astype(np.float32)[:64]
                 norm = np.linalg.norm(vec) or 1.0
                 return vec / norm
+
             def similarity(self, a: np.ndarray, b: np.ndarray) -> float:
                 return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-8))
+
         self.Embedder = LocalDummyEmbedder()
 
         # Build registry and executor
@@ -82,9 +89,11 @@ class TestPlanExecutor(unittest.TestCase):
             input_schema = [("x", "float"), ("y", "float"), ("z", "float")]
             output_schema = {"arrived": "bool"}
             version = "0.1"
+
             def run(self, **kwargs):
                 print(f"Run method of NavTool called with args: {kwargs}")
                 return {"arrived": True}
+
         class DetectTool(self.AtomicTool):
             name = "detect_object"
             description = "Detect an object in the environment"
@@ -92,8 +101,10 @@ class TestPlanExecutor(unittest.TestCase):
             input_schema = [("label", "string")]
             output_schema = {"found": "bool", "pose": "dict(x: float, y: float, z: float)"}
             version = "0.1"
+
             def run(self, **kwargs):
                 return {"found": True, "pose": {"x": 4.0, "y": 2.0, "z": 0.0}}
+
         class SpeakTool(self.AtomicTool):
             name = "speak"
             description = "Speak a text string"
@@ -101,8 +112,10 @@ class TestPlanExecutor(unittest.TestCase):
             input_schema = [("text", "string")]
             output_schema = {"spoken": "bool"}
             version = "0.1"
+
             def run(self, **kwargs):
                 return {"spoken": True, "spoken_text": kwargs.get("text", "")}
+
         class ListTool(self.AtomicTool):
             name = "output_list"
             description = "Output a list of items"
@@ -110,8 +123,10 @@ class TestPlanExecutor(unittest.TestCase):
             input_schema = []
             output_schema = {"output": "list"}
             version = "0.1"
+
             def run(self, **kwargs):
                 return {"output": ["apple", "banana", "cherry"]}
+
         class SleepTool(self.AtomicTool):
             name = "sleep"
             description = "Sleep for a specified duration"
@@ -119,9 +134,11 @@ class TestPlanExecutor(unittest.TestCase):
             input_schema = [("duration", "int")]
             output_schema = {"slept": "bool"}
             version = "0.1"
+
             def run(self, **kwargs):
                 time.sleep(kwargs.get("duration", 1))
                 return {"slept": True}
+
         class FlakyTool(self.AtomicTool):
             name = "flaky"
             description = "A tool that fails a few times before succeeding"
@@ -129,14 +146,17 @@ class TestPlanExecutor(unittest.TestCase):
             input_schema = []
             output_schema = {"succeeded": "bool"}
             version = "0.1"
+
             def __init__(self):
                 super().__init__()
                 self.attempts = 0
+
             def run(self, **kwargs):
                 self.attempts += 1
                 if self.attempts < 3:
                     raise RuntimeError("Simulated failure")
                 return {"succeeded": True}
+
         # This tool can be instantiated directly to allow resetting attempts
         self.FlakyTool = FlakyTool
 
@@ -147,13 +167,17 @@ class TestPlanExecutor(unittest.TestCase):
             input_schema = []
             output_schema = {"value": "int"}
             version = "0.1"
+
             def __init__(self, return_value):
                 super().__init__()
                 self.return_value = return_value
+
             def run(self, **kwargs):
                 return {"value": self.return_value}
+
         # This tool can be instantiated directly to allow modifying returned value
         self.CriteriaTool = CriteriaTool
+
         class AddTool(self.AtomicTool):
             name = "add"
             description = "Adds two numbers together."
@@ -185,9 +209,19 @@ class TestPlanExecutor(unittest.TestCase):
                 self.PlanNode(
                     kind="SEQUENCE",
                     steps=[
-                        self.Step(tool="go_to_pose", args=[self.Arg(key="x", val=1.0), self.Arg(key="y", val=2.0), self.Arg(key="z", val=0.0)]),
+                        self.Step(
+                            tool="go_to_pose",
+                            args=[self.Arg(key="x", val=1.0), self.Arg(key="y", val=2.0), self.Arg(key="z", val=0.0)],
+                        ),
                         self.Step(tool="detect_object", args=[self.Arg(key="label", val="mug")]),
-                        self.Step(tool="go_to_pose", args=[self.Arg(key="x", val="{{bb.detect_object.pose.x}}"), self.Arg(key="y", val="{{bb.detect_object.pose.y}}"), self.Arg(key="z", val="{{bb.detect_object.pose.z}}")]),
+                        self.Step(
+                            tool="go_to_pose",
+                            args=[
+                                self.Arg(key="x", val="{{bb.detect_object.pose.x}}"),
+                                self.Arg(key="y", val="{{bb.detect_object.pose.y}}"),
+                                self.Arg(key="z", val="{{bb.detect_object.pose.z}}"),
+                            ],
+                        ),
                         self.Step(tool="speak", args=[self.Arg(key="text", val="I have arrived and detected a mug.")]),
                     ],
                 )
@@ -205,13 +239,20 @@ class TestPlanExecutor(unittest.TestCase):
         self.assertEqual(bb["detect_object"]["pose"], {"x": 4.0, "y": 2.0, "z": 0.0})
 
     def test_false_condition_skips_step(self):
-        """Test that a step with a False condition is skipped and a non-existing blackboard entry does not return error."""
+        """
+        Test that a step with a False condition is skipped and a non-existing blackboard entry
+        does not return error.
+        """
         plan = self.GlobalPlan(
             plan=[
                 self.PlanNode(
                     kind="SEQUENCE",
                     steps=[
-                        self.Step(tool="speak", args=[self.Arg(key="text", val="Hello")], condition="{{bb.missing_flag}} == True"),
+                        self.Step(
+                            tool="speak",
+                            args=[self.Arg(key="text", val="Hello")],
+                            condition="{{bb.missing_flag}} == True",
+                        ),
                     ],
                 )
             ]
@@ -266,9 +307,21 @@ class TestPlanExecutor(unittest.TestCase):
                     kind="SEQUENCE",
                     steps=[
                         self.Step(tool="detect_object", args=[self.Arg(key="label", val="book")]),
-                        self.Step(tool="go_to_pose", args=[self.Arg(key="x", val="{{bb.detect_object.pose.x}}"), self.Arg(key="y", val="{{bb.detect_object.pose.y}}"), self.Arg(key="z", val="{{bb.detect_object.pose.z}}")], condition="{{bb.detect_object.found}} == True"),
+                        self.Step(
+                            tool="go_to_pose",
+                            args=[
+                                self.Arg(key="x", val="{{bb.detect_object.pose.x}}"),
+                                self.Arg(key="y", val="{{bb.detect_object.pose.y}}"),
+                                self.Arg(key="z", val="{{bb.detect_object.pose.z}}"),
+                            ],
+                            condition="{{bb.detect_object.found}} == True",
+                        ),
                         # Skip next step by making condition False
-                        self.Step(tool="speak", args=[self.Arg(key="text", val="I have arrived.")], condition="{{bb.go_to_pose.arrived}} != True"),
+                        self.Step(
+                            tool="speak",
+                            args=[self.Arg(key="text", val="I have arrived.")],
+                            condition="{{bb.go_to_pose.arrived}} != True",
+                        ),
                     ],
                 )
             ]
@@ -290,7 +343,15 @@ class TestPlanExecutor(unittest.TestCase):
                     kind="SEQUENCE",
                     steps=[
                         self.Step(tool="detect_object", args=[self.Arg(key="label", val="book")]),
-                        self.Step(tool="go_to_pose", args=[self.Arg(key="x", val="{{bb.detect_object.pose.x}}"), self.Arg(key="y", val="{{bb.detect_object.pose.y}}"), self.Arg(key="z", val="{{bb.detect_object.pose.z}}")], condition="True == {{bb.detect_object.found}}"),
+                        self.Step(
+                            tool="go_to_pose",
+                            args=[
+                                self.Arg(key="x", val="{{bb.detect_object.pose.x}}"),
+                                self.Arg(key="y", val="{{bb.detect_object.pose.y}}"),
+                                self.Arg(key="z", val="{{bb.detect_object.pose.z}}"),
+                            ],
+                            condition="True == {{bb.detect_object.found}}",
+                        ),
                     ],
                 )
             ]
@@ -311,7 +372,15 @@ class TestPlanExecutor(unittest.TestCase):
                     steps=[
                         self.Step(tool="detect_object", args=[self.Arg(key="label", val="book")]),
                         self.Step(tool="speak", args=[self.Arg(key="text", val="I have arrived.")]),
-                        self.Step(tool="go_to_pose", args=[self.Arg(key="x", val="{{bb.detect_object.pose.x}}"), self.Arg(key="y", val="{{bb.detect_object.pose.y}}"), self.Arg(key="z", val="{{bb.detect_object.pose.z}}")], condition="{{bb.speak.spoken}} == {{bb.detect_object.found}}"),
+                        self.Step(
+                            tool="go_to_pose",
+                            args=[
+                                self.Arg(key="x", val="{{bb.detect_object.pose.x}}"),
+                                self.Arg(key="y", val="{{bb.detect_object.pose.y}}"),
+                                self.Arg(key="z", val="{{bb.detect_object.pose.z}}"),
+                            ],
+                            condition="{{bb.speak.spoken}} == {{bb.detect_object.found}}",
+                        ),
                     ],
                 )
             ]
@@ -333,7 +402,8 @@ class TestPlanExecutor(unittest.TestCase):
                     kind="SEQUENCE",
                     steps=[
                         self.Step(tool="output_list", args=[]),
-                        self.Step(tool="speak",
+                        self.Step(
+                            tool="speak",
                             args=[self.Arg(key="text", val="First item is {{bb.output_list.output[0]}}")],
                         ),
                     ],
@@ -621,7 +691,8 @@ class TestPlanExecutor(unittest.TestCase):
                 ],
             )
             self.fail("PlanNode creation should have failed with ValueError")
-        except Exception as e:
+            self.assertFalse(plan)
+        except Exception:
             pass
 
     def test_plan_node_with_on_fail(self):
@@ -712,7 +783,10 @@ class TestPlanExecutor(unittest.TestCase):
                     kind="SEQUENCE",
                     steps=[
                         self.Step(tool="criteria_tool", args=[]),  # Outputs 5
-                        self.Step(tool="add", args=[self.Arg(key="a", val='{{bb.criteria_tool.value}}'), self.Arg(key="b", val=3.5)]),
+                        self.Step(
+                            tool="add",
+                            args=[self.Arg(key="a", val="{{bb.criteria_tool.value}}"), self.Arg(key="b", val=3.5)],
+                        ),
                     ],
                 )
             ],

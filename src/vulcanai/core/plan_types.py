@@ -12,22 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from pydantic import BaseModel, Field
 from typing import List, Literal, Optional, Union
+
+from pydantic import BaseModel, Field
 
 from vulcanai.console.logger import VulcanAILogger
 
-Kind = Literal["SEQUENCE","PARALLEL"]
+Kind = Literal["SEQUENCE", "PARALLEL"]
 
 
 class ArgValue(BaseModel):
     """Key-value pair representing a tool argument."""
+
     key: str
     val: Union[str, int, float, bool]
 
 
 class StepBase(BaseModel):
     """Atomic execution unit bound to a ITool."""
+
     # Associated tool
     tool: str = None
     # Tool arguments
@@ -39,6 +42,7 @@ class StepBase(BaseModel):
 
 class Step(StepBase):
     """Final atomic execution unit bound to a ITool with execution control."""
+
     # Execution control
     condition: Optional[str] = None
     success_criteria: Optional[str] = None
@@ -51,6 +55,7 @@ class PlanBase(BaseModel):
     A base class that defines a plan which is composed of one or more steps and
     has execution control parameters.
     """
+
     # SEQUENCE or PARALLEL execution of children
     kind: Kind
     # Child nodes
@@ -66,11 +71,13 @@ class PlanNode(PlanBase):
     """
     Final plan node with optional failure handling.
     """
+
     on_fail: Optional["PlanBase"] = None
 
 
 class GlobalPlan(BaseModel):
     """GlobalPlan returned by the LLM with each step to be executed."""
+
     # Top-level plan structure. Always executed sequentially.
     plan: List[PlanNode] = Field(default_factory=list)
     # Brief summary of the plan
@@ -88,59 +95,84 @@ class GlobalPlan(BaseModel):
 
         for i, node in enumerate(self.plan, 1):
             # - PlanNode <i>: kind=<SEQUENCE/PARALLEL>
-            lines.append(f"- PlanNode {i}: <{color_variable}>kind</{color_variable}>=" + \
-                         f"<{color_value}>{node.kind}</{color_value}>")
+            lines.append(
+                f"- PlanNode {i}: <{color_variable}>kind</{color_variable}>="
+                + f"<{color_value}>{node.kind}</{color_value}>"
+            )
 
             if node.condition:
-            #     Condition: <node.condition>
+                #     Condition: <node.condition>
                 lines.append(f"\tCondition: <{color_value}>{node.condition}</{color_value}>")
             if node.retry:
-            #     Retry: <node.retry>
-                lines.append(f"\t<{color_error}>Retry</{color_error}>: " + \
-                             f"<{color_value}>{node.retry}</{color_value}>")
+                #     Retry: <node.retry>
+                lines.append(
+                    f"\t<{color_error}>Retry</{color_error}>: " + f"<{color_value}>{node.retry}</{color_value}>"
+                )
             if node.timeout_ms:
-            #     Timeout: <node.timeout_ms> ms
-                lines.append(f"\t<{color_error}>Timeout</{color_error}>: " + \
-                             f"<{color_value}>{node.timeout_ms} ms</{color_value}>")
+                #     Timeout: <node.timeout_ms> ms
+                lines.append(
+                    f"\t<{color_error}>Timeout</{color_error}>: "
+                    + f"<{color_value}>{node.timeout_ms} ms</{color_value}>"
+                )
             if node.success_criteria:
-            #     Succes Criteria: <node.success_criteria>
-                lines.append(f"\<{color_tool}>tSuccess Criteria</{color_tool}>: " + \
-                             f"<{color_value}>{node.success_criteria}</{color_value}>")
+                #     Succes Criteria: <node.success_criteria>
+                lines.append(
+                    f"\<{color_tool}>tSuccess Criteria</{color_tool}>: "
+                    + f"<{color_value}>{node.success_criteria}</{color_value}>"
+                )
             if node.on_fail:
-            #     On Fail: <node.on_fail.kind> with <len(node.on_fail.steps)> steps
-                lines.append(f"\tOn Fail: <{color_value}>{node.on_fail.kind}</{color_value}> with " + \
-                             f"<{color_value}>{len(node.on_fail.steps)} steps</{color_value}>")
+                #     On Fail: <node.on_fail.kind> with <len(node.on_fail.steps)> steps
+                lines.append(
+                    f"\tOn Fail: <{color_value}>{node.on_fail.kind}</{color_value}> with "
+                    + f"<{color_value}>{len(node.on_fail.steps)} steps</{color_value}>"
+                )
             for j, step in enumerate(node.steps, 1):
-                #arg_str: <key_0>=<val_0>, ..., <key_n-1>=<val_n-1>
-                arg_str = ", ".join([f"<{color_variable}>{a.key}</{color_variable}>=" + \
-                                     f"<{color_value}>{a.val}</{color_value}>" for a in step.args]) \
-                                        if step.args else f"<{color_value}>no args</{color_value}>"
-            #     Step <num_step>: <tool>(<arg_str>)
+                # arg_str: <key_0>=<val_0>, ..., <key_n-1>=<val_n-1>
+                arg_str = (
+                    ", ".join(
+                        [
+                            f"<{color_variable}>{a.key}</{color_variable}>="
+                            + f"<{color_value}>{a.val}</{color_value}>"
+                            for a in step.args
+                        ]
+                    )
+                    if step.args
+                    else f"<{color_value}>no args</{color_value}>"
+                )
+                #     Step <num_step>: <tool>(<arg_str>)
                 lines.append(f"\tStep {j}: <{color_tool}>{step.tool}</{color_tool}>({arg_str})")
                 if step.condition:
-            #       Condition: <step.condition>
+                    #       Condition: <step.condition>
                     lines.append(f"\t  Condition: <{color_value}>{step.condition}</{color_value}>")
                 if step.retry:
-            #       Condition: <step.condition>
-                    lines.append(f"\t  <{color_error}>Retry</{color_error}>: " + \
-                                 f"<{color_value}>{step.retry}</{color_value}>")
+                    #       Condition: <step.condition>
+                    lines.append(
+                        f"\t  <{color_error}>Retry</{color_error}>: " + f"<{color_value}>{step.retry}</{color_value}>"
+                    )
                 if step.timeout_ms:
-            #       Timeout: <step.timeout_ms> ms
-                    lines.append(f"\t  <{color_error}>Timeout</{color_error}>: " + \
-                                 f"<{color_value}>{step.timeout_ms} ms</{color_value}>")
+                    #       Timeout: <step.timeout_ms> ms
+                    lines.append(
+                        f"\t  <{color_error}>Timeout</{color_error}>: "
+                        + f"<{color_value}>{step.timeout_ms} ms</{color_value}>"
+                    )
                 if step.success_criteria:
-            #       Success Criteria: <step.success_criteria>
-                    lines.append(f"\t  <{color_tool}>Success Criteria</{color_tool}>: " + \
-                                 f"<{color_value}>{step.success_criteria}</{color_value}>")
+                    #       Success Criteria: <step.success_criteria>
+                    lines.append(
+                        f"\t  <{color_tool}>Success Criteria</{color_tool}>: "
+                        + f"<{color_value}>{step.success_criteria}</{color_value}>"
+                    )
         return "\n".join(lines)
 
 
 class GoalSpec(BaseModel):
     """Specification defining the user goal to be achieved."""
+
     summary: str
     # Mode used for goal verification:
-    # - [Perceptual] mode uses AI to verify if the goal has been achieved based on evidence (e.g., images) or blackboard data.
-    # - [Objective] mode uses deterministic predicates based on validation tools results to verify if the goal has been achieved.
+    # - [Perceptual] mode uses AI to verify if the goal has been achieved based on evidence (e.g., images) or
+    #   blackboard data.
+    # - [Objective] mode uses deterministic predicates based on validation tools results to verify if the goal
+    #   has been achieved.
     mode: Literal["perceptual", "objective"] = "objective"
     # List of simple boolean predicates over the blackboard (e.g., "{{bb.navigation.at_target}} == true")
     success_predicates: List[str] = Field(default_factory=list)
@@ -167,6 +199,7 @@ class GoalSpec(BaseModel):
 
 class AIValidation(BaseModel):
     """AI-based validation result."""
+
     success: bool
     confidence: float
     explanation: Optional[str] = None

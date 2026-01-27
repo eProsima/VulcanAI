@@ -12,20 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from openai import OpenAI
-from typing import Any, Dict, Iterable, Optional, Type, TypeVar
 import mimetypes
 import time
+from typing import Any, Dict, Iterable, Optional, Type, TypeVar
+
+from openai import OpenAI
 
 from vulcanai.core.plan_types import AIValidation, GlobalPlan, GoalSpec
 from vulcanai.models.model import IModel, IModelHooks
 
 # Generic type variable for response classes
-T = TypeVar('T', GlobalPlan, GoalSpec, AIValidation)
+T = TypeVar("T", GlobalPlan, GoalSpec, AIValidation)
+
 
 class OpenAIModel(IModel):
+    """Wrapper for OpenAI models."""
 
-    """ Wrapper for OpenAI models. """
     def __init__(self, model_name: str, logger=None, hooks: Optional[IModelHooks] = None):
         super().__init__()
         self.logger = logger
@@ -66,7 +68,7 @@ class OpenAIModel(IModel):
         # Notify hooks of request start
         try:
             self.hooks.on_request_start()
-        except Exception as e:
+        except Exception:
             pass
 
         # Call OpenAI with response_format bound to the desired schema/class
@@ -83,7 +85,7 @@ class OpenAIModel(IModel):
             # Notify hooks of request end
             try:
                 self.hooks.on_request_end()
-            except Exception as e:
+            except Exception:
                 pass
 
         # Extract parsed object safely
@@ -98,8 +100,10 @@ class OpenAIModel(IModel):
         try:
             input_tokens = completion.usage.prompt_tokens
             output_tokens = completion.usage.completion_tokens
-            self.logger.log_manager(f"Prompt tokens: [manager]{input_tokens}[/manager], " + \
-                        f"Completion tokens: [manager]{output_tokens}[/manager]")
+            self.logger.log_manager(
+                f"Prompt tokens: [manager]{input_tokens}[/manager], "
+                + f"Completion tokens: [manager]{output_tokens}[/manager]"
+            )
         except Exception:
             pass
 
@@ -116,14 +120,18 @@ class OpenAIModel(IModel):
                     try:
                         base64_image = self._encode_image(image_path)
                         mime = mimetypes.guess_type(image_path)[0] or "image/png"
-                        content.append({
-                            "type": "image_url",
-                            "image_url": {"url": f"data:{mime};base64,{base64_image}"},
-                        })
+                        content.append(
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:{mime};base64,{base64_image}"},
+                            }
+                        )
                     except Exception as e:
                         # Fail soft on a single bad image but continue with others
 
-                        self.logger.log_manager(f"Fail soft. Image '{image_path}' could not be encoded: {e}", error=True)
+                        self.logger.log_manager(
+                            f"Fail soft. Image '{image_path}' could not be encoded: {e}", error=True
+                        )
         return content
 
     def _build_messages(

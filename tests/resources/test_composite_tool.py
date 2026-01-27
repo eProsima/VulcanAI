@@ -13,6 +13,8 @@
 # limitations under the License.
 
 from vulcanai import CompositeTool, vulcanai_tool
+
+
 # Register dummy composite tool
 @vulcanai_tool
 class ComplexFileTool(CompositeTool):
@@ -23,5 +25,6 @@ class ComplexFileTool(CompositeTool):
     output_schema = {"result": "bool"}
     version = "0.1"
     dependencies = ["file_tool", "new_file_tool", "other_file_tool"]
+
     def run(self, **kwargs):
         return {"result": True}

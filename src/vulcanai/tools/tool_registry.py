@@ -13,16 +13,17 @@
 # limitations under the License.
 
 import importlib
-import numpy as np
 import sys
 from importlib.metadata import entry_points
 from pathlib import Path
 from types import ModuleType
 from typing import Dict, List, Tuple, Type
 
-from vulcanai.tools.embedder import SBERTEmbedder
+import numpy as np
+
 from vulcanai.console.logger import VulcanAILogger
-from vulcanai.tools.tools import ITool, CompositeTool
+from vulcanai.tools.embedder import SBERTEmbedder
+from vulcanai.tools.tools import CompositeTool, ITool
 
 
 def vulcanai_tool(cls: Type[ITool]):
@@ -35,9 +36,12 @@ def vulcanai_tool(cls: Type[ITool]):
 
 class HelpTool(ITool):
     """A tool that provides help information."""
+
     name = "help"
-    description = "Provides help information for using the library. It can list all available tools or" \
-                    " give info about the usage of a specific tool if 'tool_name' is provided as an argument."
+    description = (
+        "Provides help information for using the library. It can list all available tools or"
+        " give info about the usage of a specific tool if 'tool_name' is provided as an argument."
+    )
     tags = ["help", "info", "documentation", "usage", "developer", "manual", "available tools"]
     input_schema = [("tool", "string")]
     output_schema = {"info": "str"}
@@ -72,8 +76,8 @@ class HelpTool(ITool):
 
 
 class ToolRegistry:
-
     """Holds all known tools and performs vector search over metadata."""
+
     def __init__(self, embedder=None, logger=None):
         # Logging function from the class VulcanConsole
         self.logger = logger or VulcanAILogger.default()
@@ -118,8 +122,9 @@ class ToolRegistry:
             return False
         # Check if the tool is deactivated
         if tool_name not in self.deactivated_tools:
-            self.logger.log_registry(f"Tool [registry]'{tool_name}'[/registry] " + \
-                        f"not found in the deactivated tools list.", error=True)
+            self.logger.log_registry(
+                f"Tool [registry]'{tool_name}'[/registry] " + "not found in the deactivated tools list.", error=True
+            )
             return False
 
         # Add the tool to the active tools
@@ -137,8 +142,9 @@ class ToolRegistry:
             return False
         # Check if the tool is active
         if tool_name not in self.tools:
-            self.logger.log_registry(f"Tool [registry]'{tool_name}'[/registry] "+ \
-                        f"not found in the active tools list.", error=True)
+            self.logger.log_registry(
+                f"Tool [registry]'{tool_name}'[/registry] " + "not found in the active tools list.", error=True
+            )
             return False
 
         # Add the tool to the deactivated tools
@@ -171,10 +177,11 @@ class ToolRegistry:
         for dep_name in tool.dependencies:
             dep_tool = self.tools.get(dep_name)
             if dep_tool is None:
-                self.logger.log_registry(f"ERROR. Dependency '{dep_name}' for tool '{tool.name}' not found.", error=True)
+                self.logger.log_registry(
+                    f"ERROR. Dependency '{dep_name}' for tool '{tool.name}' not found.", error=True
+                )
             else:
                 tool.resolved_deps[dep_name] = dep_tool
-
 
     def _load_tools_from_file(self, path: str):
         """Dynamically load a Python file with @vulcanai_tool classes."""
@@ -191,6 +198,7 @@ class ToolRegistry:
             self._loaded_modules.append(module)
         except Exception as e:
             self.logger.log_registry(f"Could not load tools from {path}: {e}", error=True)
+
     def discover_tools_from_file(self, path: str):
         """Load tools from a Python file and register them."""
         self._load_tools_from_file(path)
@@ -227,8 +235,7 @@ class ToolRegistry:
         if not active_names:
             # If there is no tool for the requested category, be explicit and return []
             self.logger.log_registry(
-                f"No matching tools for the requested mode ({'validation' if validation else 'action'}).",
-                error=True
+                f"No matching tools for the requested mode ({'validation' if validation else 'action'}).", error=True
             )
             return []
         # If k > number of ALL tools, return required tools
@@ -239,8 +246,7 @@ class ToolRegistry:
         if not filtered_index:
             # Index might be stale; log and return []
 
-            self.logger.log_registry("Index has no entries for the selected tool subset.",
-                        error=True)
+            self.logger.log_registry("Index has no entries for the selected tool subset.", error=True)
             return []
         # If k > number of required tools, return required tools
         if k > len(filtered_index):

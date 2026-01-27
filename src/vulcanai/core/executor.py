@@ -17,17 +17,15 @@ import contextlib
 import io
 import re
 import time
-from typing import Dict, Any, Optional, Set, Tuple, List
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from vulcanai.console.logger import VulcanAILogger
-from vulcanai.core.plan_types import GlobalPlan, PlanBase, Step, ArgValue
-
+from vulcanai.core.plan_types import ArgValue, GlobalPlan, PlanBase, Step
 
 TYPE_CAST = {
     "float": float,
     "int": int,
-    "bool": lambda v: v if isinstance(v, bool)
-                      else str(v).strip().lower() in ("1","true","yes","on"),
+    "bool": lambda v: v if isinstance(v, bool) else str(v).strip().lower() in ("1", "true", "yes", "on"),
     "str": str,
 }
 
@@ -53,6 +51,7 @@ class Blackboard(dict):
                 snapshot[k] = f"<{type(v).__name__}>"
 
         return str(snapshot)
+
 
 class PlanExecutor:
     """Executes a validated GlobalPlan with blackboard and execution control parameters."""
@@ -80,22 +79,24 @@ class PlanExecutor:
         """Run a PlanNode with execution control parameters."""
         # Evaluate PlanNode-level condition
         if node.condition and not self.safe_eval(node.condition, bb):
-            self.logger.log_executor(f"Skipping PlanNode {node.kind} due to not fulfilled " + \
-                        f"condition={node.condition}")
+            self.logger.log_executor(
+                f"Skipping PlanNode {node.kind} due to not fulfilled " + f"condition={node.condition}"
+            )
             return True
 
         attempts = node.retry + 1 if node.retry else 1
         for i in range(attempts):
             ok = self._execute_plan_node_with_timeout(node, bb)
             if ok and self._check_success(node, bb):
-                self.logger.log_executor(f"PlanNode [registry]{node.kind}[/registry] " + \
-                            f"[executor]succeeded[/executor] " + \
-                            f"on attempt {i+1}/{attempts}")
+                self.logger.log_executor(
+                    f"PlanNode [registry]{node.kind}[/registry] "
+                    + "[executor]succeeded[/executor] "
+                    + f"on attempt {i + 1}/{attempts}"
+                )
                 return True
-        self.logger.log_executor(f"PlanNode {node.kind} failed on attempt <bold>{i+1}/{attempts}</bold>", error=True)
+        self.logger.log_executor(f"PlanNode {node.kind} failed on attempt <bold>{i + 1}/{attempts}</bold>", error=True)
         if node.on_fail:
-            self.logger.log_executor(f"Executing on_fail branch for PlanNode " + \
-                        f"[registry]{node.kind}[/registry]")
+            self.logger.log_executor("Executing on_fail branch for PlanNode " + f"[registry]{node.kind}[/registry]")
             # Execute the on_fail branch but ignore its result and return False
             self._run_plan_node(node.on_fail, bb)
 
@@ -109,7 +110,9 @@ class PlanExecutor:
                     future = executor.submit(self._execute_plan_node, node, bb)
                     return future.result(timeout=node.timeout_ms / 1000.0)
             except concurrent.futures.TimeoutError:
-                self.logger.log_executor(f"PlanNode {node.kind} timed out after <bold>{node.timeout_ms} ms</bold>", error=True)
+                self.logger.log_executor(
+                    f"PlanNode {node.kind} timed out after <bold>{node.timeout_ms} ms</bold>", error=True
+                )
                 return False
         else:
             return self._execute_plan_node(node, bb)
@@ -136,8 +139,10 @@ class PlanExecutor:
     def _run_step(self, step: Step, bb: Blackboard, parallel: bool = False) -> bool:
         # Evaluate Step-level condition
         if step.condition and not self.safe_eval(step.condition, bb):
-            self.logger.log_executor(f"Skipping step <italic>'{step.tool}'</italic> " + \
-                        f"due to condition=[executor]{step.condition}[/executor]")
+            self.logger.log_executor(
+                f"Skipping step <italic>'{step.tool}'</italic> "
+                + f"due to condition=[executor]{step.condition}[/executor]"
+            )
             return True
 
         # Bind args with blackboard placeholders
@@ -155,8 +160,9 @@ class PlanExecutor:
             if ok and self._check_success(step, bb, is_step=True):
                 return True
             else:
-                self.logger.log_executor(f"Step [executor]<italic>'{step.tool}'</italic>[/executor] " + \
-                            f"attempt {i+1}/{attempts} failed")
+                self.logger.log_executor(
+                    f"Step [executor]<italic>'{step.tool}'</italic>[/executor] " + f"attempt {i + 1}/{attempts} failed"
+                )
 
         return False
 
@@ -167,12 +173,14 @@ class PlanExecutor:
             return True
         log_value = entity.tool if is_step else entity.kind
         if self.safe_eval(entity.success_criteria, bb):
-            self.logger.log_executor(f"Entity '{log_value}' [executor]succeeded[/executor] " + \
-                        f"with criteria={entity.success_criteria}")
+            self.logger.log_executor(
+                f"Entity '{log_value}' [executor]succeeded[/executor] " + f"with criteria={entity.success_criteria}"
+            )
             return True
         else:
-            self.logger.log_executor(f"Entity '{log_value}' [error]failed[/error] " + \
-                        f"with criteria={entity.success_criteria}")
+            self.logger.log_executor(
+                f"Entity '{log_value}' [error]failed[/error] " + f"with criteria={entity.success_criteria}"
+            )
         return False
 
     def safe_eval(self, expr: str, bb: Blackboard) -> bool:
@@ -242,12 +250,14 @@ class PlanExecutor:
             out = arg
         return out
 
-    def _call_tool(self,
-                   tool_name: str,
-                   args: List[ArgValue],
-                   timeout_ms: int = None,
-                   bb: Blackboard = None,
-                   parallel: bool = False) -> Tuple[bool, Any]:
+    def _call_tool(
+        self,
+        tool_name: str,
+        args: List[ArgValue],
+        timeout_ms: int = None,
+        bb: Blackboard = None,
+        parallel: bool = False,
+    ) -> Tuple[bool, Any]:
         """Invoke a registered tool."""
 
         tool = self.registry.tools.get(tool_name)
@@ -265,13 +275,11 @@ class PlanExecutor:
         msg += "'{"
         for key, value in arg_dict.items():
             if first:
-                msg += f"[validator]'{key}'[/validator]: " + \
-                    f"[registry]'{value}'[/registry]"
+                msg += f"[validator]'{key}'[/validator]: " + f"[registry]'{value}'[/registry]"
             else:
-                msg += f", [validator]'{key}'[/validator]: " + \
-                    f"[registry]'{value}'[/registry]"
+                msg += f", [validator]'{key}'[/validator]: " + f"[registry]'{value}'[/registry]"
             first = False
-        msg+="}'"
+        msg += "}'"
         self.logger.log_executor(msg)
 
         start = time.time()
@@ -299,9 +307,11 @@ class PlanExecutor:
             if tool_log:
                 self.logger.log_executor(f"{tool_log}: {tool_name}")
             elapsed = (time.time() - start) * 1000
-            self.logger.log_executor(f"Executed <italic>[executor]'{tool_name}'[/executor]</italic> " + \
-                        f"in [registry]{elapsed:.1f} ms[/registry] " + \
-                        f"with result:")
+            self.logger.log_executor(
+                f"Executed <italic>[executor]'{tool_name}'[/executor]</italic> "
+                + f"in [registry]{elapsed:.1f} ms[/registry] "
+                + "with result:"
+            )
 
             if isinstance(result, dict):
                 for key, value in result.items():
@@ -314,11 +324,15 @@ class PlanExecutor:
 
             return True, result
         except concurrent.futures.TimeoutError:
-            self.logger.log_executor(f"Execution of <italic>[executor]'{tool_name}'[/executor]</italic> " + \
-                        f"[error]timed out[/error] " + \
-                        f"after [registry]{timeout_ms}[/registry] ms")
+            self.logger.log_executor(
+                f"Execution of <italic>[executor]'{tool_name}'[/executor]</italic> "
+                + "[error]timed out[/error] "
+                + f"after [registry]{timeout_ms}[/registry] ms"
+            )
             return False, None
         except Exception as e:
-            self.logger.log_executor(f"Execution <bold>[error]failed[/error]</bold> for " + \
-                        f"<italic>[executor]'{tool_name}'[/executor]</italic>: {e}")
+            self.logger.log_executor(
+                "Execution <bold>[error]failed[/error]</bold> for "
+                + f"<italic>[executor]'{tool_name}'[/executor]</italic>: {e}"
+            )
             return False, None
