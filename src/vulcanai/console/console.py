@@ -292,7 +292,7 @@ f"""[{color_tmp}]
 
         self.is_ready = True
         self.logger.log_console("VulcanAI Interactive Console")
-        self.logger.log_console("Type <bold>'exit'</bold> to quit.")
+        self.logger.log_console("Use <bold>'Ctrl+Q'</bold> to quit.")
 
         # Activate the terminal input
         self.set_input_enabled(True)
