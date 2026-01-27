@@ -111,9 +111,8 @@ class VulcanAILogger:
         """Process the message by adding prefix, applying color formatting and rich markup if enabled."""
         color_begin = color_end = color
         if color != "":
-            # TODO Carlos: this seems odd, if color is in theme, set it to console color?
             if color in self.vulcanai_theme:
-                color = self.vulcanai_theme["console"]
+                color = self.vulcanai_theme[color]
             color_begin = f"<{color}>"
             color_end = f"</{color}>"
 
