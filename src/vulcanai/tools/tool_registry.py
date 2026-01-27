@@ -76,7 +76,7 @@ class ToolRegistry:
     """Holds all known tools and performs vector search over metadata."""
     def __init__(self, embedder=None, logger=None):
         # Logging function from the class VulcanConsole
-        self.logger = logger
+        self.logger = logger or VulcanAILogger.default()
         # Dictionary of tools (name -> tool instance)
         self.tools: Dict[str, ITool] = {}
         # Dictionary of deactivated_tools (name -> tool instance)

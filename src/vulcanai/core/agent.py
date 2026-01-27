@@ -30,7 +30,7 @@ class Agent:
     def __init__(self, model_name: str, logger=None):
         self.brand, name = self._detect_brand(model_name)
         self.model = None
-        self.logger = logger
+        self.logger = logger or VulcanAILogger.default()
         self._load_model(name)
 
     def inference_plan(

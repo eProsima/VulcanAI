@@ -13,6 +13,23 @@
 # limitations under the License.
 
 import re
+from typing import Protocol, Optional
+
+
+class LogSink(Protocol):
+    """A default console that prints to standard output."""
+    def write(self, msg: str, color: str = "") -> None:
+        ...
+
+
+class RichStdoutSink:
+    def __init__(self, logger_theme) -> None:
+        from rich.console import Console
+        from rich.theme import Theme
+        self.console = Console(theme=Theme(logger_theme))
+
+    def write(self, msg: str, color: str = "") -> None:
+        self.console.print(msg)
 
 
 class VulcanAILogger:
@@ -20,9 +37,6 @@ class VulcanAILogger:
     """
     Logger class for VulcanAI components.
     Provides methods to log messages with different tags and colors.
-
-    TODO. try unlinking the console with the logger.
-    Right now the logger needs VulcanAI console object to output messages.
     """
 
     vulcanai_theme = {
@@ -38,10 +52,30 @@ class VulcanAILogger:
             "warning": "#D8C412",
         }
 
-    def __init__(self, console):
-        self.console = console
+    _default_instance: Optional["VulcanAILogger"] = None
+    _rich_markup = True
+
+    @classmethod
+    def default(cls) -> "VulcanAILogger":
+        """Get the default VulcanAILogger instance. This method acts as a singleton factory for the logger."""
+        if cls._default_instance is None:
+            cls._default_instance = cls()
+        return cls._default_instance
+
+    def __init__(self, sink: Optional[LogSink] = None):
+        # A default console will be used if none is provided
+        self.sink: LogSink = sink or RichStdoutSink(VulcanAILogger.vulcanai_theme)
 
     # region UTILS
+
+    def set_sink(self, sink: "LogSink") -> None:
+        """Set a new sink for the logger."""
+        self.sink = sink
+
+    def set_textualizer_console(self, textual_console) -> None:
+        """Set a Textual console as sink for the logger and configure formatting tags."""
+        self.set_sink(textual_console)
+        VulcanAILogger._rich_markup = False
 
     def parse_color(self, msg):
         """
@@ -64,9 +98,20 @@ class VulcanAILogger:
 
         return pattern.sub(replace_tag, msg)
 
+    def parse_rich_markup(self, msg: str) -> str:
+        """Parse rich markup tags if rich markup is enabled."""
+        if VulcanAILogger._rich_markup:
+            # Convert <bold> / </bold> / <italic> / </italic> etc.
+            msg = re.sub(r"<(/?)(bold|italic|underline|reverse|dim)>", r"[\1\2]", msg)
+            # Convert hex colors: <#RRGGBB> ... </#RRGGBB>  -> [#RRGGBB] ... [/#RRGGBB]
+            msg = re.sub(r"<(/?)(#[0-9a-fA-F]{6})>", r"[\1\2]", msg)
+        return msg
+
     def process_msg(self, msg: str, prefix: str = "", color: str = "") -> str:
+        """Process the message by adding prefix, applying color formatting and rich markup if enabled."""
         color_begin = color_end = color
         if color != "":
+            # TODO Carlos: this seems odd, if color is in theme, set it to console color?
             if color in self.vulcanai_theme:
                 color = self.vulcanai_theme["console"]
             color_begin = f"<{color}>"
@@ -74,7 +119,7 @@ class VulcanAILogger:
 
         msg = f"{prefix}{color_begin}{msg}{color_end}"
 
-        return self.parse_color(msg)
+        return self.parse_rich_markup((self.parse_color(msg)))
 
     # endregion
 
@@ -86,8 +131,8 @@ class VulcanAILogger:
         else:
             prefix = f"<bold>[manager][MANAGER][/manager]</bold> "
 
-        processed_msg = self.process_msg(msg, color=color, prefix=prefix)
-        self.console.add_line(processed_msg)
+        processed_msg = self.process_msg(msg, prefix=prefix, color=color)
+        self.sink.write(processed_msg)
 
     def log_executor(self, msg: str, error: bool = False, tool: bool = False, tool_name: str = '', color: str = ""):
         if error:
@@ -98,8 +143,8 @@ class VulcanAILogger:
         else:
             prefix = f"[executor][EXECUTOR][/executor] "
 
-        processed_msg = self.process_msg(msg, color=color, prefix=prefix)
-        self.console.add_line(processed_msg)
+        processed_msg = self.process_msg(msg, prefix=prefix, color=color)
+        self.sink.write(processed_msg)
 
     def log_tool(self, msg: str, tool_name: str = '', error: bool = False, color: str = ""):
         if tool_name:
@@ -111,17 +156,17 @@ class VulcanAILogger:
         else:
             prefix = f"[tool]{tag}[/tool] "
 
-        processed_msg = self.process_msg(msg, color=color, prefix=prefix)
-        self.console.add_line(processed_msg)
+        processed_msg = self.process_msg(msg, prefix=prefix, color=color)
+        self.sink.write(processed_msg)
 
     def log_registry(self, msg: str, error: bool = False, color: str = ""):
         if error:
-            prefix = f"<bold>[error][REGISTRY] [ERROR][/error]</bold> "
+            prefix = f"[error][REGISTRY] [ERROR][/error] "
         else:
             prefix = f"<bold>[registry][REGISTRY][/registry]</bold> "
 
-        processed_msg = self.process_msg(msg, color=color, prefix=prefix)
-        self.console.add_line(processed_msg)
+        processed_msg = self.process_msg(msg, prefix=prefix, color=color)
+        self.sink.write(processed_msg)
 
     def log_validator(self, msg: str, error: bool = False, color: str = ""):
         if error:
@@ -129,8 +174,8 @@ class VulcanAILogger:
         else:
             prefix = f"[validator][VALIDATOR][/validator] "
 
-        processed_msg = self.process_msg(msg, color=color, prefix=prefix)
-        self.console.add_line(processed_msg)
+        processed_msg = self.process_msg(msg, prefix=prefix, color=color)
+        self.sink.write(processed_msg)
 
     def log_console(self, msg: str, color: str = ""):
         if color == "":
@@ -138,22 +183,22 @@ class VulcanAILogger:
 
         processed_msg = self.parse_color(msg)
         if color == "":
-            self.console.add_line(processed_msg)
+            self.sink.write(processed_msg)
         else:
             log_color = self.vulcanai_theme.get(color, "")
-            self.console.add_line(processed_msg, self.vulcanai_theme["console"] if log_color != "" else "")
+            self.sink.write(processed_msg, self.vulcanai_theme["console"] if log_color != "" else "")
 
     def log_msg(self, msg: str, error: bool = False, color: str = ""):
         if error:
             color = self.vulcanai_theme.get("error", "")
 
         processed_msg = self.process_msg(msg, color=color)
-        self.console.add_line(processed_msg)
+        self.sink.write(processed_msg)
 
     def log_user(self, msg: str):
         prefix = f"<bold>[user][USER] >>>[/user]</bold> "
 
         processed_msg = self.process_msg(msg, prefix=prefix)
-        self.console.add_line(processed_msg)
+        self.sink.write(processed_msg)
 
     # endregion

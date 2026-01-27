@@ -28,18 +28,19 @@ class ToolManager:
     def __init__(
         self,
         model: str,
-        registry: Optional[ToolRegistry]=None,
-        validator: Optional[PlanValidator]=None,
-        k: int=10,
+        registry: Optional[ToolRegistry] = None,
+        validator: Optional[PlanValidator] = None,
+        k: int = 10,
         hist_depth: int = 3,
-        logger=None
+        logger: Optional[VulcanAILogger] = None
     ):
-        self.logger = logger
-        self.llm = Agent(model, self.logger)
+        # Logger default to a stdout logger if none is provided (StdoutLogSink)
+        self.logger = logger or VulcanAILogger.default()
+        self.llm = Agent(model, logger=self.logger)
         self.k = k
-        self.registry = registry or ToolRegistry(logger=(logger))
+        self.registry = registry or ToolRegistry(logger=self.logger)
         self.validator = validator
-        self.executor = PlanExecutor(self.registry, logger=(logger))
+        self.executor = PlanExecutor(self.registry, logger=self.logger)
         self.bb = Blackboard()
         self.user_context = ""
         # History is saved as a list of Tuples of user requests and plan summaries

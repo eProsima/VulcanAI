@@ -35,6 +35,15 @@ from vulcanai.console.utils import attach_ros_logger_to_console, common_prefix, 
 from vulcanai.console.widget_spinner import SpinnerStatus
 
 
+class TextualLogSink:
+    """A default console that prints to standard output."""
+    def __init__(self, textual_console) -> None:
+        self.console = textual_console
+
+    def write(self, msg: str, color: str = "") -> None:
+        self.console.add_line(msg, color)
+
+
 class VulcanConsole(App):
 
     # CSS Styles
@@ -127,7 +136,8 @@ class VulcanConsole(App):
         # CustomLogTextArea instance
         self.left_pannel = None
         # Logger instance
-        self.logger = VulcanAILogger(self)
+        self.logger = VulcanAILogger.default()
+        self.logger.set_textualizer_console(TextualLogSink(self))
 
         # Tools to register from entry points
         self.register_from_file = register_from_file

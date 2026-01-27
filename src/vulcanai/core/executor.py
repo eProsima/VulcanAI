@@ -59,7 +59,7 @@ class PlanExecutor:
 
     def __init__(self, registry, logger=None):
         self.registry = registry
-        self.logger = logger
+        self.logger = logger or VulcanAILogger.default()
 
     def run(self, plan: GlobalPlan, bb: Blackboard) -> Dict[str, Any]:
         """

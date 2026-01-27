@@ -13,15 +13,13 @@
 # limitations under the License.
 
 
-from collections import defaultdict
+from collections import defaultdict, deque
 import pyperclip
 import re
 import threading
 
 from rich.style import Style
 from textual.widgets import TextArea
-
-from collections import deque
 
 
 class CustomLogTextArea(TextArea):
