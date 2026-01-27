@@ -22,23 +22,25 @@ from vulcanai.core.validator import PlanValidator
 from vulcanai.tools.tool_registry import ToolRegistry
 
 
+
 class ToolManager:
     """Manages the LLM Agent and calls the executor with the LLM output."""
     def __init__(
         self,
         model: str,
-        registry: Optional[ToolRegistry]=None,
-        validator: Optional[PlanValidator]=None,
-        k: int=10,
+        registry: Optional[ToolRegistry] = None,
+        validator: Optional[PlanValidator] = None,
+        k: int = 10,
         hist_depth: int = 3,
-        logger=None
+        logger: Optional[VulcanAILogger] = None
     ):
-        self.logger = logger or VulcanAILogger.log_manager
-        self.llm = Agent(model, self.logger)
+        # Logger default to a stdout logger if none is provided (StdoutLogSink)
+        self.logger = logger or VulcanAILogger.default()
+        self.llm = Agent(model, logger=self.logger)
         self.k = k
-        self.registry = registry or ToolRegistry(logger=(logger or VulcanAILogger.log_registry))
+        self.registry = registry or ToolRegistry(logger=self.logger)
         self.validator = validator
-        self.executor = PlanExecutor(self.registry, logger=(logger or VulcanAILogger.log_executor))
+        self.executor = PlanExecutor(self.registry, logger=self.logger)
         self.bb = Blackboard()
         self.user_context = ""
         # History is saved as a list of Tuples of user requests and plan summaries
@@ -88,6 +90,7 @@ class ToolManager:
         :return: A dictionary with the execution result, including the plan used and the final blackboard state.
         """
         try:
+
             # Get plan from LLM
             plan = self.get_plan_from_user_request(user_text, context)
             if not plan:
@@ -97,12 +100,12 @@ class ToolManager:
                 try:
                     self.validator.validate(plan)
                 except Exception as e:
-                    VulcanAILogger.log_validator(f"Plan validation error: {e}")
+                    self.logger.log_validator(f"Plan validation: {e}", error=True)
                     raise e
             # Execute plan
             ret = self.execute_plan(plan)
         except Exception as e:
-            self.logger(f"Error handling user request: {e}", error=True)
+            self.logger.log_manager(f"Error handling user request: {e}", error=True)
             ret = {"error": str(e)}
 
         return ret
@@ -129,7 +132,7 @@ class ToolManager:
 
         # Query LLM
         plan = self.llm.inference_plan(system_prompt, user_prompt, images, self.history)
-        self.logger(f"Plan received:\n{plan}")
+        self.logger.log_manager(f"Plan received:\n{plan}")
         # Save to history
         if plan:
             self._add_to_history(user_prompt, plan.summary)
@@ -164,7 +167,7 @@ class ToolManager:
         """
         tools = self.registry.top_k(user_text, self.k)
         if not tools:
-            self.logger("No tools available in the registry.", error=True)
+            self.logger.log_manager(f"No tools available in the registry.", error=True)
             return "", ""
         tool_descriptions = []
         for tool in tools:
@@ -196,12 +199,21 @@ class ToolManager:
         :param new_depth: The new history depth.
         """
         self.history_depth = max(0, int(new_depth))
-        self.logger(f"Updated history depth to {new_depth}")
+        self.logger.log_console(f"Updated history depth to {new_depth}")
         if len(self.history) > self.history_depth:
             if self.history_depth <= 0:
                 self.history = []
             else:
                 self.history = self.history[-self.history_depth:]
+
+    def update_k_index(self, new_k: int):
+        """
+        Update the k index.
+
+        :param new_k: The new k index.
+        """
+        self.k = max(1, int(new_k))
+        self.logger.log_console(f"Updated k index to {new_k}")
 
     def _get_prompt_template(self) -> str:
         template = """

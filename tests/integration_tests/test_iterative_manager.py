@@ -14,10 +14,17 @@
 
 import pytest
 
-from vulcanai import ArgValue, GlobalPlan, PlanNode, Step
-from vulcanai import IterativeManager
-from vulcanai import AtomicTool, ValidationTool
-from vulcanai.core.manager_iterator import TimelineEvent
+from vulcanai import (
+    ArgValue,
+    AtomicTool,
+    GlobalPlan,
+    IterativeManager,
+    PlanNode,
+    Step,
+    TimelineEvent,
+    ValidationTool,
+    VulcanAILogger,
+)
 
 
 class DummyTool(AtomicTool):
@@ -123,7 +130,7 @@ class FakeRegistry:
 
 class MockAgent:
     """Mock agent that records prompts passed to inference_plan() and inference_goal()."""
-    def __init__(self, plans=[], goal=None, validation=None, success_validation=0):
+    def __init__(self, plans=[], goal=None, validation=None, success_validation=0, logger=None):
         """
         :param plans: list[GlobalPlan] to return on successive inference_plan() calls
         :param goal:  GoalSpec to return on inference_goal() calls
@@ -177,12 +184,19 @@ def make_single_step_plan(summary="plan", tool="dummy_tool", key="arg", val="x",
 ### Fixtures
 #################
 
+class ListSink:
+    def __init__(self):
+        self.lines = []  # list[str]
+
+    def write(self, msg: str, color: str = "") -> None:
+        self.lines.append(msg)
+
 @pytest.fixture
 def logger():
-    def _logger(msg, error=False):
-        print(("ERROR: " if error else "") + str(msg))
-        pass
-    return _logger
+    sink = ListSink()
+    log = VulcanAILogger(sink=sink)
+    log.set_sink(sink)
+    return log
 
 @pytest.fixture(autouse=True)
 def patch_core_symbols(monkeypatch):

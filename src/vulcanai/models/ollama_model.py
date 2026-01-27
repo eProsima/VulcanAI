@@ -24,6 +24,7 @@ T = TypeVar('T', GlobalPlan, GoalSpec, AIValidation)
 
 
 class OllamaModel(IModel):
+
     """ Wrapper for Ollama models. """
     def __init__(self, model_name: str, logger=None, hooks: Optional[IModelHooks] = None):
         super().__init__()
@@ -33,7 +34,7 @@ class OllamaModel(IModel):
         try:
             self.model = ollama
         except Exception as e:
-            self.logger(f"Error loading Ollama client: {e}", error=True)
+            self.logger.log_manager(f"ERROR. Missing a API Key: {e}", error=True)
 
     def _inference(
         self,
@@ -77,7 +78,7 @@ class OllamaModel(IModel):
                 options={"temperature": 0.1}
             )
         except Exception as e:
-            self.logger(f"Ollama API error: {e}", error=True)
+            self.logger.log_manager(f"ERROR. Ollama API: {e}", error=True)
             return None
         finally:
             # Notify hooks of request end
@@ -91,14 +92,16 @@ class OllamaModel(IModel):
         try:
             parsed = response_cls.model_validate_json(completion.message.content)
         except Exception as e:
-            self.logger(f"Failed to parse response into {response_cls.__name__}: {e}", error=True)
+            self.logger.log_manager(f"ERROR. Failed to parse response into {response_cls.__name__}: {e}",
+                        error=True)
 
         end = time.time()
-        self.logger(f"Ollama response time: {end - start:.3f} seconds")
+        self.logger.log_manager(f"Ollama response time: {end - start:.3f} seconds")
         try:
             input_tokens = completion.prompt_eval_count
             output_tokens = completion.eval_count
-            self.logger(f"Prompt tokens: {input_tokens}, Completion tokens: {output_tokens}")
+            self.logger.log_manager(f"Prompt tokens: [manager]{input_tokens}[/manager], " + \
+                        f"Completion tokens: [manager]{output_tokens}[/manager]")
         except Exception:
             pass
 
@@ -115,7 +118,9 @@ class OllamaModel(IModel):
                     encoded_images.append(base64_image)
                 except Exception as e:
                     # Fail soft on a single bad image but continue with others
-                    self.logger(f"Image '{image_path}' could not be encoded: {e}", error=True)
+
+                    self.logger.log_manager(f"Fail soft. Image '{image_path}' could not be encoded: {e}",
+                                error=True)
             if encoded_images:
                 content["images"] = encoded_images
         return content

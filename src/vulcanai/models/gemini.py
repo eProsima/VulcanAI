@@ -26,6 +26,7 @@ T = TypeVar('T', GlobalPlan, GoalSpec, AIValidation)
 
 
 class GeminiModel(IModel):
+
     """ Wrapper for most of Google models, Gemini mainly. """
     def __init__(self, model_name:str, logger=None, hooks: Optional[IModelHooks] = None):
         super().__init__()
@@ -35,7 +36,7 @@ class GeminiModel(IModel):
         try:
             self.model = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
         except Exception as e:
-            self.logger(f"Missing Gemini API Key: {e}", error=True)
+            self.logger.log_manager(f"ERROR. Missing Gemini API Key: {e}", error=True)
 
     def _inference(
         self,
@@ -83,11 +84,14 @@ class GeminiModel(IModel):
             contents=messages,
             config=cfg,
         )
+
+        # Extract parsed object safely
         parsed_response: Optional[T] = None
         try:
             parsed_response = response.parsed
         except Exception as e:
-            self.logger(f"Failed to get parsed goal from Gemini response, falling back to text: {e}", error=True)
+            self.logger.log_manager(f"ERROR. Failed to get parsed goal from Gemini response, " + \
+                        f"falling back to text: {e}", error=True)
         finally:
             # Notify hooks of request end
             try:
@@ -110,13 +114,16 @@ class GeminiModel(IModel):
                     import json
                     parsed_response = GoalSpec(**json.loads(raw))
                 except Exception as e:
-                    self.logger(f"Failed to parse raw {response_cls.__name__} JSON: {e}", error=True)
-
+                    self.logger.log_manager(f"ERROR. Failed to parse raw {response_cls.__name__} JSON: {e}",
+                                error=True)
         end = time.time()
-        self.logger(f"Gemini response time: {end - start:.3f} seconds")
+        self.logger.log_manager(f"Gemini response time: {end - start:.3f} seconds")
         usage = getattr(response, "usage_metadata", None)
         if usage:
-            self.logger(f"Prompt tokens: {usage.prompt_token_count}, Completion tokens: {usage.candidates_token_count}")
+            input_tokens = usage.prompt_token_count
+            output_tokens = usage.candidates_token_count
+            self.logger.log_manager(f"Prompt tokens: [manager]{input_tokens}[/manager], " + \
+                        f"Completion tokens: [manager]{output_tokens}[/manager]")
 
         return parsed_response
 
@@ -130,7 +137,8 @@ class GeminiModel(IModel):
                     import requests
                     img = requests.get(image_path)
                     if img.status_code != 200:
-                        self.logger(f"Failed to fetch image from URL: {image_path}", error=True)
+                        self.logger.log_manager(f"ERROR. Failed to fetch image from URL '{image_path}' ",
+                                    error=True)
                         continue
                     content.append(gtypes.Part.from_bytes(data=img.content, mime_type=img.headers.get("Content-Type", "image/png")))
                 else:
@@ -143,7 +151,9 @@ class GeminiModel(IModel):
                         ))
                     except Exception as e:
                         # Fail soft on a single bad image but continue with others
-                        self.logger(f"Image '{image_path}' could not be encoded: {e}", error=True)
+
+                        self.logger.log_manager(f"Fail soft. Image '{image_path}' could not be encoded: {e}",
+                                    error=True)
         return content
 
 

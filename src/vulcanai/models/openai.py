@@ -23,8 +23,8 @@ from vulcanai.models.model import IModel, IModelHooks
 # Generic type variable for response classes
 T = TypeVar('T', GlobalPlan, GoalSpec, AIValidation)
 
-
 class OpenAIModel(IModel):
+
     """ Wrapper for OpenAI models. """
     def __init__(self, model_name: str, logger=None, hooks: Optional[IModelHooks] = None):
         super().__init__()
@@ -34,7 +34,7 @@ class OpenAIModel(IModel):
         try:
             self.model = OpenAI()
         except Exception as e:
-            self.logger(f"Missing OpenAI API Key: {e}", error=True)
+            self.logger.log_manager(f"Missing OpenAI API Key: {e}", error=True)
 
     def _inference(
         self,
@@ -77,7 +77,7 @@ class OpenAIModel(IModel):
                 response_format=response_cls,
             )
         except Exception as e:
-            self.logger(f"OpenAI API error: {e}", error=True)
+            self.logger.log_manager(f"OpenAI API: {e}", error=True)
             return None
         finally:
             # Notify hooks of request end
@@ -91,14 +91,15 @@ class OpenAIModel(IModel):
         try:
             parsed = completion.choices[0].message.parsed
         except Exception as e:
-            self.logger(f"Failed to parse response into {response_cls.__name__}: {e}", error=True)
+            self.logger.log_manager(f"Failed to parse response into {response_cls.__name__}: {e}", error=True)
 
         end = time.time()
-        self.logger(f"GPT response time: {end - start:.3f} seconds")
+        self.logger.log_manager(f"GPT response time: [manager]{end - start:.3f} seconds[/manager]")
         try:
             input_tokens = completion.usage.prompt_tokens
             output_tokens = completion.usage.completion_tokens
-            self.logger(f"Prompt tokens: {input_tokens}, Completion tokens: {output_tokens}")
+            self.logger.log_manager(f"Prompt tokens: [manager]{input_tokens}[/manager], " + \
+                        f"Completion tokens: [manager]{output_tokens}[/manager]")
         except Exception:
             pass
 
@@ -121,7 +122,8 @@ class OpenAIModel(IModel):
                         })
                     except Exception as e:
                         # Fail soft on a single bad image but continue with others
-                        self.logger(f"Image '{image_path}' could not be encoded: {e}", error=True)
+
+                        self.logger.log_manager(f"Fail soft. Image '{image_path}' could not be encoded: {e}", error=True)
         return content
 
     def _build_messages(

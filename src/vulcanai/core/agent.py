@@ -25,11 +25,12 @@ class Brand(str, Enum):
 
 
 class Agent:
+
     """Interface to operate the LLM."""
     def __init__(self, model_name: str, logger=None):
         self.brand, name = self._detect_brand(model_name)
         self.model = None
-        self.logger = logger or VulcanAILogger.log_manager
+        self.logger = logger or VulcanAILogger.default()
         self._load_model(name)
 
     def inference_plan(
@@ -133,17 +134,20 @@ class Agent:
     def _load_model(self, model_name: str):
         if self.brand == Brand.gpt:
             from vulcanai.models.openai import OpenAIModel
-            self.logger(f"Using OpenAI API with model: {model_name}")
+            self.logger.log_manager(f"Using OpenAI API with model: " + \
+                        f"[manager]{model_name}[/manager]")
             self.model = OpenAIModel(model_name, self.logger)
 
         elif self.brand == Brand.gemini:
             from vulcanai.models.gemini import GeminiModel
-            self.logger(f"Using Gemini API with model: {model_name}")
+            self.logger.log_manager(f"Using Gemini API with model: " + \
+                        f"[manager]{model_name}[/manager]")
             self.model = GeminiModel(model_name, self.logger)
 
         elif self.brand == Brand.ollama:
             from vulcanai.models.ollama_model import OllamaModel
-            self.logger(f"Using Ollama API with model: {model_name}")
+            self.logger.log_manager(f"Using Ollama API with model: " + \
+                        f"[manager]{model_name}[/manager]")
             self.model = OllamaModel(model_name, self.logger)
 
         else:
@@ -154,8 +158,8 @@ class Agent:
         if self.model:
             try:
                 self.model.hooks = hooks
-                self.logger("LLM hooks set.")
+                self.logger.log_manager("LLM hooks set.")
             except Exception as e:
-                self.logger(f"Failed to set LLM hooks: {e}", error=True)
+                self.logger.log_manager(f"Failed to set LLM hooks: {e}", error=True)
         else:
-            self.logger("LLM model not initialized, cannot set hooks.", error=True)
+            self.logger.log_manager("LLM model not initialized, cannot set hooks.", error=True)

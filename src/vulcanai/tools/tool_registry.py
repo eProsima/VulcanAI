@@ -37,7 +37,7 @@ class HelpTool(ITool):
     """A tool that provides help information."""
     name = "help"
     description = "Provides help information for using the library. It can list all available tools or" \
-                    " give info about the usage of a specific tool if <tool_name> is provided as an argument."
+                    " give info about the usage of a specific tool if 'tool_name' is provided as an argument."
     tags = ["help", "info", "documentation", "usage", "developer", "manual", "available tools"]
     input_schema = [("tool", "string")]
     output_schema = {"info": "str"}
@@ -72,12 +72,15 @@ class HelpTool(ITool):
 
 
 class ToolRegistry:
+
     """Holds all known tools and performs vector search over metadata."""
     def __init__(self, embedder=None, logger=None):
-        # Logging function
-        self.logger = logger or VulcanAILogger.log_registry
-        # Dictionary of tool name -> tool instance
+        # Logging function from the class VulcanConsole
+        self.logger = logger or VulcanAILogger.default()
+        # Dictionary of tools (name -> tool instance)
         self.tools: Dict[str, ITool] = {}
+        # Dictionary of deactivated_tools (name -> tool instance)
+        self.deactivated_tools: Dict[str, ITool] = {}
         # Embedding model for tool metadata
         self.embedder = embedder or SBERTEmbedder()
         # Simple in-memory index of (name, embedding)
@@ -95,17 +98,56 @@ class ToolRegistry:
         # Avoid duplicates
         if tool.name in self.tools:
             return
+
         self.tools[tool.name] = tool
         if tool.is_validation_tool:
             self.validation_tools.append(tool.name)
         emb = self.embedder.embed(self._doc(tool))
         self._index.append((tool.name, emb))
-        self.logger(f"Registered tool: {tool.name}")
+        self.logger.log_registry(f"Registered tool: [registry]{tool.name}[/registry]")
         self.help_tool.available_tools = self.tools
         if solve_deps:
             # Get class of tool
             if issubclass(type(tool), CompositeTool):
                 self._resolve_dependencies(tool)
+
+    def activate_tool(self, tool_name) -> bool:
+        """Activate a singles tool instance."""
+        # Check if the tool is already active
+        if tool_name in self.tools:
+            return False
+        # Check if the tool is deactivated
+        if tool_name not in self.deactivated_tools:
+            self.logger.log_registry(f"Tool [registry]'{tool_name}'[/registry] " + \
+                        f"not found in the deactivated tools list.", error=True)
+            return False
+
+        # Add the tool to the active tools
+        self.tools[tool_name] = self.deactivated_tools[tool_name]
+
+        # Removed the tool from the deactivated tools
+        del self.deactivated_tools[tool_name]
+
+        return True
+
+    def deactivate_tool(self, tool_name) -> bool:
+        """Deactivate a singles tool instance."""
+        # Check if the tool is already deactivated
+        if tool_name in self.deactivated_tools:
+            return False
+        # Check if the tool is active
+        if tool_name not in self.tools:
+            self.logger.log_registry(f"Tool [registry]'{tool_name}'[/registry] "+ \
+                        f"not found in the active tools list.", error=True)
+            return False
+
+        # Add the tool to the deactivated tools
+        self.deactivated_tools[tool_name] = self.tools[tool_name]
+
+        # Removed the tool from the active tools
+        del self.tools[tool_name]
+
+        return True
 
     def register(self):
         """Register all loaded classes marked with @vulcanai_tool."""
@@ -129,7 +171,7 @@ class ToolRegistry:
         for dep_name in tool.dependencies:
             dep_tool = self.tools.get(dep_name)
             if dep_tool is None:
-                self.logger(f"Dependency '{dep_name}' for tool '{tool.name}' not found.", error=True)
+                self.logger.log_registry(f"ERROR. Dependency '{dep_name}' for tool '{tool.name}' not found.", error=True)
             else:
                 tool.resolved_deps[dep_name] = dep_tool
 
@@ -148,8 +190,7 @@ class ToolRegistry:
             spec.loader.exec_module(module)
             self._loaded_modules.append(module)
         except Exception as e:
-            self.logger(f"Error loading tools from {path}: {e}", error=True)
-
+            self.logger.log_registry(f"Could not load tools from {path}: {e}", error=True)
     def discover_tools_from_file(self, path: str):
         """Load tools from a Python file and register them."""
         self._load_tools_from_file(path)
@@ -172,7 +213,7 @@ class ToolRegistry:
     def top_k(self, query: str, k: int = 5, validation: bool = False) -> list[ITool]:
         """Return top-k tools most relevant to the query."""
         if not self._index:
-            self.logger("No tools registered.", error=True)
+            self.logger.log_registry("No tools registered.", error=True)
             return []
 
         # Filter tools based on validation flag
@@ -185,11 +226,11 @@ class ToolRegistry:
         active_names: set = val_names if validation else nonval_names
         if not active_names:
             # If there is no tool for the requested category, be explicit and return []
-            self.logger(
-                f"No matching tools for the requested mode ({'validation' if validation else 'action'}).", error=True
+            self.logger.log_registry(
+                f"No matching tools for the requested mode ({'validation' if validation else 'action'}).",
+                error=True
             )
             return []
-
         # If k > number of ALL tools, return required tools
         if k > len(self._index):
             return [self.tools[name] for name in active_names]
@@ -197,9 +238,10 @@ class ToolRegistry:
         filtered_index = [(name, vec) for (name, vec) in self._index if name in active_names]
         if not filtered_index:
             # Index might be stale; log and return []
-            self.logger("Index has no entries for the selected tool subset.", error=True)
-            return []
 
+            self.logger.log_registry("Index has no entries for the selected tool subset.",
+                        error=True)
+            return []
         # If k > number of required tools, return required tools
         if k > len(filtered_index):
             return [self.tools[name] for name in active_names]

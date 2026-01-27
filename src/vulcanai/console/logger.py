@@ -12,68 +12,192 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from rich.console import Console
-from rich.theme import Theme
+import re
+from typing import Protocol, Optional
 
-vulcanai_theme = Theme({
-    "manager": "bold blue",
-    "executor": "bold green",
-    "step": "bold yellow",
-    "tool": "bold cyan",
-    "validator": "bold orange_red1",
-    "error": "bold red",
-    "console": "bold magenta"
-})
 
-console = Console(theme=vulcanai_theme)
+class LogSink(Protocol):
+    """A default console that prints to standard output."""
+    def write(self, msg: str, color: str = "") -> None:
+        ...
+
+
+class RichStdoutSink:
+    def __init__(self, logger_theme) -> None:
+        from rich.console import Console
+        from rich.theme import Theme
+        self.console = Console(theme=Theme(logger_theme))
+
+    def write(self, msg: str, color: str = "") -> None:
+        self.console.print(msg)
 
 
 class VulcanAILogger:
-    """Logger class for VulcanAI components."""
-    @staticmethod
-    def log_manager(msg: str, error: bool = False):
-        if error:
-            msg = f"[error][MANAGER] [ERROR][/error] {msg}"
-        else:
-            msg = f"[manager][MANAGER][/manager] {msg}"
-        console.print(msg)
 
-    @staticmethod
-    def log_executor(msg: str, error: bool = False, tool: bool = False, tool_name: str = ''):
+    """
+    Logger class for VulcanAI components.
+    Provides methods to log messages with different tags and colors.
+    """
+
+    vulcanai_theme = {
+            "registry": "#068399",
+            "manager": "#0d87c0",
+            "executor": "#15B606",
+            "vulcanai": "#56AA08",
+            "user": "#91DD16",
+            "validator": "#C49C00",
+            "tool": "#EB921E",
+            "error": "#FF0000",
+            "console": "#8F6296",
+            "warning": "#D8C412",
+        }
+
+    _default_instance: Optional["VulcanAILogger"] = None
+    _rich_markup = True
+
+    @classmethod
+    def default(cls) -> "VulcanAILogger":
+        """Get the default VulcanAILogger instance. This method acts as a singleton factory for the logger."""
+        if cls._default_instance is None:
+            cls._default_instance = cls()
+        return cls._default_instance
+
+    def __init__(self, sink: Optional[LogSink] = None):
+        # A default console will be used if none is provided
+        self.sink: LogSink = sink or RichStdoutSink(VulcanAILogger.vulcanai_theme)
+
+    # region UTILS
+
+    def set_sink(self, sink: "LogSink") -> None:
+        """Set a new sink for the logger."""
+        self.sink = sink
+
+    def set_textualizer_console(self, textual_console) -> None:
+        """Set a Textual console as sink for the logger and configure formatting tags."""
+        self.set_sink(textual_console)
+        VulcanAILogger._rich_markup = False
+
+    def parse_color(self, msg):
+        """
+        Parse custom [tag]...[/tag] in messages and convert them
+        to <style>...</style> based on the vulcanai_theme defined colors.
+        """
+
+        # Matches [tag] or [/tag]
+        pattern = re.compile(r'\[(\/?)([^\]]+)\]')
+
+        def replace_tag(match):
+            slash, tag = match.groups()
+
+            # If the tag is defined in the theme, replace it
+            if tag in self.vulcanai_theme:
+                return f"<{slash}{self.vulcanai_theme[tag]}>"
+
+            # Otherwise, keep the original tag
+            return match.group(0)
+
+        return pattern.sub(replace_tag, msg)
+
+    def parse_rich_markup(self, msg: str) -> str:
+        """Parse rich markup tags if rich markup is enabled."""
+        if VulcanAILogger._rich_markup:
+            # Convert <bold> / </bold> / <italic> / </italic> etc.
+            msg = re.sub(r"<(/?)(bold|italic|underline|reverse|dim)>", r"[\1\2]", msg)
+            # Convert hex colors: <#RRGGBB> ... </#RRGGBB>  -> [#RRGGBB] ... [/#RRGGBB]
+            msg = re.sub(r"<(/?)(#[0-9a-fA-F]{6})>", r"[\1\2]", msg)
+        return msg
+
+    def process_msg(self, msg: str, prefix: str = "", color: str = "") -> str:
+        """Process the message by adding prefix, applying color formatting and rich markup if enabled."""
+        color_begin = color_end = color
+        if color != "":
+            if color in self.vulcanai_theme:
+                color = self.vulcanai_theme[color]
+            color_begin = f"<{color}>"
+            color_end = f"</{color}>"
+
+        msg = f"{prefix}{color_begin}{msg}{color_end}"
+
+        return self.parse_rich_markup((self.parse_color(msg)))
+
+    # endregion
+
+    # region LOG
+
+    def log_manager(self, msg: str, error: bool = False, color: str = ""):
         if error:
-            msg = f"[error][EXECUTOR] [ERROR][/error] {msg}"
+            prefix = f"[error][MANAGER] [ERROR][/error] "
+        else:
+            prefix = f"<bold>[manager][MANAGER][/manager]</bold> "
+
+        processed_msg = self.process_msg(msg, prefix=prefix, color=color)
+        self.sink.write(processed_msg)
+
+    def log_executor(self, msg: str, error: bool = False, tool: bool = False, tool_name: str = '', color: str = ""):
+        if error:
+            prefix = f"[error][EXECUTOR] [ERROR][/error] "
         elif tool:
-            VulcanAILogger.log_tool(msg, tool_name=tool_name)
+            self.log_tool(msg, tool_name=tool_name)
             return
         else:
-            msg = f"[executor][EXECUTOR][/executor] {msg}"
-        console.print(msg)
+            prefix = f"[executor][EXECUTOR][/executor] "
 
-    @staticmethod
-    def log_tool(msg: str, tool_name: str = '', error: bool = False):
+        processed_msg = self.process_msg(msg, prefix=prefix, color=color)
+        self.sink.write(processed_msg)
+
+    def log_tool(self, msg: str, tool_name: str = '', error: bool = False, color: str = ""):
         if tool_name:
-            tag = f"[TOOL [italic]{tool_name}[/italic]]"
+            tag = f"<bold>[TOOL <italic>{tool_name}</italic>]</bold>"
         else:
-            tag = '[TOOL]'
+            tag = '<bold>[TOOL]</bold>'
         if error:
-            msg = f"[error]{tag} [ERROR][/error]  {msg}"
+            prefix = f"[error]{tag} [ERROR][/error] "
         else:
-            msg = f"[step]{tag}[/step] {msg}"
-        console.print(msg)
+            prefix = f"[tool]{tag}[/tool] "
 
-    @staticmethod
-    def log_registry(msg: str, error: bool = False):
+        processed_msg = self.process_msg(msg, prefix=prefix, color=color)
+        self.sink.write(processed_msg)
+
+    def log_registry(self, msg: str, error: bool = False, color: str = ""):
         if error:
-            msg = f"[error][REGISTRY] [ERROR][/error]  {msg}"
+            prefix = f"[error][REGISTRY] [ERROR][/error] "
         else:
-            msg = f"[tool][REGISTRY][/tool] {msg}"
-        console.print(msg)
+            prefix = f"<bold>[registry][REGISTRY][/registry]</bold> "
 
-    @staticmethod
-    def log_validator(msg: str):
-        msg = f"[validator][VALIDATOR][/validator] {msg}"
-        console.print(msg)
+        processed_msg = self.process_msg(msg, prefix=prefix, color=color)
+        self.sink.write(processed_msg)
 
-    @staticmethod
-    def log_error(msg: str):
-        console.print(f"[error][ERROR][/error] {msg}")
+    def log_validator(self, msg: str, error: bool = False, color: str = ""):
+        if error:
+            prefix = f"[error][VALIDATOR] [ERROR][/error] "
+        else:
+            prefix = f"[validator][VALIDATOR][/validator] "
+
+        processed_msg = self.process_msg(msg, prefix=prefix, color=color)
+        self.sink.write(processed_msg)
+
+    def log_console(self, msg: str, color: str = ""):
+        if color == "":
+            msg = f"[console]{msg}[/console]"
+
+        processed_msg = self.parse_color(msg)
+        if color == "":
+            self.sink.write(processed_msg)
+        else:
+            log_color = self.vulcanai_theme.get(color, "")
+            self.sink.write(processed_msg, self.vulcanai_theme["console"] if log_color != "" else "")
+
+    def log_msg(self, msg: str, error: bool = False, color: str = ""):
+        if error:
+            color = self.vulcanai_theme.get("error", "")
+
+        processed_msg = self.process_msg(msg, color=color)
+        self.sink.write(processed_msg)
+
+    def log_user(self, msg: str):
+        prefix = f"<bold>[user][USER] >>>[/user]</bold> "
+
+        processed_msg = self.process_msg(msg, prefix=prefix)
+        self.sink.write(processed_msg)
+
+    # endregion
