@@ -405,8 +405,7 @@ f"""[{color_tmp}]
         the current variables info (model, k, history_depth).
         """
 
-
-        text = f" AI model: {self.model.replace("ollama-", "")}\n K = {self.manager.k}\n history_depth = {self.manager.history_depth}"
+        text = f" AI model: {self.model.replace('ollama-', '')}\n K = {self.manager.k}\n history_depth = {self.manager.history_depth}"
         kvalue_widget = self.query_one("#variables", Static)
         kvalue_widget.update(text)
 
@@ -1084,7 +1083,7 @@ f"""[{color_tmp}]
 
         self.manager = ConsoleManager(model=self.model, k=self.k, logger=self.logger)
 
-        self.logger.log_console(f"Manager initialized with model <bold>'{self.model.replace("ollama-", "")}</bold>'")
+        self.logger.log_console(f"Manager initialized with model <bold>'{self.model.replace('ollama-', '')}</bold>'")
         # Update right panel info
         self._update_variables_panel()
 
