@@ -17,6 +17,8 @@ from importlib import import_module
 _EXPORTS = {
     "VulcanConsole": ".console:VulcanConsole",
     "VulcanAILogger": ".logger:VulcanAILogger",
+    "LogSink": ".logger:LogSink",
+    "RichStdoutSink": ".logger:RichStdoutSink",
 }
 
 __all__ = list(_EXPORTS.keys())
