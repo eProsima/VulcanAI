@@ -19,7 +19,9 @@ import heapq
 import subprocess
 import sys
 import time
-from textual.markup import escape # To remove potential errors in textual terminal
+
+from textual.markup import escape  # To remove potential errors in textual terminal
+
 
 class StreamToTextual:
     """
@@ -36,7 +38,7 @@ class StreamToTextual:
 
         if data.strip():
             # Ensure update happens on the app thread
-            #self.app.call_from_thread(self.app.append_log_text, data)
+            # self.app.call_from_thread(self.app.append_log_text, data)
             self.app.call_from_thread(self.app.add_line, data)
 
     def flush(self):
@@ -107,13 +109,10 @@ def common_prefix(strings: str) -> str:
 
     return common_prefix, commands
 
-async def run_streaming_cmd_async(console, args: list[str],
-        max_duration: float = 60,
-        max_lines: int = 1000,
-        echo: bool = True,
-        tool_name="") -> str:
 
-
+async def run_streaming_cmd_async(
+    console, args: list[str], max_duration: float = 60, max_lines: int = 1000, echo: bool = True, tool_name=""
+) -> str:
     # Unpack the command
     cmd, *cmd_args = args
 
@@ -150,28 +149,29 @@ async def run_streaming_cmd_async(console, args: list[str],
 
             # Check duration
             if max_duration and (time.monotonic() - start_time) >= max_duration:
-                console.logger.log_tool(f"[tool]Stopping:[/tool] Exceeded max_duration = {max_duration}s", tool_name=tool_name)
+                console.logger.log_tool(
+                    f"[tool]Stopping:[/tool] Exceeded max_duration = {max_duration}s", tool_name=tool_name
+                )
                 console.set_stream_task(None)
                 process.terminate()
                 break
 
-
     except asyncio.CancelledError:
         # Task was cancelled → stop the subprocess
-        console.logger.log_tool(f"[tool]Cancellation received:[/tool] terminating subprocess...", tool_name=tool_name)
+        console.logger.log_tool("[tool]Cancellation received:[/tool] terminating subprocess...", tool_name=tool_name)
         process.terminate()
         raise
     # Not necessary, textual terminal get the keyboard input
     except KeyboardInterrupt:
         # Ctrl+C pressed → stop subprocess
-        console.logger.log_tool(f"[tool]Ctrl+C received:[/tool] terminating subprocess...", tool_name=tool_name)
+        console.logger.log_tool("[tool]Ctrl+C received:[/tool] terminating subprocess...", tool_name=tool_name)
         process.terminate()
 
     finally:
         try:
             await asyncio.wait_for(process.wait(), timeout=3.0)
         except asyncio.TimeoutError:
-            console.logger.log_tool(f"Subprocess didn't exit in time → killing it.", tool_name=tool_name, error=True)
+            console.logger.log_tool("Subprocess didn't exit in time → killing it.", tool_name=tool_name, error=True)
             process.kill()
             await process.wait()
 
@@ -179,7 +179,6 @@ async def run_streaming_cmd_async(console, args: list[str],
 
 
 def execute_subprocess(console, tool_name, base_args, max_duration, max_lines):
-
     stream_task = None
 
     def _launcher() -> None:
@@ -192,12 +191,11 @@ def execute_subprocess(console, tool_name, base_args, max_duration, max_lines):
                 base_args,
                 max_duration=max_duration,
                 max_lines=max_lines,
-                tool_name=tool_name#tool_header_str
+                tool_name=tool_name,  # tool_header_str
             )
         )
 
         def _on_done(task: asyncio.Task) -> None:
-
             if task.cancelled():
                 # Normal path → don't log as an error
                 # If you want a message, call UI methods directly here,
@@ -208,7 +206,7 @@ def execute_subprocess(console, tool_name, base_args, max_duration, max_lines):
                 task.result()
             except Exception as e:
                 console.logger.log_msg(f"Echo task error: {e!r}\n", error=True)
-                #result["output"] = False
+                # result["output"] = False
                 return
 
         stream_task.add_done_callback(_on_done)
@@ -228,20 +226,16 @@ def execute_subprocess(console, tool_name, base_args, max_duration, max_lines):
     console.set_stream_task(stream_task)
     console.logger.log_tool("[tool]Subprocess created![tool]", tool_name=tool_name)
 
+
 def run_oneshot_cmd(args: list[str]) -> str:
     try:
-        return subprocess.check_output(
-            args,
-            stderr=subprocess.STDOUT,
-            text=True
-        )
+        return subprocess.check_output(args, stderr=subprocess.STDOUT, text=True)
 
     except subprocess.CalledProcessError as e:
         raise Exception(f"Failed to run '{' '.join(args)}': {e.output}")
 
 
 def suggest_string(console, tool_name, string_name, input_string, real_string_list):
-
     ret = None
 
     def _similarity(a: str, b: str) -> float:
@@ -289,15 +283,14 @@ def suggest_string(console, tool_name, string_name, input_string, real_string_li
         ret_list.append(most_topic_similar)
 
         while topic_list_pq:
-            _ , topic = heapq.heappop(topic_list_pq)
+            _, topic = heapq.heappop(topic_list_pq)
             ret_list.append(topic)
 
         return most_topic_similar, ret_list
 
     if input_string not in real_string_list:
-
-        #console.add_line(f"{tool_header_str} {string_name}: \"{input_string}\" does not exists")
-        console.logger.log_tool(f"{string_name}: \"{input_string}\" does not exists", tool_name=tool_name)
+        # console.add_line(f"{tool_header_str} {string_name}: \"{input_string}\" does not exists")
+        console.logger.log_tool(f'{string_name}: "{input_string}" does not exists', tool_name=tool_name)
 
         # Get the suggestions list sorted by similitud value
         _, topic_sim_list = _get_suggestions(real_string_list, input_string)

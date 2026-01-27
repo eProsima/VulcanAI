@@ -44,3 +44,15 @@ vulcanai = ["py.typed", "*.pyi", "**/*.pyi"]
 
 [project.scripts]
 vulcanai-console = "vulcanai.console.console:main"
+
+# Linter options
+[tool.ruff]
+line-length = 119
+extend-exclude = [".venv", "build", "dist"]
+
+[tool.ruff.lint]
+# E: pycodestyle errors, F: pyflakes, I: import sorting
+select = ["E", "F", "I"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["vulcanai"]

@@ -15,23 +15,28 @@
 import hashlib
 import importlib
 import io
-import numpy as np
 import os
 import re
 import sys
 import types
 import unittest
 
+import numpy as np
+
 
 # Stub sentence_transformers to avoid heavy dependency during tests
 class _DummySentenceTransformer:
     def __init__(self, *args, **kwargs):
         pass
+
     def encode(self, text, convert_to_numpy=True):
         return None
+
     def similarity(self, a, b):
         return None
-sys.modules.setdefault('sentence_transformers', types.SimpleNamespace(SentenceTransformer=_DummySentenceTransformer))
+
+
+sys.modules.setdefault("sentence_transformers", types.SimpleNamespace(SentenceTransformer=_DummySentenceTransformer))
 
 
 # Add src/ to sys.path for src-layout imports
@@ -63,8 +68,10 @@ class TestToolRegistry(unittest.TestCase):
                 vec = np.frombuffer(h, dtype=np.uint8).astype(np.float32)[:64]
                 norm = np.linalg.norm(vec) or 1.0
                 return vec / norm
+
             def similarity(self, a: np.ndarray, b: np.ndarray) -> float:
                 return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-8))
+
         self.Embedder = LocalDummyEmbedder
 
         # Define dummy tools inside setUp to use imported base class
@@ -75,8 +82,10 @@ class TestToolRegistry(unittest.TestCase):
             input_schema = [("x", "float"), ("y", "float"), ("z", "float")]
             output_schema = {"arrived": "bool"}
             version = "0.1"
+
             def run(self, **kwargs):
                 return {"arrived": True}
+
         class DetectTool(self.AtomicTool):
             name = "detect_object"
             description = "Detect an object in the environment"
@@ -84,8 +93,10 @@ class TestToolRegistry(unittest.TestCase):
             input_schema = [("label", "string")]
             output_schema = {"found": "bool"}
             version = "0.1"
+
             def run(self, **kwargs):
                 return {"found": True}
+
         class SpeakTool(self.AtomicTool):
             name = "speak"
             description = "Speak a text string"
@@ -93,8 +104,10 @@ class TestToolRegistry(unittest.TestCase):
             input_schema = [("text", "string")]
             output_schema = {"spoken": "bool"}
             version = "0.1"
+
             def run(self, **kwargs):
                 return {"spoken": True}
+
         class ComplexTool(self.CompositeTool):
             name = "complex_action"
             description = "A complex action using multiple tools"
@@ -103,6 +116,7 @@ class TestToolRegistry(unittest.TestCase):
             output_schema = {"result": "bool"}
             version = "0.1"
             dependencies = ["go_to_pose", "detect_object", "speak"]
+
             def run(self, **kwargs):
                 return {"result": True}
 
@@ -113,6 +127,7 @@ class TestToolRegistry(unittest.TestCase):
             input_schema = [("param", "string")]
             output_schema = {"result": "bool"}
             version = "0.1"
+
             def run(self, **kwargs):
                 return {"result": True}
 
@@ -132,7 +147,7 @@ class TestToolRegistry(unittest.TestCase):
     def test_top_k_returns_expected_count(self):
         """Test that top_k returns up to k tools."""
         res = self.registry.top_k("go to the room", k=2)
-        self.assertEqual(len(res), 2+1)  # +1 for help tool
+        self.assertEqual(len(res), 2 + 1)  # +1 for help tool
 
     def test_top_k_returns_expected_count_validation(self):
         """Test that top_k returns up to k tools even if there are more non-validation tools registered."""
@@ -166,66 +181,69 @@ class TestToolRegistry(unittest.TestCase):
 
     def test_k_greater_than_tools(self):
         """Test that k greater than number of tools returns all tools skipping embedding."""
+
         # Mock embedder to track calls
         class MockEmbedder(self.Embedder):
             def __init__(self):
                 super().__init__()
                 self.embed_call_count = 0
+
             def embed(self, text: str) -> np.ndarray:
                 self.embed_call_count += 1
                 return super().embed(text)
+
         r = self.ToolRegistry(embedder=MockEmbedder())
         r.register_tool(self.NavTool())
         r.register_tool(self.DetectTool())
         r.register_tool(self.SpeakTool())
         self.assertEqual(r.embedder.embed_call_count, 3)
         res = r.top_k("go to the room", k=10)
-        self.assertEqual(len(res), 3+1)  # +1 for help tool
+        self.assertEqual(len(res), 3 + 1)  # +1 for help tool
         # Check that self.embedder.embed has not been called during top_k
         self.assertEqual(r.embedder.embed_call_count, 3)
         res = r.top_k("detect", k=2)
-        self.assertEqual(len(res), 2+1)  # +1 for help tool
+        self.assertEqual(len(res), 2 + 1)  # +1 for help tool
         self.assertEqual(r.embedder.embed_call_count, 4)
 
     # Test registers
     def test_register_tool(self):
         """Test that tools can be registered and are present in the registry."""
         r = self.ToolRegistry(embedder=self.Embedder())
-        self.assertEqual(len(r.tools), 0+1)  # +1 for help tool
+        self.assertEqual(len(r.tools), 0 + 1)  # +1 for help tool
         r.register_tool(self.NavTool())
-        self.assertEqual(len(r.tools), 1+1)  # +1 for help tool
+        self.assertEqual(len(r.tools), 1 + 1)  # +1 for help tool
         r.register_tool(self.DetectTool())
-        self.assertEqual(len(r.tools), 2+1)  # +1 for help tool
+        self.assertEqual(len(r.tools), 2 + 1)  # +1 for help tool
         r.register_tool(self.SpeakTool())
-        self.assertEqual(len(r.tools), 3+1)  # +1 for help tool
+        self.assertEqual(len(r.tools), 3 + 1)  # +1 for help tool
         self.assertIn("go_to_pose", r.tools)
         self.assertIn("detect_object", r.tools)
         self.assertIn("speak", r.tools)
         self.assertNotIn("nonexistent_tool", r.tools)
         r.register_tool(self.TestValidationTool())
-        self.assertEqual(len(r.tools), 4+1)
+        self.assertEqual(len(r.tools), 4 + 1)
         self.assertIn("test_validation", r.tools)
 
     def test_register_tool_from_file(self):
         # Register tools from test_tools.py
         self.registry.discover_tools_from_file(os.path.join(RESOURCES_DIR, "test_tools.py"))
-        self.assertEqual(len(self.registry.tools), 7+1)  # +1 for help tool (3 existing + 4 new)
-        self.assertEqual(len(self.registry._index), 7)   # (3 existing + 4 new)
+        self.assertEqual(len(self.registry.tools), 7 + 1)  # +1 for help tool (3 existing + 4 new)
+        self.assertEqual(len(self.registry._index), 7)  # (3 existing + 4 new)
 
     def test_register_tool_from_nonexistent_file(self):
         r = self.ToolRegistry(embedder=self.Embedder())
         r.discover_tools_from_file("/path/does/not/exist.py")
-        self.assertEqual(len(r.tools), 0+1)  # +1 for help tool
+        self.assertEqual(len(r.tools), 0 + 1)  # +1 for help tool
 
     def test_register_composite_tool_solves_deps(self):
         """Test that registering a composite tool correctly resolves its dependencies."""
         # Check that the composite tool has no resolved deps before registration
-        self.assertEqual(len(self.registry.tools), 3+1)  # +1 for help tool
+        self.assertEqual(len(self.registry.tools), 3 + 1)  # +1 for help tool
         self.assertEqual(len(self.ComplexTool().dependencies), 3)
         self.assertEqual(len(self.ComplexTool().resolved_deps), 0)
         # Register the composite tool
         self.registry.register_tool(self.ComplexTool())
-        self.assertEqual(len(self.registry.tools), 4+1)  # +1 for help tool
+        self.assertEqual(len(self.registry.tools), 4 + 1)  # +1 for help tool
         self.assertIn("complex_action", self.registry.tools)
         self.assertEqual(len(self.registry.tools.get("complex_action").resolved_deps), 3)
 
@@ -235,12 +253,12 @@ class TestToolRegistry(unittest.TestCase):
         sys.stdout = buf
         # Check that the composite tool has no resolved deps before registration
         r = self.ToolRegistry(embedder=self.Embedder())
-        self.assertEqual(len(r.tools), 0+1)  # +1 for help tool
+        self.assertEqual(len(r.tools), 0 + 1)  # +1 for help tool
         self.assertEqual(len(self.ComplexTool().dependencies), 3)
         self.assertEqual(len(self.ComplexTool().resolved_deps), 0)
         # Register the composite tool
         r.register_tool(self.ComplexTool())
-        self.assertEqual(len(r.tools), 1+1)  # +1 for help tool
+        self.assertEqual(len(r.tools), 1 + 1)  # +1 for help tool
         self.assertIn("complex_action", r.tools)
         self.assertEqual(len(self.ComplexTool().resolved_deps), 0)
         # Capture output to check for error messages
@@ -264,7 +282,7 @@ class TestToolRegistry(unittest.TestCase):
         self.assertNotIn("Dependency 'file_tool' for tool 'complex_file_action' not found", output)
         self.assertNotIn("Dependency 'new_file_tool' for tool 'complex_file_action' not found", output)
         self.assertNotIn("Dependency 'other_file_tool' for tool 'complex_file_action' not found", output)
-        self.assertEqual(len(r.tools), 5+1) # +1 for help tool
+        self.assertEqual(len(r.tools), 5 + 1)  # +1 for help tool
 
     def test_register_composite_tool_fails_from_file(self):
         """Test that registering a composite tool from file reports an error if there are no dependencies."""
@@ -279,15 +297,15 @@ class TestToolRegistry(unittest.TestCase):
         self.assertIn("Dependency 'file_tool' for tool 'complex_file_action' not found", output)
         self.assertIn("Dependency 'new_file_tool' for tool 'complex_file_action' not found", output)
         self.assertIn("Dependency 'other_file_tool' for tool 'complex_file_action' not found", output)
-        self.assertEqual(len(r.tools), 1+1)  # +1 for help tool
+        self.assertEqual(len(r.tools), 1 + 1)  # +1 for help tool
 
     def test_register_validation_tool(self):
         """Test that validation tools can be registered and are present in the registry."""
         r = self.ToolRegistry(embedder=self.Embedder())
-        self.assertEqual(len(r.tools), 0+1)  # +1 for help tool
+        self.assertEqual(len(r.tools), 0 + 1)  # +1 for help tool
         self.assertEqual(len(r._index), 0)
         r.register_tool(self.TestValidationTool())
-        self.assertEqual(len(r.tools), 1+1)  # +1 for help tool
+        self.assertEqual(len(r.tools), 1 + 1)  # +1 for help tool
         self.assertEqual(len(r._index), 1)
         self.assertIn("test_validation", r.validation_tools)
 

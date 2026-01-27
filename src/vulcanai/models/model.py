@@ -13,17 +13,17 @@
 # limitations under the License.
 
 import base64
-from typing import Any, Optional, TypeVar
 from abc import ABC, abstractmethod
+from typing import Any, Optional, TypeVar
 
 from vulcanai.core.plan_types import AIValidation, GlobalPlan, GoalSpec
 
-
-T = TypeVar('T', GlobalPlan, GoalSpec, AIValidation)
+T = TypeVar("T", GlobalPlan, GoalSpec, AIValidation)
 
 
 class IModel(ABC):
     """Abstract class for models."""
+
     # Model instance
     model: Any = None
     # Model name
@@ -34,11 +34,7 @@ class IModel(ABC):
     hooks: Any = None
 
     def plan_inference(
-        self,
-        system_prompt: str,
-        user_prompt: str,
-        images: list[str],
-        history: list[tuple[str, str]]
+        self, system_prompt: str, user_prompt: str, images: list[str], history: list[tuple[str, str]]
     ) -> Optional[GlobalPlan]:
         """
         Call the generic inference with GlobalPlan as response type.
@@ -54,14 +50,11 @@ class IModel(ABC):
             user_prompt=user_prompt,
             response_cls=GlobalPlan,
             images=images,
-            history=history
+            history=history,
         )
 
     def goal_inference(
-        self,
-        system_prompt: str,
-        user_prompt: str,
-        history: list[tuple[str, str]]
+        self, system_prompt: str, user_prompt: str, history: list[tuple[str, str]]
     ) -> Optional[GoalSpec]:
         """
         Call the generic inference with GoalSpec as response type (no images).
@@ -72,19 +65,11 @@ class IModel(ABC):
         :return: Parsed response object of type GoalSpec, or None on error.
         """
         return self._inference(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            response_cls=GoalSpec,
-            images=None,
-            history=history
+            system_prompt=system_prompt, user_prompt=user_prompt, response_cls=GoalSpec, images=None, history=history
         )
 
     def validation_inference(
-        self,
-        system_prompt: str,
-        user_prompt: str,
-        images: list[str],
-        history: list[tuple[str, str]]
+        self, system_prompt: str, user_prompt: str, images: list[str], history: list[tuple[str, str]]
     ) -> Optional[AIValidation]:
         """
         Call the generic inference with AIValidation as response type (no history).
@@ -99,7 +84,7 @@ class IModel(ABC):
             user_prompt=user_prompt,
             response_cls=AIValidation,
             images=images,
-            history=history
+            history=history,
         )
 
     @abstractmethod
@@ -117,7 +102,9 @@ class IModel(ABC):
 
 class IModelHooks(ABC):
     """No-op base hooks for LLM activity."""
+
     def on_request_start(self) -> None:
         pass
+
     def on_request_end(self) -> None:
         pass

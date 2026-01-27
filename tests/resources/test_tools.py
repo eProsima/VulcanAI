@@ -14,6 +14,7 @@
 
 from vulcanai import AtomicTool, ValidationTool, vulcanai_tool
 
+
 # Register dummy tools
 @vulcanai_tool
 class FileTool(AtomicTool):
@@ -23,7 +24,10 @@ class FileTool(AtomicTool):
     input_schema = [("x", "float"), ("y", "float"), ("z", "float")]
     output_schema = {"arrived": "bool"}
     version = "0.1"
-    def run(self, **kwargs): return {"arrived": True}
+
+    def run(self, **kwargs):
+        return {"arrived": True}
+
 
 @vulcanai_tool
 class NewFileTool(AtomicTool):
@@ -33,7 +37,10 @@ class NewFileTool(AtomicTool):
     input_schema = [("label", "string")]
     output_schema = {"found": "bool"}
     version = "0.1"
-    def run(self, **kwargs): return {"found": True}
+
+    def run(self, **kwargs):
+        return {"found": True}
+
 
 @vulcanai_tool
 class OtherFileTool(AtomicTool):
@@ -43,7 +50,10 @@ class OtherFileTool(AtomicTool):
     input_schema = [("text", "string")]
     output_schema = {"spoken": "bool"}
     version = "0.1"
-    def run(self, **kwargs): return {"spoken": True}
+
+    def run(self, **kwargs):
+        return {"spoken": True}
+
 
 @vulcanai_tool
 class AnotherValidationTool(ValidationTool):
@@ -53,7 +63,10 @@ class AnotherValidationTool(ValidationTool):
     input_schema = []
     output_schema = {"valid": "bool"}
     version = "0.1"
-    def run(self, **kwargs): return {"valid": True}
+
+    def run(self, **kwargs):
+        return {"valid": True}
+
 
 class NoDecoratorTool(AtomicTool):
     name = "no_decorator_tool"
@@ -62,4 +75,6 @@ class NoDecoratorTool(AtomicTool):
     input_schema = [("text", "string")]
     output_schema = {"spoken": "bool"}
     version = "0.1"
-    def run(self, **kwargs): return {"spoken": True}
+
+    def run(self, **kwargs):
+        return {"spoken": True}

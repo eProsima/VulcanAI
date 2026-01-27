@@ -15,16 +15,16 @@
 from typing import Any, Dict, Optional, Tuple
 
 from vulcanai.console.logger import VulcanAILogger
-from vulcanai.core.executor import Blackboard, PlanExecutor
 from vulcanai.core.agent import Agent
+from vulcanai.core.executor import Blackboard, PlanExecutor
 from vulcanai.core.plan_types import GlobalPlan
 from vulcanai.core.validator import PlanValidator
 from vulcanai.tools.tool_registry import ToolRegistry
 
 
-
 class ToolManager:
     """Manages the LLM Agent and calls the executor with the LLM output."""
+
     def __init__(
         self,
         model: str,
@@ -32,7 +32,7 @@ class ToolManager:
         validator: Optional[PlanValidator] = None,
         k: int = 10,
         hist_depth: int = 3,
-        logger: Optional[VulcanAILogger] = None
+        logger: Optional[VulcanAILogger] = None,
     ):
         # Logger default to a stdout logger if none is provided (StdoutLogSink)
         self.logger = logger or VulcanAILogger.default()
@@ -90,7 +90,6 @@ class ToolManager:
         :return: A dictionary with the execution result, including the plan used and the final blackboard state.
         """
         try:
-
             # Get plan from LLM
             plan = self.get_plan_from_user_request(user_text, context)
             if not plan:
@@ -167,7 +166,7 @@ class ToolManager:
         """
         tools = self.registry.top_k(user_text, self.k)
         if not tools:
-            self.logger.log_manager(f"No tools available in the registry.", error=True)
+            self.logger.log_manager("No tools available in the registry.", error=True)
             return "", ""
         tool_descriptions = []
         for tool in tools:
@@ -190,7 +189,7 @@ class ToolManager:
             if self.history_depth <= 0:
                 self.history = []
             else:
-                self.history = self.history[-self.history_depth:]
+                self.history = self.history[-self.history_depth :]
 
     def update_history_depth(self, new_depth: int):
         """
@@ -204,7 +203,7 @@ class ToolManager:
             if self.history_depth <= 0:
                 self.history = []
             else:
-                self.history = self.history[-self.history_depth:]
+                self.history = self.history[-self.history_depth :]
 
     def update_k_index(self, new_k: int):
         """

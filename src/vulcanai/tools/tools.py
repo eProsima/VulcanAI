@@ -21,6 +21,7 @@ class ITool(ABC):
     Abstract class containing base metadata every tool must provide.
     All tools must inherit from this interface to ensure consistency during LLMs calls.
     """
+
     # Name given to the tool
     name: str
     # Brief description of the tool's purpose
@@ -49,13 +50,16 @@ class ITool(ABC):
 
 class AtomicTool(ITool):
     """Atomic tool with a single capability."""
+
     pass
+
 
 class CompositeTool(ITool):
     """
     Composite tool used to define more complex actions.
     It reuses existing tools and their capabilities, which must be listed as dependencies.
     """
+
     # Names of tools this composite tool depends on
     dependencies: List[str] = []
     # Resolved tool instances (injected at execution time)
@@ -65,15 +69,18 @@ class CompositeTool(ITool):
         super().__init__()
         self.resolved_deps = {}
 
+
 class ValidationTool(ITool):
     """
     Atomic Validation tool with a single capability.
 
-    As a general rule, Validation tools are responsible of the feedback system used to check if the final goal has been achieved.
+    As a general rule, Validation tools are responsible of the feedback system used to check if the final goal
+    has been achieved.
     They must return retrieved data following the output schema, to ensure the LLM can parse it correctly.
     If data is not returned, the framework will not be able to update the blackboard with the new information and the
     generated prompt might contain outdated information.
     """
+
     is_validation_tool: bool = True
     # If True, the tool must provide images as its output under the key 'images' in format List[str]
     provide_images: bool = False

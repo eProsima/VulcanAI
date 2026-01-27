@@ -25,8 +25,8 @@ class Brand(str, Enum):
 
 
 class Agent:
-
     """Interface to operate the LLM."""
+
     def __init__(self, model_name: str, logger=None):
         self.brand, name = self._detect_brand(model_name)
         self.model = None
@@ -34,12 +34,8 @@ class Agent:
         self._load_model(name)
 
     def inference_plan(
-            self,
-            system_context: str,
-            user_prompt: str,
-            images: list[str],
-            history: list[tuple[str, str]]
-        ) -> GlobalPlan:
+        self, system_context: str, user_prompt: str, images: list[str], history: list[tuple[str, str]]
+    ) -> GlobalPlan:
         """
         Perform inference using the selected LLM model to generate a plan.
 
@@ -53,20 +49,12 @@ class Agent:
             raise RuntimeError("LLM model was not loaded correctly.")
 
         plan: GlobalPlan = self.model.plan_inference(
-            system_prompt=system_context,
-            user_prompt=user_prompt,
-            images=images,
-            history=history
+            system_prompt=system_context, user_prompt=user_prompt, images=images, history=history
         )
 
         return plan
 
-    def inference_goal(
-            self,
-            system_context: str,
-            user_prompt: str,
-            history: list[tuple[str, str]]
-        ) -> GoalSpec:
+    def inference_goal(self, system_context: str, user_prompt: str, history: list[tuple[str, str]]) -> GoalSpec:
         """
         Perform inference using the selected LLM model to generate a goal.
 
@@ -79,20 +67,18 @@ class Agent:
             raise RuntimeError("LLM model was not loaded correctly.")
 
         goal: GoalSpec = self.model.goal_inference(
-            system_prompt=system_context,
-            user_prompt=user_prompt,
-            history=history
+            system_prompt=system_context, user_prompt=user_prompt, history=history
         )
 
         return goal
 
     def inference_validation(
-            self,
-            system_context: str,
-            user_prompt: str,
-            images: list[str],
-            history: list[tuple[str, str]],
-        ) -> AIValidation:
+        self,
+        system_context: str,
+        user_prompt: str,
+        images: list[str],
+        history: list[tuple[str, str]],
+    ) -> AIValidation:
         """
         Perform inference using the selected LLM model to generate a validation.
 
@@ -106,10 +92,7 @@ class Agent:
             raise RuntimeError("LLM model was not loaded correctly.")
 
         validation: AIValidation = self.model.validation_inference(
-            system_prompt=system_context,
-            user_prompt=user_prompt,
-            images=images,
-            history=history
+            system_prompt=system_context, user_prompt=user_prompt, images=images, history=history
         )
 
         return validation
@@ -123,7 +106,7 @@ class Agent:
         """
         m = model_name.lower()
         if m.startswith("ollama-"):
-            return Brand.ollama, model_name[len("ollama-"):]
+            return Brand.ollama, model_name[len("ollama-") :]
         if m.startswith(("gpt-", "o")):
             return Brand.gpt, model_name
         if m.startswith(("gemini-", "gemma-")):
@@ -134,20 +117,20 @@ class Agent:
     def _load_model(self, model_name: str):
         if self.brand == Brand.gpt:
             from vulcanai.models.openai import OpenAIModel
-            self.logger.log_manager(f"Using OpenAI API with model: " + \
-                        f"[manager]{model_name}[/manager]")
+
+            self.logger.log_manager("Using OpenAI API with model: " + f"[manager]{model_name}[/manager]")
             self.model = OpenAIModel(model_name, self.logger)
 
         elif self.brand == Brand.gemini:
             from vulcanai.models.gemini import GeminiModel
-            self.logger.log_manager(f"Using Gemini API with model: " + \
-                        f"[manager]{model_name}[/manager]")
+
+            self.logger.log_manager("Using Gemini API with model: " + f"[manager]{model_name}[/manager]")
             self.model = GeminiModel(model_name, self.logger)
 
         elif self.brand == Brand.ollama:
             from vulcanai.models.ollama_model import OllamaModel
-            self.logger.log_manager(f"Using Ollama API with model: " + \
-                        f"[manager]{model_name}[/manager]")
+
+            self.logger.log_manager("Using Ollama API with model: " + f"[manager]{model_name}[/manager]")
             self.model = OllamaModel(model_name, self.logger)
 
         else:

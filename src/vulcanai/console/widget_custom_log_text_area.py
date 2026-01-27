@@ -13,11 +13,11 @@
 # limitations under the License.
 
 
-from collections import defaultdict, deque
-import pyperclip
 import re
 import threading
+from collections import defaultdict, deque
 
+import pyperclip
 from rich.style import Style
 from textual.widgets import TextArea
 
@@ -43,7 +43,6 @@ class CustomLogTextArea(TextArea):
     TAG_RE = re.compile(r"<(?P<tag>[A-Za-z0-9_# ]+)>(?P<body>.*?)</(?P=tag)>")
     # join tags
     TAG_TOKEN_RE = re.compile(r"</?[^>]+>")
-
 
     def __init__(self, **kwargs):
         super().__init__(read_only=True, **kwargs)
@@ -123,7 +122,7 @@ class CustomLogTextArea(TextArea):
         # Iterate over all tags in 'input_text'
         for m in self.TAG_TOKEN_RE.finditer(input_text):
             # Emit text between tags
-            text = input_text[pos:m.start()]
+            text = input_text[pos : m.start()]
             if text:
                 if stack:
                     combined = " ".join(stack)
@@ -253,7 +252,7 @@ class CustomLogTextArea(TextArea):
         # TAG_RE.finditer finds all tags in 'text'
         for m in self.TAG_RE.finditer(text):
             # Append text before the current tag
-            plain += text[cursor:m.start()]
+            plain += text[cursor : m.start()]
             # Get tag and body
             tag = m.group("tag")
             body = m.group("body")
@@ -280,17 +279,15 @@ class CustomLogTextArea(TextArea):
         # [EXECUTOR] Invoking 'move_turtle' with args: ...
         # [ROS] [INFO] Publishing message 1 to ...
         with self._lock:
-
             # Append via document API to keep row tracking consistent
             # Only add a newline before the new line if there is already content
             insert_text = ("\n" if self.document.text else "") + plain
             self.insert(insert_text, location=self.document.end)
 
             # Track styles for the new line (always at the end)
-            row = self._line_count
             self._line_count += 1
 
-            if (self._line_count > self.MAX_LINES):
+            if self._line_count > self.MAX_LINES:
                 self._highlights.pop(self._line_count - self.MAX_LINES, None)
 
             # Store styles

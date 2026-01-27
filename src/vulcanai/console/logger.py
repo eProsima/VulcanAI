@@ -13,19 +13,20 @@
 # limitations under the License.
 
 import re
-from typing import Protocol, Optional
+from typing import Optional, Protocol
 
 
 class LogSink(Protocol):
     """A default console that prints to standard output."""
-    def write(self, msg: str, color: str = "") -> None:
-        ...
+
+    def write(self, msg: str, color: str = "") -> None: ...
 
 
 class RichStdoutSink:
     def __init__(self, logger_theme) -> None:
         from rich.console import Console
         from rich.theme import Theme
+
         self.console = Console(theme=Theme(logger_theme))
 
     def write(self, msg: str, color: str = "") -> None:
@@ -33,24 +34,23 @@ class RichStdoutSink:
 
 
 class VulcanAILogger:
-
     """
     Logger class for VulcanAI components.
     Provides methods to log messages with different tags and colors.
     """
 
     vulcanai_theme = {
-            "registry": "#068399",
-            "manager": "#0d87c0",
-            "executor": "#15B606",
-            "vulcanai": "#56AA08",
-            "user": "#91DD16",
-            "validator": "#C49C00",
-            "tool": "#EB921E",
-            "error": "#FF0000",
-            "console": "#8F6296",
-            "warning": "#D8C412",
-        }
+        "registry": "#068399",
+        "manager": "#0d87c0",
+        "executor": "#15B606",
+        "vulcanai": "#56AA08",
+        "user": "#91DD16",
+        "validator": "#C49C00",
+        "tool": "#EB921E",
+        "error": "#FF0000",
+        "console": "#8F6296",
+        "warning": "#D8C412",
+    }
 
     _default_instance: Optional["VulcanAILogger"] = None
     _rich_markup = True
@@ -84,7 +84,7 @@ class VulcanAILogger:
         """
 
         # Matches [tag] or [/tag]
-        pattern = re.compile(r'\[(\/?)([^\]]+)\]')
+        pattern = re.compile(r"\[(\/?)([^\]]+)\]")
 
         def replace_tag(match):
             slash, tag = match.groups()
@@ -126,30 +126,30 @@ class VulcanAILogger:
 
     def log_manager(self, msg: str, error: bool = False, color: str = ""):
         if error:
-            prefix = f"[error][MANAGER] [ERROR][/error] "
+            prefix = "[error][MANAGER] [ERROR][/error] "
         else:
-            prefix = f"<bold>[manager][MANAGER][/manager]</bold> "
+            prefix = "<bold>[manager][MANAGER][/manager]</bold> "
 
         processed_msg = self.process_msg(msg, prefix=prefix, color=color)
         self.sink.write(processed_msg)
 
-    def log_executor(self, msg: str, error: bool = False, tool: bool = False, tool_name: str = '', color: str = ""):
+    def log_executor(self, msg: str, error: bool = False, tool: bool = False, tool_name: str = "", color: str = ""):
         if error:
-            prefix = f"[error][EXECUTOR] [ERROR][/error] "
+            prefix = "[error][EXECUTOR] [ERROR][/error] "
         elif tool:
             self.log_tool(msg, tool_name=tool_name)
             return
         else:
-            prefix = f"[executor][EXECUTOR][/executor] "
+            prefix = "[executor][EXECUTOR][/executor] "
 
         processed_msg = self.process_msg(msg, prefix=prefix, color=color)
         self.sink.write(processed_msg)
 
-    def log_tool(self, msg: str, tool_name: str = '', error: bool = False, color: str = ""):
+    def log_tool(self, msg: str, tool_name: str = "", error: bool = False, color: str = ""):
         if tool_name:
             tag = f"<bold>[TOOL <italic>{tool_name}</italic>]</bold>"
         else:
-            tag = '<bold>[TOOL]</bold>'
+            tag = "<bold>[TOOL]</bold>"
         if error:
             prefix = f"[error]{tag} [ERROR][/error] "
         else:
@@ -160,18 +160,18 @@ class VulcanAILogger:
 
     def log_registry(self, msg: str, error: bool = False, color: str = ""):
         if error:
-            prefix = f"[error][REGISTRY] [ERROR][/error] "
+            prefix = "[error][REGISTRY] [ERROR][/error] "
         else:
-            prefix = f"<bold>[registry][REGISTRY][/registry]</bold> "
+            prefix = "<bold>[registry][REGISTRY][/registry]</bold> "
 
         processed_msg = self.process_msg(msg, prefix=prefix, color=color)
         self.sink.write(processed_msg)
 
     def log_validator(self, msg: str, error: bool = False, color: str = ""):
         if error:
-            prefix = f"[error][VALIDATOR] [ERROR][/error] "
+            prefix = "[error][VALIDATOR] [ERROR][/error] "
         else:
-            prefix = f"[validator][VALIDATOR][/validator] "
+            prefix = "[validator][VALIDATOR][/validator] "
 
         processed_msg = self.process_msg(msg, prefix=prefix, color=color)
         self.sink.write(processed_msg)
@@ -195,7 +195,7 @@ class VulcanAILogger:
         self.sink.write(processed_msg)
 
     def log_user(self, msg: str):
-        prefix = f"<bold>[user][USER] >>>[/user]</bold> "
+        prefix = "<bold>[user][USER] >>>[/user]</bold> "
 
         processed_msg = self.process_msg(msg, prefix=prefix)
         self.sink.write(processed_msg)

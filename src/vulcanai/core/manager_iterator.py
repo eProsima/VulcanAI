@@ -16,8 +16,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
 from vulcanai.core.manager import ToolManager
-from vulcanai.core.plan_types import ArgValue, GlobalPlan, PlanNode, Step
-from vulcanai.core.plan_types import GoalSpec
+from vulcanai.core.plan_types import ArgValue, GlobalPlan, GoalSpec, PlanNode, Step
 from vulcanai.core.validator import PlanValidator
 from vulcanai.tools.tool_registry import ToolRegistry
 
@@ -33,17 +32,18 @@ class TimelineEvent(Enum):
 
 class IterativeManager(ToolManager):
     """Manager that implements iterative planning to re-adapt plans."""
+
     def __init__(
-            self,
-            model: str,
-            registry: Optional[ToolRegistry]=None,
-            validator: Optional[PlanValidator]=None,
-            k: int=5,
-            hist_depth: int = 3,
-            logger=None,
-            max_iters: int = 5,
-            step_timeout_ms: Optional[int] = None
-        ):
+        self,
+        model: str,
+        registry: Optional[ToolRegistry] = None,
+        validator: Optional[PlanValidator] = None,
+        k: int = 5,
+        hist_depth: int = 3,
+        logger=None,
+        max_iters: int = 5,
+        step_timeout_ms: Optional[int] = None,
+    ):
         super().__init__(model, registry, validator, k, max(3, hist_depth), logger)
 
         self.iter: int = 0
@@ -96,8 +96,10 @@ class IterativeManager(ToolManager):
                 # Get plan from LLM
                 plan = self.get_plan_from_user_request(user_text, context)
                 if not plan:
-                    self.logger.log_manager(f"Error getting plan from model", error=True)
-                    self._timeline.append({"iteration": self.iter, "event": TimelineEvent.PLAN_GENERATION_FAILED.value})
+                    self.logger.log_manager("Error getting plan from model", error=True)
+                    self._timeline.append(
+                        {"iteration": self.iter, "event": TimelineEvent.PLAN_GENERATION_FAILED.value}
+                    )
                     skip_verification_step = True
                     continue
                 plan_str = str(plan.plan)
@@ -114,7 +116,9 @@ class IterativeManager(ToolManager):
                         self.validator.validate(plan)
                     except Exception as e:
                         self.logger.log_manager(f"Plan validation error. Asking for new plan: {e}")
-                        self._timeline.append({"iteration": self.iter, "event": TimelineEvent.PLAN_NOT_VALID.value, "detail": str(e)})
+                        self._timeline.append(
+                            {"iteration": self.iter, "event": TimelineEvent.PLAN_NOT_VALID.value, "detail": str(e)}
+                        )
                         continue
 
                 # Set step timeouts if not set or too high
@@ -125,12 +129,14 @@ class IterativeManager(ToolManager):
 
                 # Execute plan
                 ret = self.execute_plan(plan)
-                self._timeline.append({
-                    "iteration": self.iter,
-                    "event": TimelineEvent.PLAN_EXECUTED.value,
-                    "plan": plan.summary,
-                    "result": ret.get("success", False),
-                })
+                self._timeline.append(
+                    {
+                        "iteration": self.iter,
+                        "event": TimelineEvent.PLAN_EXECUTED.value,
+                        "plan": plan.summary,
+                        "result": ret.get("success", False),
+                    }
+                )
 
                 # If execution was successful, return the result
                 if not ret.get("success", False):
@@ -140,7 +146,12 @@ class IterativeManager(ToolManager):
                 self.logger.log_manager(f"Error handling user request: {e}", error=True)
                 return {"error": str(e), "timeline": self._timeline}
 
-        return {"timeline": self._timeline, "success": self.bb.get("goal_achieved", False), "blackboard": self.bb.copy(), "plan": plan}
+        return {
+            "timeline": self._timeline,
+            "success": self.bb.get("goal_achieved", False),
+            "blackboard": self.bb.copy(),
+            "plan": plan,
+        }
 
     def _is_goal_achieved(self):
         """
@@ -158,7 +169,7 @@ class IterativeManager(ToolManager):
         Get context about the current iteration to include in the prompt.
         Blackboard state is not included here, as it must be added separately when needed.
         """
-        context_template="""\
+        context_template = """\
 - Iteration: {iteration}
 - Goal used: {goal}
 - Last timeline events:
@@ -169,11 +180,16 @@ class IterativeManager(ToolManager):
 
         timeline_events = ""
         if self._timeline:
-            for e in self._timeline[-self._timeline_events_printed:]:
-                if e.get('event', "") == TimelineEvent.PLAN_EXECUTED.value:
-                    timeline_events += f"  - Iteration {e['iteration']}: {e['event']} - Plan: {e.get('plan', 'N/A')} - Result: {'Success' if e.get('result', False) else 'Failure'}\n"
-                elif e.get('event', "") == TimelineEvent.PLAN_NOT_VALID.value:
-                    timeline_events += f"  - Iteration {e['iteration']}: {e['event']} - Detail: {e.get('detail', 'N/A')}\n"
+            for e in self._timeline[-self._timeline_events_printed :]:
+                if e.get("event", "") == TimelineEvent.PLAN_EXECUTED.value:
+                    timeline_events += (
+                        f"  - Iteration {e['iteration']}: {e['event']} - Plan: {e.get('plan', 'N/A')}"
+                        f" - Result: {'Success' if e.get('result', False) else 'Failure'}\n"
+                    )
+                elif e.get("event", "") == TimelineEvent.PLAN_NOT_VALID.value:
+                    timeline_events += (
+                        f"  - Iteration {e['iteration']}: {e['event']} - Detail: {e.get('detail', 'N/A')}\n"
+                    )
                 else:
                     timeline_events += f"  - Iteration {e['iteration']}: {e['event']}\n"
         else:
@@ -184,7 +200,7 @@ class IterativeManager(ToolManager):
             iteration=self.iter,
             goal=self.goal.summary if self.goal else "N/A",
             timeline_events=timeline_events,
-            bb_snapshot="{bb_snapshot}"  # Placeholder for blackboard snapshot
+            bb_snapshot="{bb_snapshot}",  # Placeholder for blackboard snapshot
         )
         return context
 
@@ -213,7 +229,9 @@ class IterativeManager(ToolManager):
             user_context=user_context,
         )
 
-        user_prompt = "## User Request: " + user_text + "\nContext:\n" + self._get_iter_context().format(bb_snapshot=bb_snapshot)
+        user_prompt = (
+            "## User Request: " + user_text + "\nContext:\n" + self._get_iter_context().format(bb_snapshot=bb_snapshot)
+        )
 
         return system_prompt, user_prompt
 
@@ -239,10 +257,7 @@ class IterativeManager(ToolManager):
         user_context = self._parse_user_context()
 
         system_prompt = self._get_goal_prompt_template()
-        system_prompt = system_prompt.format(
-            user_context=user_context,
-            tools_text=tools_text
-        )
+        system_prompt = system_prompt.format(user_context=user_context, tools_text=tools_text)
         user_prompt = "User request:\n" + user_text
 
         return system_prompt, user_prompt
@@ -270,18 +285,26 @@ class IterativeManager(ToolManager):
         template = """
 You are a goal generator of a robotic/agent system.
 Your objective is to produce the final goal to be verified during iterative execution from the user request.
-You can access the blackboard (bb) to check the current state of the system, which is updated by the execution of verification tools.
+You can access the blackboard (bb) to check the current state of the system, which is updated by the execution
+of verification tools.
 Rules:
 - You have two modes to choose from for goal verification: 'perceptual' and 'objective'.
-  1) Objective mode uses deterministic predicates based on validation tools results to verify if the goal has been achieved.
-  2) Perceptual mode uses AI to verify if the goal has been achieved based on evidence (e.g., images) or blackboard data.
-- Whenever possible, prefer 'objective' mode as it is more reliable and faster to evaluate. Rely on 'perceptual' mode when the task requires a higher level of abstraction and cannot be easily converted to objective predicates.
-- Add to 'verify_tools' any tool needed to verify the goal. It will be executed to update the blackboard before checking the success predicates. This applies to both modes.
+  1) Objective mode uses deterministic predicates based on validation tools results to verify if the goal has
+     been achieved.
+  2) Perceptual mode uses AI to verify if the goal has been achieved based on evidence (e.g., images) or blackboard
+     data.
+- Whenever possible, prefer 'objective' mode as it is more reliable and faster to evaluate. Rely on 'perceptual' mode
+  when the task requires a higher level of abstraction and cannot be easily converted to objective predicates.
+- Add to 'verify_tools' any tool needed to verify the goal. It will be executed to update the blackboard before
+  checking the success predicates. This applies to both modes.
 - When using 'objective' mode, the 'success_predicates' must be simple boolean expressions over the blackboard.
 - If no tool is useful to verify the goal rely on 'perceptual' mode.
-- When using 'perceptual' mode, provide a 'evidence_bb_keys' list containing blackboard keys with relevant evidence to consider.
-- Use "{{{{bb.tool_name.key}}}}" to reference tools results. This MUST be used in 'success_predicates'. It can also be used in 'verify_tools' arguments.
-For example, if tool 'get_pose' outputs {{"pose": [1.0, 2.0]}}, you can pass reference it as "{{{{bb.get_pose.pose}}}}".
+- When using 'perceptual' mode, provide a 'evidence_bb_keys' list containing blackboard keys with relevant evidence
+  to consider.
+- Use "{{{{bb.tool_name.key}}}}" to reference tools results. This MUST be used in 'success_predicates'. It can also
+  be used in 'verify_tools' arguments.
+For example, if tool 'get_pose' outputs {{"pose": [1.0, 2.0]}}, you can pass reference it as
+"{{{{bb.get_pose.pose}}}}".
 
 {user_context}
 ## Available tools:
@@ -316,12 +339,14 @@ goal = GoalSpec(
 You are a iterative planner for a robotic/agent system.
 Your objective is to produce a plan that will make progress toward the user's goal in the current iteration.
 Rules:
-- You will produce ONE actionable plan at a time. Prefer the simplest plan that makes tangible progress toward the goal.
+- You will produce ONE actionable plan at a time. Prefer the simplest plan that makes tangible progress toward the
+  goal.
 - You must follow the logic execute, observe, and then re-plan if needed.
 - System context will be provided as a blackboard that contains the current state of the system as outputs of tools.
 - Keep the plan minimal and focused on the next immediate progress.
 - CONTEXT will be provided about the current state of the system and previous iterations.
-- If the last step failed, propose a different approach or tool/arguments and include a brief rationale of what will be done differently (as a comment-like line in the Summary).
+- If the last step failed, propose a different approach or tool/arguments and include a brief rationale of what will
+  be done differently (as a comment-like line in the Summary).
 - Add only optional execution control parameters if strictly necessary or requested by the user.
 - Use "{{{{bb.tool_name.key}}}}" to pass outputs from previous steps if relevant.
 For example, if tool 'detect_object' outputs {{"pose": [1.0, 2.0]}},
@@ -406,8 +431,8 @@ validation = AIValidation(
                     steps=[
                         Step(
                             tool="name_of_tool",  # Placeholder tool name
-                            args=[],              # Placeholder args
-                            timeout_ms=self.step_timeout_ms
+                            args=[],  # Placeholder args
+                            timeout_ms=self.step_timeout_ms,
                         ),
                     ],
                 ),
@@ -443,7 +468,10 @@ validation = AIValidation(
 
         elif mode == "perceptual":
             # Check if goal is already achieved using AI inference
-            instruction = f"Check if the user goal has been achieved based on the evidence provided. User goal: '{self.goal.summary}'"
+            instruction = (
+                f"Check if the user goal has been achieved based on the evidence provided."
+                f" User goal: '{self.goal.summary}'"
+            )
             evidence_keys = self.goal.evidence_bb_keys
             # Gather evidence from blackboard
             evidence = {}
@@ -453,12 +481,16 @@ validation = AIValidation(
                 tool = self.registry.tools.get(verify_tool.tool)
                 if tool:
                     evidence[tool.name] = self.bb.get(tool.name, {})
-                # Note that provide_images is only available for ValidationTool, needs to be checked after verifying its a validation tool
+                # Note that provide_images is only available for ValidationTool, needs to be checked after verifying
+                # its a validation tool
                 if tool and tool.is_validation_tool and tool.provide_images:
                     images_paths.extend(self.bb.get(tool.name, {}).get("images", []))
             # Build prompt to check if goal is achieved
             system_prompt, user_prompt = self._build_validation_prompt(instruction, evidence)
-            self.logger.log_manager(f"Running perceptual verification with instruction: {instruction} - Evidence: {evidence_keys} - Images: {images_paths}")
+            self.logger.log_manager(
+                f"Running perceptual verification with instruction: {instruction} - Evidence: {evidence_keys}"
+                f" - Images: {images_paths}"
+            )
 
             try:
                 validation = self.llm.inference_validation(system_prompt, user_prompt, images_paths, self.history)
@@ -482,7 +514,7 @@ validation = AIValidation(
         it is the first iteration (to set initial state).
         """
         if self._timeline and len(self._timeline) > 0:
-            last_event = self._timeline[-1].get('event', "N/A")
+            last_event = self._timeline[-1].get("event", "N/A")
             if last_event not in (TimelineEvent.PLAN_EXECUTED.value, TimelineEvent.GOAL_SET.value):
                 self.logger.log_manager("Skipping verification tools as no plan has been executed in this iteration.")
                 return
@@ -500,7 +532,10 @@ validation = AIValidation(
                 result = self.execute_plan(self._single_tool_plan)
                 if not result.get("success"):
                     self.bb[tool_name] = {"error": "Validation tool execution failed"}
-                    self.logger.log_manager(f"Error running verification tool '{tool_name}'. BB entry of this tool will be empty.", error=True)
+                    self.logger.log_manager(
+                        f"Error running verification tool '{tool_name}'. BB entry of this tool will be empty.",
+                        error=True,
+                    )
             except Exception as e:
                 self.logger.log_manager(f"Error running verification tool '{tool_name}': {e}", error=True)
                 continue
@@ -510,8 +545,8 @@ validation = AIValidation(
         last_detail = ""
         last_event = "N/A"
         if self._timeline and len(self._timeline) > 0:
-            last_event = self._timeline[-1].get('event', "N/A")
-            if self._timeline[-1].get('detail', None):
+            last_event = self._timeline[-1].get("event", "N/A")
+            if self._timeline[-1].get("detail", None):
                 last_detail = f" - Details: {self._timeline[-1].get('detail', '')}"
 
         history_plan = f"Plan summary: {plan_summary} - Iteration result: {last_event}{last_detail}"
@@ -521,4 +556,4 @@ validation = AIValidation(
             if self.history_depth <= 0:
                 self.history = []
             else:
-                self.history = self.history[-self.history_depth:]
+                self.history = self.history[-self.history_depth :]

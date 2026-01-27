@@ -14,10 +14,9 @@
 
 from textual import events
 from textual.app import ComposeResult
-from textual.containers import VerticalScroll, Horizontal, Vertical, Container
+from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Input, Checkbox, Button, Label, RadioSet, RadioButton
-
+from textual.widgets import Button, Checkbox, Input, Label, RadioButton, RadioSet
 
 
 class ReverseSearchModal(ModalScreen[str | None]):
@@ -143,9 +142,8 @@ class ReverseSearchModal(ModalScreen[str | None]):
             event.stop()
             return
 
+
 class CheckListModal(ModalScreen[list[str] | None]):
-
-
     CSS = """
     CheckListModal {
         align: center middle;
@@ -210,10 +208,7 @@ class CheckListModal(ModalScreen[list[str] | None]):
         self.set_focus(first_cb)
 
 
-
-
 class RadioListModal(ModalScreen[str | None]):
-
     CSS = """
     RadioListModal {
         align: center middle;
@@ -257,11 +252,7 @@ class RadioListModal(ModalScreen[str | None]):
             with VerticalScroll(classes="radio-list"):
                 with RadioSet(id="radio-set"):
                     for i, line in enumerate(self.lines):
-                        yield RadioButton(
-                            line,
-                            id=f"rb{i}",
-                            value=(i == self.default_index)
-                        )
+                        yield RadioButton(line, id=f"rb{i}", value=(i == self.default_index))
 
             # Buttons
             with Horizontal(classes="btns"):
@@ -276,7 +267,7 @@ class RadioListModal(ModalScreen[str | None]):
         if event.button.id == "submit":
             radioset = self.query_one("#radio-set", RadioSet)
             selected = radioset.pressed_index
-            if selected != None:
+            if selected is not None:
                 self.dismiss(selected)
         else:
             self.dismiss(None)

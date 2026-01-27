@@ -59,9 +59,11 @@ class DummyValidationTool(ValidationTool):
 
 class FakeStepBase:
     """Replica of StepBase class with tool name and args."""
+
     def __init__(self, tool: str, args: list[ArgValue]):
         self.tool = tool
         self.args = args
+
 
 class DummyImageValidationTool(ValidationTool):
     def __init__(self, name, description="desc", input_schema=None, output_schema=None, output="result"):
@@ -81,19 +83,13 @@ class DummyImageValidationTool(ValidationTool):
 
 class MockGoalSpec:
     def __init__(
-            self,
-            summary="goal",
-            mode="objective",
-            success_predicates=None,
-            verify_tools=None,
-            evidence_bb_keys=None
-        ):
+        self, summary="goal", mode="objective", success_predicates=None, verify_tools=None, evidence_bb_keys=None
+    ):
         self.summary = summary
         self.mode = mode
         self.success_predicates = success_predicates or []
         self.verify_tools: list[FakeStepBase] = verify_tools or []
         self.evidence_bb_keys = evidence_bb_keys or []
-
 
     def __str__(self) -> str:
         lines = []
@@ -120,6 +116,7 @@ class MockAIValidation:
 
 class FakeRegistry:
     """Mimics ToolRegistry enough for top_k() and tools{} lookups."""
+
     def __init__(self, tools=None):
         self.tools = {t.name: t for t in (tools or [])}
 
@@ -130,6 +127,7 @@ class FakeRegistry:
 
 class MockAgent:
     """Mock agent that records prompts passed to inference_plan() and inference_goal()."""
+
     def __init__(self, plans=[], goal=None, validation=None, success_validation=0, logger=None):
         """
         :param plans: list[GlobalPlan] to return on successive inference_plan() calls
@@ -138,10 +136,14 @@ class MockAgent:
         self.plans = list(plans)
         self.goal = goal
         self.validation = validation
-        self.inference_calls = []   # List of dicts: {"system": str, "user": str, "images": list, "history": list}
-        self.goal_calls = []        # Same for inference_goal
-        self.validation_calls = []  # Same for inference_validation. Inference validation is only called if goal is 'perceptual'
-        # If >0, number of successive validation calls needed to return success=True. Any call before that returns success=False. First call is 0.
+        # List of dicts: {"system": str, "user": str, "images": list, "history": list}
+        self.inference_calls = []
+        # Same for inference_goal
+        self.goal_calls = []
+        # Same for inference_validation. Inference validation is only called if goal is 'perceptual'
+        self.validation_calls = []
+        # If >0, number of successive validation calls needed to return success=True.
+        # Any call before that returns success = False. First call is 0.
         self.success_validation = success_validation
 
     def inference_plan(self, system_prompt, user_prompt, images, history):
@@ -158,7 +160,9 @@ class MockAgent:
         return self.goal
 
     def inference_validation(self, system_prompt, user_prompt, images, history):
-        self.validation_calls.append({"system": system_prompt, "user": user_prompt, "images": list(images), "history": list(history)})
+        self.validation_calls.append(
+            {"system": system_prompt, "user": user_prompt, "images": list(images), "history": list(history)}
+        )
         if self.success_validation > 0:
             self.success_validation -= 1
             self.validation.success = False
@@ -180,9 +184,11 @@ def make_single_step_plan(summary="plan", tool="dummy_tool", key="arg", val="x",
         ],
     )
 
+
 #################
 ### Fixtures
 #################
+
 
 class ListSink:
     def __init__(self):
@@ -191,12 +197,14 @@ class ListSink:
     def write(self, msg: str, color: str = "") -> None:
         self.lines.append(msg)
 
+
 @pytest.fixture
 def logger():
     sink = ListSink()
     log = VulcanAILogger(sink=sink)
     log.set_sink(sink)
     return log
+
 
 @pytest.fixture(autouse=True)
 def patch_core_symbols(monkeypatch):
@@ -205,6 +213,7 @@ def patch_core_symbols(monkeypatch):
 
     # Patch Agent so ToolManager(self.llm = Agent(...)) doesn't spin a real model
     monkeypatch.setattr(f"{target_mod}.Agent", MockAgent, raising=True)
+
 
 @pytest.fixture
 def base_manager(logger, monkeypatch):
@@ -228,6 +237,7 @@ def base_manager(logger, monkeypatch):
     # Initialize blackboard iteration counter
     mgr.bb["iteration"] = 0
     original_execute_plan = mgr.execute_plan
+
     # Each plan execution advances iteration by 1 and "fails" to force another iteration
     def exec_wrapper(_plan):
         ret = original_execute_plan(_plan)
@@ -236,12 +246,15 @@ def base_manager(logger, monkeypatch):
         for h in mgr._after_execute_hooks:
             h(_plan, ret)
         return ret
+
     monkeypatch.setattr(mgr, "execute_plan", exec_wrapper, raising=True)
     return mgr
+
 
 #################
 ### Tests
 #################
+
 
 def test_prompts_reflect_bb_updates_across_iterations(base_manager):
     """
@@ -285,7 +298,7 @@ def test_prompts_reflect_bb_updates_across_iterations(base_manager):
     # After iter 1 execution, BB should contain dummy_tool result and must show up in iter 2 prompt
     assert "dummy_tool_1" not in first_user_prompt
     assert "dummy_tool_1" in second_user_prompt
-    assert "out1" in second_user_prompt      # Output from dummy_tool_1 run in iter 1
+    assert "out1" in second_user_prompt  # Output from dummy_tool_1 run in iter 1
     assert "out2" not in second_user_prompt  # Output from dummy_tool_2
 
 
@@ -299,7 +312,9 @@ def test_validation_tools_are_called_before_each_iteration(base_manager):
     goal = MockGoalSpec(
         summary="test validation tools are called",
         mode="objective",
-        success_predicates=["{{bb.iteration}} >= 4"],  # As we have validation tool, two bb.iterations are called per plan iteration (validation and plan)
+        success_predicates=[
+            "{{bb.iteration}} >= 4"
+        ],  # As we have validation tool, two bb.iterations are called per plan iteration (validation and plan)
         verify_tools=[FakeStepBase("dummy_validation", args=[])],
     )
 
@@ -313,9 +328,12 @@ def test_validation_tools_are_called_before_each_iteration(base_manager):
 
     # Capture plans passed to execute_plan to check if the timeout was applied
     captured_plans = []
+
     def capture_plan_hook(plan, exec_result):
         import copy
+
         captured_plans.append(copy.deepcopy(plan))
+
     mgr._after_execute_hooks.append(capture_plan_hook)
 
     # Run
@@ -346,7 +364,8 @@ def test_validation_tools_providing_images_are_handled_in_perceptual(base_manage
     Test that validation tools that provide images are correctly handled and their images
     are passed to the next inference_plan() call if the goal mode is 'perceptual'.
     1) The validation tool must be called before each iteration.
-    2) If the goal mode is 'perceptual', the images provided by the validation tool must be passed to the next inference_plan() call.
+    2) If the goal mode is 'perceptual', the images provided by the validation tool must be passed to the next
+       inference_plan() call.
     """
     mgr = base_manager
 
@@ -354,7 +373,9 @@ def test_validation_tools_providing_images_are_handled_in_perceptual(base_manage
     goal = MockGoalSpec(
         summary="test validation tools providing images are correctly handled",
         mode="perceptual",
-        success_predicates=["{{bb.iteration}} >= 4"],  # As we have validation tool, two bb.iterations are called per plan iteration (validation and plan)
+        success_predicates=[
+            "{{bb.iteration}} >= 4"
+        ],  # As we have validation tool, two bb.iterations are called per plan iteration (validation and plan)
         verify_tools=[FakeStepBase("dummy_image_validation", args=[])],
     )
 
@@ -414,9 +435,12 @@ def test_iterative_manager_applies_timeout_to_all_steps(base_manager):
 
     # Capture plans passed to execute_plan to check if the timeout was applied
     captured_plans = []
+
     def capture_plan_hook(plan, exec_result):
         import copy
+
         captured_plans.append(copy.deepcopy(plan))
+
     mgr._after_execute_hooks.append(capture_plan_hook)
 
     # Run
@@ -466,4 +490,6 @@ def test_repeated_plan_is_detected(base_manager):
     assert "timeline" in result
 
     # Ensure a PLAN_REPEATED event exists
-    assert any(e["event"] == TimelineEvent.PLAN_REPEATED.value for e in result["timeline"]), f"Timeline: {result['timeline']}"
+    assert any(e["event"] == TimelineEvent.PLAN_REPEATED.value for e in result["timeline"]), (
+        f"Timeline: {result['timeline']}"
+    )

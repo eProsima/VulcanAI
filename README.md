@@ -107,3 +107,19 @@ To do so, source Vulcanexus and then run the following command in the terminal w
 source /opt/vulcanexus/${VULCANEXUS_DISTRO}/setup.bash && \
 export PYTHONPATH='/<path/to/vulcanai_venv>/lib/python3.x/site-packages':$PYTHONPATH
 ```
+
+## Developers
+
+This repository uses `ruff` as formatter and linter.
+Use the following commands to ensure that any contribution follows the projects style guidelines:
+
+```bash
+ruff check --fix .
+ruff format .
+```
+
+Python package `ruff` can be installed directly with:
+
+```bash
+python3 -m pip install ruff==0.14.13
+```

@@ -13,20 +13,15 @@
 # limitations under the License.
 
 import re
+
 from vulcanai.core.plan_types import GlobalPlan, PlanNode, Step
 
-TYPE_ALIAS = {
-    "int": int,
-    "integer": int,
-    "float": float,
-    "bool": bool,
-    "boolean": bool,
-    "str": str,
-    "string": str
-}
+TYPE_ALIAS = {"int": int, "integer": int, "float": float, "bool": bool, "boolean": bool, "str": str, "string": str}
+
 
 class PlanValidator:
     """Validates and optionally augments a plan before execution."""
+
     def __init__(self, registry):
         self.registry = registry
 
@@ -60,7 +55,10 @@ class PlanValidator:
         tool = self.registry.tools.get(step.tool)
         if tool.input_schema:
             if len(step.args) != len(tool.input_schema):
-                raise ValueError(f"Tool '{tool.name}' expects {len(tool.input_schema)} arguments, but {len(step.args)} were provided.")
+                raise ValueError(
+                    f"Tool '{tool.name}' expects {len(tool.input_schema)} arguments,"
+                    f" but {len(step.args)} were provided."
+                )
             for arg in step.args:
                 if arg.key not in {k for d in tool.input_schema for k in d}:
                     raise ValueError(f"Argument '{arg.key}' not defined in tool '{tool.name}' input schema.")
@@ -71,14 +69,21 @@ class PlanValidator:
                     if bb_items:
                         bb_correct_format = re.findall(r"\{\{(bb\..*?)\}\}", arg.val)
                         if len(bb_items) != len(bb_correct_format):
-                            raise ValueError(f"Blackboard reference in argument '{arg.key}' of tool '{tool.name}' is incorrectly formatted: '{arg.val}'")
+                            raise ValueError(
+                                f"Blackboard reference in argument '{arg.key}' of tool '{tool.name}'"
+                                f" is incorrectly formatted: '{arg.val}'"
+                            )
                     else:
-                        # If there are no blackboard references, ensure the argument is of string type, as it must adhere to the schema
+                        # If there are no blackboard references, ensure the argument is of string type, as it must
+                        # adhere to the schema
                         for schema in tool.input_schema:
                             if arg.key in schema:
                                 is_string_type = schema[1] in ["str", "string"]
                                 if not is_string_type:
-                                    raise ValueError(f"Argument '{arg.key}' of tool '{tool.name}' expects type '{TYPE_ALIAS.get(schema[1])}', but got '{type(arg.val).__name__}'.")
+                                    raise ValueError(
+                                        f"Argument '{arg.key}' of tool '{tool.name}' expects type"
+                                        f" '{TYPE_ALIAS.get(schema[1])}', but got '{type(arg.val).__name__}'."
+                                    )
                 # Check type if static value for non-string types
                 else:
                     expected_type = None
@@ -87,13 +92,18 @@ class PlanValidator:
                             print(f"Schema for arg '{arg.key}' in tool '{tool.name}': {schema}")  # Debug print
                             # Use TYPE_ALIAS to map string type names to actual types
                             expected_type = TYPE_ALIAS.get(schema[1])
-                            print(f"Expected type for arg '{arg.key}' in tool '{tool.name}': {expected_type}")  # Debug print
+                            print(
+                                f"Expected type for arg '{arg.key}' in tool '{tool.name}': {expected_type}"
+                            )  # Debug print
                             break
                     if expected_type and not isinstance(arg.val, expected_type):
-                        if expected_type == float and isinstance(arg.val, int):
+                        if expected_type is float and isinstance(arg.val, int):
                             # Allow int to float conversion
                             continue
-                        raise ValueError(f"Argument '{arg.key}' of tool '{tool.name}' expects type '{expected_type.__name__}', but got '{type(arg.val).__name__}'.")
+                        raise ValueError(
+                            f"Argument '{arg.key}' of tool '{tool.name}' expects type '{expected_type.__name__}',"
+                            f" but got '{type(arg.val).__name__}'."
+                        )
         else:
             if step.args:
                 raise ValueError(f"Tool '{tool.name}' does not accept arguments, but arguments were provided.")

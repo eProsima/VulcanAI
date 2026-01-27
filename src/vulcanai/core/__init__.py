@@ -31,16 +31,18 @@ _EXPORTS = {
 
 __all__ = list(_EXPORTS.keys())
 
+
 def __getattr__(name: str):
     target = _EXPORTS.get(name)
     if not target:
         raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
-    module_name, attr_name = target.split(':')
+    module_name, attr_name = target.split(":")
     if module_name.startswith("."):
         module = import_module(module_name, package=__name__)
     else:
         module = import_module(module_name)
     return getattr(module, attr_name)
+
 
 def __dir__() -> list[str]:
     """Make dir() show the public API."""

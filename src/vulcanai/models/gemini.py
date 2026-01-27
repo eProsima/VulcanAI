@@ -12,23 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from google import genai
-from google.genai import types as gtypes
-from typing import Any, Dict, Iterable, Optional, Type, TypeVar
 import mimetypes
 import os
 import time
+from typing import Iterable, Optional, Type, TypeVar
+
+from google import genai
+from google.genai import types as gtypes
 
 from vulcanai.core.plan_types import AIValidation, GlobalPlan, GoalSpec
 from vulcanai.models.model import IModel, IModelHooks
 
-T = TypeVar('T', GlobalPlan, GoalSpec, AIValidation)
+T = TypeVar("T", GlobalPlan, GoalSpec, AIValidation)
 
 
 class GeminiModel(IModel):
+    """Wrapper for most of Google models, Gemini mainly."""
 
-    """ Wrapper for most of Google models, Gemini mainly. """
-    def __init__(self, model_name:str, logger=None, hooks: Optional[IModelHooks] = None):
+    def __init__(self, model_name: str, logger=None, hooks: Optional[IModelHooks] = None):
         super().__init__()
         self.logger = logger
         self.model_name = model_name
@@ -76,7 +77,7 @@ class GeminiModel(IModel):
         # Notify hooks of request start
         try:
             self.hooks.on_request_start()
-        except Exception as e:
+        except Exception:
             pass
 
         response = self.model.models.generate_content(
@@ -90,13 +91,14 @@ class GeminiModel(IModel):
         try:
             parsed_response = response.parsed
         except Exception as e:
-            self.logger.log_manager(f"ERROR. Failed to get parsed goal from Gemini response, " + \
-                        f"falling back to text: {e}", error=True)
+            self.logger.log_manager(
+                "ERROR. Failed to get parsed goal from Gemini response, " + f"falling back to text: {e}", error=True
+            )
         finally:
             # Notify hooks of request end
             try:
                 self.hooks.on_request_end()
-            except Exception as e:
+            except Exception:
                 pass
 
         # Fallback to get GoalSpec from text if the parsed field is not available
@@ -109,24 +111,27 @@ class GeminiModel(IModel):
 
             try:
                 parsed_response = GoalSpec.model_validate_json(raw)
-            except Exception as e:
+            except Exception:
                 try:
                     import json
+
                     parsed_response = GoalSpec(**json.loads(raw))
                 except Exception as e:
-                    self.logger.log_manager(f"ERROR. Failed to parse raw {response_cls.__name__} JSON: {e}",
-                                error=True)
+                    self.logger.log_manager(
+                        f"ERROR. Failed to parse raw {response_cls.__name__} JSON: {e}", error=True
+                    )
         end = time.time()
         self.logger.log_manager(f"Gemini response time: {end - start:.3f} seconds")
         usage = getattr(response, "usage_metadata", None)
         if usage:
             input_tokens = usage.prompt_token_count
             output_tokens = usage.candidates_token_count
-            self.logger.log_manager(f"Prompt tokens: [manager]{input_tokens}[/manager], " + \
-                        f"Completion tokens: [manager]{output_tokens}[/manager]")
+            self.logger.log_manager(
+                f"Prompt tokens: [manager]{input_tokens}[/manager], "
+                + f"Completion tokens: [manager]{output_tokens}[/manager]"
+            )
 
         return parsed_response
-
 
     def _build_user_content(self, user_text: str, images: Optional[Iterable[str]]) -> list[gtypes.Part]:
         """Compose user content list with text first and optional images as image_url parts."""
@@ -135,27 +140,33 @@ class GeminiModel(IModel):
             for image_path in images:
                 if isinstance(image_path, str) and image_path.startswith("http"):
                     import requests
+
                     img = requests.get(image_path)
                     if img.status_code != 200:
-                        self.logger.log_manager(f"ERROR. Failed to fetch image from URL '{image_path}' ",
-                                    error=True)
+                        self.logger.log_manager(f"ERROR. Failed to fetch image from URL '{image_path}' ", error=True)
                         continue
-                    content.append(gtypes.Part.from_bytes(data=img.content, mime_type=img.headers.get("Content-Type", "image/png")))
+                    content.append(
+                        gtypes.Part.from_bytes(
+                            data=img.content, mime_type=img.headers.get("Content-Type", "image/png")
+                        )
+                    )
                 else:
                     try:
                         img_bytes = self._read_image(image_path)
                         mime = mimetypes.guess_type(image_path)[0] or "image/png"
-                        content.append(gtypes.Part.from_bytes(
-                            data=img_bytes,
-                            mime_type=mime,
-                        ))
+                        content.append(
+                            gtypes.Part.from_bytes(
+                                data=img_bytes,
+                                mime_type=mime,
+                            )
+                        )
                     except Exception as e:
                         # Fail soft on a single bad image but continue with others
 
-                        self.logger.log_manager(f"Fail soft. Image '{image_path}' could not be encoded: {e}",
-                                    error=True)
+                        self.logger.log_manager(
+                            f"Fail soft. Image '{image_path}' could not be encoded: {e}", error=True
+                        )
         return content
-
 
     def _build_messages(
         self,
@@ -169,7 +180,11 @@ class GeminiModel(IModel):
         if history:
             for user_text, plan_summary in history:
                 messages.append(gtypes.Content(role="user", parts=[gtypes.Part.from_text(text=user_text)]))
-                messages.append(gtypes.Content(role="assistant", parts=[gtypes.Part.from_text(text=f"Action plan: {plan_summary}")]))
+                messages.append(
+                    gtypes.Content(
+                        role="assistant", parts=[gtypes.Part.from_text(text=f"Action plan: {plan_summary}")]
+                    )
+                )
 
         # Append current user turn (text + images)
         messages.append(gtypes.Content(role="user", parts=user_content))
