@@ -35,15 +35,6 @@ from vulcanai.console.widget_custom_log_text_area import CustomLogTextArea
 from vulcanai.console.widget_spinner import SpinnerStatus
 
 
-from prompt_toolkit import PromptSession
-from rich.progress import Progress, SpinnerColumn, TextColumn
-from vulcanai.models.model import IModelHooks
-from vulcanai.console.logger import console, VulcanAILogger
-
-
-
-
-
 class TextualLogSink:
     """A default console that prints to standard output."""
 
@@ -170,11 +161,14 @@ class VulcanConsole(App):
         # Current index in the tab matches
         self.tab_index = 0
 
-        self.manager.register_tools_from_entry_points("vulcanai.tools.default_tools")
+        # Terminal qol
+        self.history = []
 
-        self.manager.bb["console"] = self
-        self.logger = VulcanAILogger.log_manager
+        # Streaming task control
         self.stream_task = None
+        # Suggestion index for RadioListModal
+        self.suggestion_index = -1
+        self.suggestion_index_changed = threading.Event()
 
 
     def set_stream_task(self, input_stream):
@@ -185,19 +179,6 @@ class VulcanConsole(App):
         """
 
         self.stream_task = input_stream
-
-    def run(self):
-        self.print("VulcanAI Interactive Console")
-        self.print("Type 'exit' to quit.\n")
-
-        # Terminal qol
-        self.history = []
-
-        # Streaming task control
-        self.stream_task = None
-        # Suggestion index for RadioListModal
-        self.suggestion_index = -1
-        self.suggestion_index_changed = threading.Event()
 
     async def on_mouse_down(self, event: MouseEvent) -> None:
         """
@@ -277,7 +258,6 @@ class VulcanConsole(App):
         Blocking operations (file I/O) run in executor, non-blocking in event loop.
         """
 
-        # Initialize manager (potentially blocking, run in executor)
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self.init_manager)
 

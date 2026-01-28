@@ -22,12 +22,6 @@ import threading
 import time
 
 from textual.markup import escape  # To remove potential errors in textual terminal
-# sipnner
-from textual.timer import Timer
-import rclpy
-import os
-from typing import List, Optional
-import threading
 
 class StreamToTextual:
     """
@@ -67,7 +61,12 @@ class SpinnerHook:
     def on_request_end(self):
         self.spinner_status.stop()
 
+<<<<<<< HEAD
 def attach_ros_logger_to_console(console):
+=======
+
+def attach_ros_logger_to_console(console, node):
+>>>>>>> dc8f6d1 ([#23897] Fixed rebase changes)
     """
     Redirect ALL rclpy RcutilsLogger output (nodes + executor + rclpy internals)
     to a Textual console.
@@ -126,6 +125,7 @@ def attach_ros_logger_to_console(console):
     RcutilsLogger.log = patched_log
     RcutilsLogger._textual_patched = True
 
+
 def common_prefix(strings: str) -> str:
     if not strings:
         return ""
@@ -151,6 +151,7 @@ def common_prefix(strings: str) -> str:
             common_prefix = tmp
 
     return common_prefix, commands
+
 
 async def run_streaming_cmd_async(
     console, args: list[str], max_duration: float = 60, max_lines: int = 1000, echo: bool = True, tool_name=""
@@ -180,7 +181,7 @@ async def run_streaming_cmd_async(
             if echo:
                 line_processed = escape(line)
                 console.add_line(line_processed)
-       # Count the line
+            # Count the line
             line_count += 1
             if max_lines is not None and line_count >= max_lines:
                 console.logger.log_tool(f"[tool]Stopping:[/tool] Reached max_lines = {max_lines}", tool_name=tool_name)
