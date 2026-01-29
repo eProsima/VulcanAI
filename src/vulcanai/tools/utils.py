@@ -17,143 +17,10 @@ import asyncio
 import difflib
 import heapq
 import subprocess
-import sys
-import threading
 import time
 
 from textual.markup import escape  # To remove potential errors in textual terminal
 
-
-class StreamToTextual:
-    """
-    Class used to redirect the stdout/stderr streams in the textual terminal
-    """
-
-    def __init__(self, app, stream_name: str = "stdout"):
-        self.app = app
-        self.real_stream = getattr(sys, stream_name)
-
-    def write(self, data: str):
-        if not data:
-            return
-
-        if data.strip():
-            # Ensure update happens on the app thread
-            # self.app.call_from_thread(self.app.append_log_text, data)
-            self.app.call_from_thread(self.app.add_line, data)
-
-    def flush(self):
-        self.real_stream.flush()
-
-
-class SpinnerHook:
-    """
-    Single entrant spinner controller for console.
-    - Starts the spinner on the LLM request.
-    - Stops the spinner when LLM request is over.
-    """
-
-    def __init__(self, spinner_status):
-        self.spinner_status = spinner_status
-
-    def on_request_start(self, text="Querying LLM..."):
-        self.spinner_status.start(text)
-
-    def on_request_end(self):
-        self.spinner_status.stop()
-
-<<<<<<< HEAD
-<<<<<<< HEAD
-def attach_ros_logger_to_console(console):
-=======
-
-=======
->>>>>>> c235ed6 ([#23897] Applied revision)
-def attach_ros_logger_to_console(console, node):
->>>>>>> dc8f6d1 ([#23897] Fixed rebase changes)
-    """
-    Redirect ALL rclpy RcutilsLogger output (nodes + executor + rclpy internals)
-    to a Textual console.
-    """
-
-    try:
-        from rclpy.impl.rcutils_logger import RcutilsLogger
-    except ImportError:
-        console.logger.log_msg(
-            "No ROS 2 installation could be found. ROS 2 logs will not be redirected to VulcanAI console."
-        )
-        return
-
-    # Textual
-    app = console.app
-    if app is None:
-        # The textual terminal is not initialized
-        return
-
-    # Avoid double-patching
-    if getattr(RcutilsLogger, "_textual_patched", False):
-        # Already attached
-        return
-
-    def _write(markup: str) -> None:
-        console.logger.log_msg(markup)
-
-    def patched_log(self, msg, level, *args, **kwargs):
-        # Format message similarly to printf-style logger
-        try:
-            level = (level % args) if args else str(level)
-        except Exception:
-            level = f"{level} {args}"
-
-        ros_log_lev_dict = {
-            "10": "DEBUG",
-            "20": "INFO",
-            "30": "WARN",
-            "40": "ERROR",
-            "50": "FATAL",
-        }
-
-        markup = f"<gray>[ROS] [{ros_log_lev_dict[level]}]"
-
-        name = getattr(self, "name", "ros")  # Logger name if available
-        if name != "":
-            markup += f" [{name}] "
-        markup += f"[{msg}]</gray>"
-
-        # Ensure UI-thread safe write
-        if threading.get_ident() == getattr(app, "_thread_id", None):
-            app.call_later(_write, markup)
-        else:
-            app.call_from_thread(_write, markup)
-
-    RcutilsLogger.log = patched_log
-    RcutilsLogger._textual_patched = True
-
-def common_prefix(strings: str) -> str:
-    if not strings:
-        return ""
-
-    common_prefix = strings[0]
-    commands = strings[0]
-
-    for i in range(1, len(strings)):
-        commands += f"    {strings[i]}"
-
-        tmp = ""
-        n = min(len(common_prefix), len(strings[i]))
-        j = 0
-
-        while j < n:
-            if common_prefix[j] != strings[i][j]:
-                break
-            tmp += common_prefix[j]
-
-            j += 1
-
-        if j < n:
-            common_prefix = tmp
-
-    return common_prefix, commands
 
 async def run_streaming_cmd_async(
     console, args: list[str], max_duration: float = 60, max_lines: int = 1000, echo: bool = True, tool_name=""
@@ -183,6 +50,7 @@ async def run_streaming_cmd_async(
             if echo:
                 line_processed = escape(line)
                 console.add_line(line_processed)
+
             # Count the line
             line_count += 1
             if max_lines is not None and line_count >= max_lines:
@@ -209,6 +77,8 @@ async def run_streaming_cmd_async(
     except KeyboardInterrupt:
         # Ctrl+C pressed → stop subprocess
         console.logger.log_tool("[tool]Ctrl+C received:[/tool] terminating subprocess...", tool_name=tool_name)
+        process.terminate()
+
     finally:
         try:
             await asyncio.wait_for(process.wait(), timeout=3.0)
@@ -258,6 +128,7 @@ def execute_subprocess(console, tool_name, base_args, max_duration, max_lines):
         asyncio.get_running_loop()
     except RuntimeError:
         # No loop here → probably ROS thread. Bounce into Textual thread.
+        # `console.app` is your Textual App instance.
         console.app.call_from_thread(_launcher)
     else:
         # We *are* in the loop → just launch directly.
@@ -330,6 +201,7 @@ def suggest_string(console, tool_name, string_name, input_string, real_string_li
         return most_topic_similar, ret_list
 
     if input_string not in real_string_list:
+        # console.add_line(f"{tool_header_str} {string_name}: \"{input_string}\" does not exists")
         console.logger.log_tool(f'{string_name}: "{input_string}" does not exists', tool_name=tool_name)
 
         # Get the suggestions list sorted by similitud value
@@ -351,4 +223,3 @@ def suggest_string(console, tool_name, string_name, input_string, real_string_li
         console.suggestion_index_changed.clear()
 
     return ret
-

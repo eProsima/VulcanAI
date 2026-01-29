@@ -120,6 +120,7 @@ class VulcanConsole(App):
         tools_from_entrypoints: str = "",
         user_context: str = "",
         main_node=None,
+        default_tools: bool = True,
     ):
         super().__init__()  # Textual lib
 
@@ -137,6 +138,8 @@ class VulcanConsole(App):
         self.model = model
         # 'k' value for top_k tools selection
         self.k = k
+        #
+        self.default_tools = default_tools
         # Iterative mode
         self.iterative = iterative
         # CustomLogTextArea instance
@@ -307,7 +310,7 @@ class VulcanConsole(App):
 
         self.is_ready = True
         self.logger.log_console("VulcanAI Interactive Console")
-        self.logger.log_console("Use <bold>'Ctrl+Q'</bold> to quit.")
+        self.logger.log_console("Use <bold>'/exit'</bold> or press <bold>'Ctrl+Q'</bold> to quit.")
 
         # Activate the terminal input
         self.set_input_enabled(True)
@@ -1100,7 +1103,7 @@ class VulcanConsole(App):
 
         self.logger.log_console(f"Initializing Manager <bold>'{ConsoleManager.__name__}'</bold>...")
 
-        self.manager = ConsoleManager(model=self.model, k=self.k, logger=self.logger)
+        self.manager = ConsoleManager(model=self.model, k=self.k, logger=self.logger, _default_tools=self.default_tools)
 
         self.logger.log_console(f"Manager initialized with model <bold>'{self.model.replace('ollama-', '')}</bold>'")
         # Update right panel info
