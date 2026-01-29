@@ -57,5 +57,5 @@ select = ["E", "F", "I"]
 [tool.ruff.lint.isort]
 known-first-party = ["vulcanai"]
 
-[project.entry-points."vulcanai.tools.default_tools"]
+[project.entry-points."ros2_default_tools"]
 default_tools = "vulcanai.tools.default_tools"
