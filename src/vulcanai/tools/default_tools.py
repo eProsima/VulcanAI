@@ -1,4 +1,4 @@
-# Copyright 2025 Proyectos y Sistemas de Mantenimiento SL (eProsima).
+# Copyright 2026 Proyectos y Sistemas de Mantenimiento SL (eProsima).
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,13 +18,13 @@ This file contains the default tools given by VulcanAI.
 It contains atomic tools used to call ROS2 CLI.
 """
 
-from vulcanai import AtomicTool, CompositeTool, vulcanai_tool
-from vulcanai.console.utils import execute_subprocess, run_oneshot_cmd
+from vulcanai import AtomicTool, vulcanai_tool
+from vulcanai.tools.utils import execute_subprocess, run_oneshot_cmd
 
 import importlib
 import json
 import rclpy
-import subprocess
+import subprocess # TODO. danip
 from std_msgs.msg import String
 import time
 
@@ -137,7 +137,7 @@ class Ros2NodeTool(AtomicTool):
 
         result = {
             "ros2": True,
-            "output": "string"
+            "output": "",
         }
 
         # -- Run `ros2 node list` ---------------------------------------------
@@ -201,7 +201,7 @@ class Ros2TopicTool(AtomicTool):
 
         result = {
             "ros2": True,
-            "output": "string",
+            "output": "",
         }
 
         command = command.lower()
@@ -377,7 +377,7 @@ class Ros2ServiceTool(AtomicTool):
 
         result = {
             "ros2": True,
-            "output": "string",
+            "output": "",
         }
 
         command = command.lower()
@@ -465,7 +465,7 @@ class Ros2ActionTool(AtomicTool):
         "Wrapper for `ros2 action` CLI."
         "Run any subcommand: 'list', 'info', 'type', 'send_goal'."
         "With optional arguments like 'action_name', 'action_type', "
-        "'goal_args', 'args'"
+        "'goal_args'"
     )
     tags = ["ros2", "actions", "cli", "info", "goal"]
 
@@ -475,7 +475,7 @@ class Ros2ActionTool(AtomicTool):
         ("action_name", "string?"),   # (optional) Action name
         ("action_type", "string?"),   # (optional) Action type. "find"
         ("send_goal", "bool?"),       # (optional) legacy flag (backwards compatible)
-        ("args", "string?"),          # (optional) goal YAML, e.g. '{order: 5}'
+        ("goal_args", "string?"),          # (optional) goal YAML, e.g. '{order: 5}'
     ]
 
     output_schema = {
@@ -491,12 +491,12 @@ class Ros2ActionTool(AtomicTool):
 
         command = kwargs.get("command", None)
         action_name = kwargs.get("action_name", None)
-        goal_args = kwargs.get("args", None)
         action_type = kwargs.get("action_type", None)
+        goal_args = kwargs.get("goal_args", None)
 
         result = {
             "ros2": True,
-            "output": "string",
+            "output": "",
         }
 
         command = command.lower()
@@ -595,7 +595,7 @@ class Ros2ParamTool(AtomicTool):
 
         result = {
             "ros2": True,
-            "output": "string",
+            "output": "",
         }
 
         command = command.lower()
@@ -727,7 +727,7 @@ class Ros2PkgTool(AtomicTool):
         command = kwargs.get("command", None)
         result = {
             "ros2": True,
-            "output": "string"
+            "output": "",
         }
 
         command = command.lower()
@@ -787,7 +787,7 @@ class Ros2InterfaceTool(AtomicTool):
 
         result = {
             "ros2": True,
-            "output": "string"
+            "output": "",
         }
 
         command = command.lower()
@@ -1098,3 +1098,6 @@ class Ros2SubscribeTool(AtomicTool):
             "reason": reason,
             "topic": topic,
         }
+
+
+
