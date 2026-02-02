@@ -243,7 +243,7 @@ class Ros2TopicTool(AtomicTool):
             result["output"] = topic_name_list_str
 
         # -- ros2 topic info <topic_name> -------------------------------------
-        if command == "info":
+        elif command == "info":
             info_output = run_oneshot_cmd(
                 ["ros2", "topic", "info", topic_name]
             )
@@ -269,7 +269,7 @@ class Ros2TopicTool(AtomicTool):
         # -- ros2 topic echo <topic_name> -------------------------------------
         elif command == "echo":
             base_args = ["ros2", "topic", "echo", topic_name]
-            execute_subprocess(console, base_args, max_duration, max_lines)
+            execute_subprocess(console, self.name, base_args, max_duration, max_lines)
 
             result["output"] = "True"
             result["ros2"] = True
@@ -277,7 +277,7 @@ class Ros2TopicTool(AtomicTool):
         # -- ros2 topic bw <topic_name> ---------------------------------------
         elif command == "bw":
             base_args = ["ros2", "topic", "bw", topic_name]
-            execute_subprocess(console, base_args, max_duration, max_lines)
+            execute_subprocess(console, self.name, base_args, max_duration, max_lines)
 
             result["output"] = "True"
             result["ros2"] = True
@@ -285,7 +285,7 @@ class Ros2TopicTool(AtomicTool):
         # -- ros2 topic delay <topic_name> ------------------------------------
         elif command == "delay":
             base_args = ["ros2", "topic", "delay", topic_name]
-            execute_subprocess(console, base_args, max_duration, max_lines)
+            execute_subprocess(console, self.name, base_args, max_duration, max_lines)
 
             result["output"] = "True"
             result["ros2"] = True
@@ -293,7 +293,7 @@ class Ros2TopicTool(AtomicTool):
         # -- ros2 topic hz <topic_name> ---------------------------------------
         elif command == "hz":
             base_args = ["ros2", "topic", "hz", topic_name]
-            execute_subprocess(console, base_args, max_duration, max_lines)
+            execute_subprocess(console, self.name, base_args, max_duration, max_lines)
 
             result["output"] = "True"
             result["ros2"] = True
@@ -308,7 +308,7 @@ class Ros2TopicTool(AtomicTool):
                 raise ValueError("`command='pub'` requires `msg_type`.")
 
             base_args = ["ros2", "topic", "pub", topic_name, msg_type]
-            execute_subprocess(console, base_args, max_duration, max_lines)
+            execute_subprocess(console, self.name, base_args, max_duration, max_lines)
 
             result["output"] = "True"
             result["ros2"] = True
@@ -437,7 +437,7 @@ class Ros2ServiceTool(AtomicTool):
         # -- ros2 service echo service_name -----------------------------------
         elif command == "echo":
             base_args = ["ros2", "service", "echo", service_name]
-            execute_subprocess(console, base_args, max_duration, max_lines)
+            execute_subprocess(console, self.name, base_args, max_duration, max_lines)
 
             result["output"] = "True"
             result["ros2"] = True
@@ -514,7 +514,7 @@ class Ros2ActionTool(AtomicTool):
             result["output"] = action_name_list_str
 
         # -- ros2 action info <action_name> -----------------------------------
-        if command == "info":
+        elif command == "info":
             info_output = run_oneshot_cmd(
                 ["ros2", "action", "info", action_name]
             )
