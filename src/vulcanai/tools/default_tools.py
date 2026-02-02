@@ -19,17 +19,23 @@ It contains atomic tools used to call ROS2 CLI.
 """
 
 from vulcanai import AtomicTool, vulcanai_tool
-from vulcanai.tools.utils import execute_subprocess, run_oneshot_cmd
+from vulcanai.tools.utils import execute_subprocess, run_oneshot_cmd, suggest_string
 
 import importlib
 import json
-import rclpy
-import subprocess # TODO. danip
-from std_msgs.msg import String
 import time
 
+# ROS2 imports
+try:
+    import rclpy
+    from std_msgs.msg import String
+    ROS2_AVAILABLE = True
+except ImportError:
+    ROS2_AVAILABLE = False
+    rclpy = None
+    String = None
 
-"""topics = topic_name_list.splitlines()
+"""topics = topic_name_list_str.splitlines()
 
 # TODO. in all commands
 # Will be updated in the TUI Migration PR.
@@ -127,10 +133,10 @@ class Ros2NodeTool(AtomicTool):
     }
 
     def run(self, **kwargs):
-        # Get the shared ROS2 node from the blackboard
-        node = self.bb.get("main_node", None)
-        if node is None:
-            raise Exception("Could not find shared node, aborting...")
+        # Used in the suggestion string
+        console = self.bb.get("console", None)
+        if console is None:
+            raise Exception("Could not find console, aborting...")
 
         # Get the node name if provided by the query
         node_name = kwargs.get("node_name", None)
@@ -140,15 +146,24 @@ class Ros2NodeTool(AtomicTool):
             "output": "",
         }
 
+        # -- Node name suggestions --
+        node_name_list_str = run_oneshot_cmd(["ros2", "node", "list"])
+        node_name_list = node_name_list_str.splitlines()
+
         # -- Run `ros2 node list` ---------------------------------------------
         if node_name == None:
-            node_name_list = run_oneshot_cmd(["ros2", "node", "list"])
-            result["output"] = node_name_list
+            result["output"] = node_name_list_str
 
         # -- Run `ros2 node info <node>` --------------------------------------
         else:
-            if not node_name:
-                raise ValueError("`command='info'` requires `node_name`.")
+            # Check if the topic is not available ros2 topic list
+            # if it is not create a window for the user to choose a correct topic name
+            suggested_topic = suggest_string(console, self.name, "Topic", topic_name, node_name_list)
+            if suggested_topic != None:
+                topic_name = suggested_topic
+
+            if not topic_name:
+                raise ValueError("`command='{}'` requires `node_name`.".format("info"))
 
             info_output = run_oneshot_cmd(
                 ["ros2", "node", "info", node_name]
@@ -183,11 +198,7 @@ class Ros2TopicTool(AtomicTool):
     }
 
     def run(self, **kwargs):
-        # Get the shared ROS2 node from the blackboard
-        node = self.bb.get("main_node", None)
-        if node is None:
-            raise Exception("Could not find shared node, aborting...")
-
+        # Used in the suggestion string
         console = self.bb.get("console", None)
         if console is None:
             raise Exception("Could not find console, aborting...")
@@ -206,27 +217,33 @@ class Ros2TopicTool(AtomicTool):
 
         command = command.lower()
 
-        topic_name_list = run_oneshot_cmd(["ros2", "topic", "list"])
+        topic_name_list_str = run_oneshot_cmd(["ros2", "topic", "list"])
+        topic_name_list = topic_name_list_str.splitlines()
 
+        # -- Topic name suggestions --
+        if command == "find":
+            # TODO?
+            """suggested_type = suggest_string(console, self.name, "Topic", msg_type, topic_name_list)
+            if suggested_type != None:
+                msg_type = suggested_type"""
+        elif command != "list":
+            # Check if the topic is not available ros2 topic list
+            # if it is not create a window for the user to choose a correct topic name
+            suggested_topic_name = suggest_string(console, self.name, "Topic", topic_name, topic_name_list)
+            if suggested_topic_name != None:
+                topic_name = suggested_topic_name
+
+            # Check if the topic_name is null (suggest_string() failed)
+            if not topic_name:
+                raise ValueError("`command='{}'` requires `topic_name`.".format(command))
+
+        # -- Commands --
         # -- ros2 topic list --------------------------------------------------
         if command == "list":
-            result["output"] = topic_name_list
+            result["output"] = topic_name_list_str
 
         # -- ros2 topic info <topic_name> -------------------------------------
-        elif command == "info":
-            if not topic_name:
-                raise ValueError("`command='info'` requires `topic_name`.")
-
-            """topics = topic_name_list.splitlines()
-
-            # TODO. Will be updated in the TUI Migration PR.
-            # The PR adds a modalscreen to select the most similar string),
-            # this applies to all ros cli commands. Though, not implemented
-            # in the rest commands from this PR
-            if topic_name not in topics:
-                topic_similar = search_similar(topics, topic_name)
-                topic_name = topic_similar"""
-
+        if command == "info":
             info_output = run_oneshot_cmd(
                 ["ros2", "topic", "info", topic_name]
             )
@@ -234,9 +251,6 @@ class Ros2TopicTool(AtomicTool):
 
         # -- ros2 topic find <type> -------------------------------------------
         elif command == "find":
-            if not msg_type:
-                raise ValueError("`command='find'` requires `msg_type` (ROS type).")
-
             find_output = run_oneshot_cmd(
                 ["ros2", "topic", "find", msg_type]
             )
@@ -247,9 +261,6 @@ class Ros2TopicTool(AtomicTool):
 
         # -- ros2 topic type <topic_name> -------------------------------------
         elif command == "type":
-            if not topic_name:
-                raise ValueError("`command='type'` requires `topic_name`.")
-
             type_output = run_oneshot_cmd(
                 ["ros2", "topic", "type", topic_name]
             )
@@ -257,9 +268,6 @@ class Ros2TopicTool(AtomicTool):
 
         # -- ros2 topic echo <topic_name> -------------------------------------
         elif command == "echo":
-            if not topic_name:
-                raise ValueError("`command='echo'` requires `topic_name`.")
-
             base_args = ["ros2", "topic", "echo", topic_name]
             execute_subprocess(console, base_args, max_duration, max_lines)
 
@@ -276,9 +284,6 @@ class Ros2TopicTool(AtomicTool):
 
         # -- ros2 topic delay <topic_name> ------------------------------------
         elif command == "delay":
-            if not topic_name:
-                raise ValueError("`command='delay'` requires `topic_name`.")
-
             base_args = ["ros2", "topic", "delay", topic_name]
             execute_subprocess(console, base_args, max_duration, max_lines)
 
@@ -287,9 +292,6 @@ class Ros2TopicTool(AtomicTool):
 
         # -- ros2 topic hz <topic_name> ---------------------------------------
         elif command == "hz":
-            if not topic_name:
-                raise ValueError("`command='hz'` requires `topic_name`.")
-
             base_args = ["ros2", "topic", "hz", topic_name]
             execute_subprocess(console, base_args, max_duration, max_lines)
 
@@ -301,18 +303,9 @@ class Ros2TopicTool(AtomicTool):
             # One-shot publish using `-1`
             # ros2 topic pub -1 <topic> <msg_type> "<data>"
             # ros2 topic pub -1 /rosout2 std_msgs/msg/String "{data: 'Hello'}"
-            if not topic_name:
-                raise ValueError("`command='pub'` requires `topic_name`.")
+
             if not msg_type:
                 raise ValueError("`command='pub'` requires `msg_type`.")
-
-            """# only send 1
-            pub_output = run_oneshot_cmd(
-                ["ros2", "topic", "pub", "-1", topic_name, msg_type]
-            )
-            result["output"] = pub_output"""
-
-            # TODO. expand publisher options?
 
             base_args = ["ros2", "topic", "pub", topic_name, msg_type]
             execute_subprocess(console, base_args, max_duration, max_lines)
@@ -358,11 +351,7 @@ class Ros2ServiceTool(AtomicTool):
     }
 
     def run(self, **kwargs):
-        # Get the shared ROS2 node from the blackboard
-        node = self.bb.get("main_node", None)
-        if node is None:
-            raise Exception("Could not find shared node, aborting...")
-
+        # Used in the suggestion string
         console = self.bb.get("console", None)
         if console is None:
             raise Exception("Could not find console, aborting...")
@@ -382,17 +371,33 @@ class Ros2ServiceTool(AtomicTool):
 
         command = command.lower()
 
-        service_name_list = run_oneshot_cmd(["ros2", "service", "list"])
+        service_name_list_str = run_oneshot_cmd(["ros2", "service", "list"])
+        service_name_list = service_name_list_str.splitlines()
+
+        # -- Service name suggestions --
+        if command == "find":
+            # TODO?
+            """suggested_type = suggest_string(console, self.name, "Service_Type", service_type, service_name_list)
+            if suggested_type != None:
+                service_type = suggested_type"""
+
+        elif command != "list":
+            # Check if the topic is not available ros2 topic list
+            # if it is not create a window for the user to choose a correct topic name
+            suggested_service_name = suggest_string(console, self.name, "Service", service_name, service_name_list)
+            if suggested_service_name != None:
+                service_name = suggested_service_name
+
+            # Check if the service_name is null (suggest_string() failed)
+            if not service_name:
+                raise ValueError("`command='{}'` requires `service_name`.".format(command))
 
         # -- ros2 service list ------------------------------------------------
         if command == "list":
-            result["output"] = service_name_list
+            result["output"] = service_name_list_str
 
         # -- ros2 service info <service_name> ---------------------------------
         elif command == "info":
-            if not service_name:
-                raise ValueError("`command='info'` requires `service_name`.")
-
             info_output = run_oneshot_cmd(
                 ["ros2", "service", "info", service_name]
             )
@@ -400,9 +405,6 @@ class Ros2ServiceTool(AtomicTool):
 
         # -- ros2 service type <service_name> ---------------------------------
         elif command == "type":
-            if not service_name:
-                raise ValueError("`command='type'` requires `service_name`.")
-
             type_output = run_oneshot_cmd(
                 ["ros2", "service", "type", service_name]
             )
@@ -410,9 +412,6 @@ class Ros2ServiceTool(AtomicTool):
 
         # -- ros2 service find <type> -----------------------------------------
         elif command == "find":
-            if not service_type:
-                raise ValueError("`command='find'` requires `service_type`.")
-
             find_output = run_oneshot_cmd(
                 ["ros2", "service", "find", service_type]
             )
@@ -420,8 +419,6 @@ class Ros2ServiceTool(AtomicTool):
 
         # -- ros2 service call service_name service_type ----------------------
         elif command == "call":
-            if not service_name:
-                raise ValueError("`command='call'` requires `service_name`.")
             if call_args is None:
                 raise ValueError("`command='call'` requires `args`.")
 
@@ -439,9 +436,6 @@ class Ros2ServiceTool(AtomicTool):
 
         # -- ros2 service echo service_name -----------------------------------
         elif command == "echo":
-            if not service_name:
-                raise ValueError("`command='echo'` requires `service_name`.")
-
             base_args = ["ros2", "service", "echo", service_name]
             execute_subprocess(console, base_args, max_duration, max_lines)
 
@@ -484,10 +478,10 @@ class Ros2ActionTool(AtomicTool):
     }
 
     def run(self, **kwargs):
-        # Get the shared ROS2 node from the blackboard
-        node = self.bb.get("main_node", None)
-        if node is None:
-            raise Exception("Could not find shared node, aborting...")
+        # Used in the suggestion string
+        console = self.bb.get("console", None)
+        if console is None:
+            raise Exception("Could not find console, aborting...")
 
         command = kwargs.get("command", None)
         action_name = kwargs.get("action_name", None)
@@ -501,17 +495,26 @@ class Ros2ActionTool(AtomicTool):
 
         command = command.lower()
 
-        action_name_list = run_oneshot_cmd(["ros2", "action", "list"])
+        action_name_list_str = run_oneshot_cmd(["ros2", "action", "list"])
+        action_name_list = action_name_list_str.splitlines()
+
+        # -- Action name suggestions --
+        if command != "list":
+            # Check if the topic is not available ros2 topic list
+            suggested_action_name = suggest_string(console, self.name, "Action", action_name, action_name_list)
+            if suggested_action_name != None:
+                action_name = suggested_action_name
+
+            # Check if the action_name is null (suggest_string() failed)
+            if not action_name:
+                raise ValueError("`command='{}'` requires `action_name`.".format(command))
 
         # -- ros2 action list -------------------------------------------------
         if command == "list":
-            result["output"] = action_name_list
+            result["output"] = action_name_list_str
 
         # -- ros2 action info <action_name> -----------------------------------
-        elif command == "info":
-            if not action_name:
-                raise ValueError("`command='info'` requires `action_name`.")
-
+        if command == "info":
             info_output = run_oneshot_cmd(
                 ["ros2", "action", "info", action_name]
             )
@@ -519,9 +522,6 @@ class Ros2ActionTool(AtomicTool):
 
         # -- ros2 action type <type_name ---------------------------------------------------------------
         elif command == "type":
-            if not action_name:
-                raise ValueError("`command='type'` requires `action_name`.")
-
             type_output = run_oneshot_cmd(
                 ["ros2", "action", "type", action_name]
             )
@@ -529,9 +529,6 @@ class Ros2ActionTool(AtomicTool):
 
         # send_goal -----------------------------------------------------------
         elif command == "send_goal":
-            if not action_name:
-                raise ValueError("`command='send_goal'` requires `action_name`.")
-
             # Use explicit type if provided, otherwise detect it
             if not action_type:
                 type_output = run_oneshot_cmd(
@@ -582,14 +579,14 @@ class Ros2ParamTool(AtomicTool):
     }
 
     def run(self, **kwargs):
-        # Get the shared ROS2 node from the blackboard
-        node = self.bb.get("main_node", None)
-        if node is None:
-            raise Exception("Could not find shared node, aborting...")
+        # Used in the suggestion string
+        console = self.bb.get("console", None)
+        if console is None:
+            raise Exception("Could not find console, aborting...")
 
         command = kwargs.get("command", None)
-        node = kwargs.get("node_name", None)
-        param = kwargs.get("param_name", None)
+        node_name = kwargs.get("node_name", None)
+        param_name = kwargs.get("param_name", None)
         set_value = kwargs.get("set_value", None)
         file_path = kwargs.get("file_path", None)
 
@@ -600,90 +597,97 @@ class Ros2ParamTool(AtomicTool):
 
         command = command.lower()
 
+        param_name_list_str = run_oneshot_cmd(["ros2", "topic", "list"])
+        node_name_list_str = run_oneshot_cmd(["ros2", "node", "list"])
+
+        param_name_list = param_name_list_str.splitlines()
+        node_name_list = node_name_list_str.splitlines()
+
+        # -- Param/Node name suggestions --
+        if command != "list":
+            # Check if the param_name is not available 'ros2 param list'
+            if command not in ["dump", "load"]:
+                suggested_param_name = suggest_string(console, self.name, "Param", param_name, param_name_list)
+                if suggested_param_name != None:
+                    param_name = suggested_param_name
+
+                # Check if the param_name is null (suggest_string() failed)
+                if not param_name:
+                    raise ValueError("`command='{}'` requires `param_name`.".format(command))
+
+            # Check if the node_name is not available 'ros2 node list'
+            suggested_node_name = suggest_string(console, self.name, "Node", node_name, node_name_list)
+            if suggested_node_name != None:
+                node_name = suggested_node_name
+
+            # Check if the node_name is null (suggest_string() failed)
+            if not node_name:
+                raise ValueError("`command='{}'` requires `node_name`.".format(command))
+
+
         # -- ros2 param list` -------------------------------------------------
         if command == "list":
-            try:
-                if node:
-                    list_cmd = ["ros2", "param", "list", node]
-                else:
-                    list_cmd = ["ros2", "param", "list"]
-
-                list_output = run_oneshot_cmd(list_cmd)
-                result["output"] = list_output
-
-            except Exception as e:
-                raise Exception(str(e))
+            if node_name:
+                result["output"] = node_name_list_str
+            else:
+                result["output"] = param_name_list_str
 
         # -- ros2 param get <node> <param> ------------------------------------
         elif command == "get":
-            if not node or not param:
-                raise ValueError("`command='get'` requires `node_name` and `param_name`.")
-
             get_output = run_oneshot_cmd(
-                ["ros2", "param", "get", node, param]
+                ["ros2", "param", "get", node_name, param_name]
             )
             result["output"] = get_output
 
         # -- ros2 param describe <node> <param> -------------------------------
         elif command == "describe":
-            if not node or not param:
-                raise ValueError("`command='describe'` requires `node_name` and `param_name`.")
-
             describe_output = run_oneshot_cmd(
-                ["ros2", "param", "describe", node, param]
+                ["ros2", "param", "describe", node_name, param_name]
             )
             result["output"] = describe_output
 
         # -- ros2 param set <node> <param> <set_value> ------------------------
         elif command == "set":
-            if not node or not param:
-                raise ValueError("`command='set'` requires `node_name` and `param_name`.")
             if set_value is None:
                 raise ValueError("`command='set'` requires `set_value`.")
 
             set_output = run_oneshot_cmd(
-                ["ros2", "param", "set", node, param, set_value]
+                ["ros2", "param", "set", node_name, param_name, set_value]
             )
             result["output"] = set_output
 
         # -- ros2 param delete <node> <parm> ----------------------------------
         elif command == "delete":
-            if not node or not param:
-                raise ValueError("`command='delete'` requires `node_name` and `param_name`.")
-
             delete_output = run_oneshot_cmd(
-                ["ros2", "param", "delete", node, param]
+                ["ros2", "param", "delete", node_name, param_name]
             )
             result["output"] = delete_output
 
         # -- ros2 param dump <node> [file_path] -------------------------------
         elif command == "dump":
-            if not node:
-                raise ValueError("`command='dump'` requires `node_name`.")
-
             # Two modes:
             # - If file_path given, write to file with --output-file
             # - Otherwise, capture YAML from stdout
             if file_path:
                 dump_output = run_oneshot_cmd(
-                    ["ros2", "param", "dump", node, "--output-file", file_path]
+                    ["ros2", "param", "dump", node_name, "--output-file", file_path]
                 )
                 # CLI usually prints a line like "Saved parameters to file..."
                 # so we just expose that.
                 result["output"] = dump_output or f"Dumped parameters to {file_path}"
             else:
                 dump_output = run_oneshot_cmd(
-                    ["ros2", "param", "dump", node]
+                    ["ros2", "param", "dump", node_name]
                 )
                 result["output"] = dump_output
 
         # -- ros2 param load <node> <file_path> -------------------------------
         elif command == "load":
-            if not node or not file_path:
-                raise ValueError("`command='load'` requires `node_name` and `file_path`.")
+            if not file_path:
+                raise ValueError("`command='load'` `file_path`.")
 
             load_output = run_oneshot_cmd(
-                ["ros2", "param", "load", node, file_path]
+                ["ros2", "param", "load", node_name, file_path]
             )
             result["output"] = load_output
 
@@ -718,11 +722,6 @@ class Ros2PkgTool(AtomicTool):
     }
 
     def run(self, **kwargs):
-        # Get the shared ROS2 node from the blackboard
-        node = self.bb.get("main_node", None)
-        if node is None:
-            raise Exception("Could not find shared node, aborting...")
-
         # Get the package name if provided by the query
         command = kwargs.get("command", None)
         result = {
@@ -776,10 +775,10 @@ class Ros2InterfaceTool(AtomicTool):
     }
 
     def run(self, **kwargs):
-        # Get the shared ROS2 node from the blackboard
-        node = self.bb.get("main_node", None)
-        if node is None:
-            raise Exception("Could not find shared node, aborting...")
+        # Used in the suggestion string
+        console = self.bb.get("console", None)
+        if console is None:
+            raise Exception("Could not find console, aborting...")
 
         # Get the interface name if provided by the query
         command = kwargs.get("command", None)
@@ -792,10 +791,24 @@ class Ros2InterfaceTool(AtomicTool):
 
         command = command.lower()
 
+        interface_name_list_str = run_oneshot_cmd(["ros2", "interface", "list"])
+        interface_name_list = interface_name_list_str.splitlines()
+
+        # -- Interface name suggestions --
+        if command in ["package", "show"]:
+            # Check if the topic is not available ros2 topic list
+            # if it is not create a window for the user to choose a correct topic name
+            suggested_interface_name = suggest_string(console, self.name, "Interface", interface_name, interface_name_list)
+            if suggested_interface_name != None:
+                interface_name = suggested_interface_name
+
+            # Check if the interface_name is null (suggest_string() failed)
+            if not interface_name:
+                raise ValueError("`command='{}'` requires `interface_name`.".format(command))
+
         # -- ros2 interface list ----------------------------------------------
         if interface_name is None:
-            interface_name_list = run_oneshot_cmd(["ros2", "interface", "list"])
-            result["output"] = interface_name_list
+            result["output"] = interface_name_list_str
 
         # -- ros2 interface packages ------------------------------------------
         elif command == "packages":
@@ -905,7 +918,10 @@ class Ros2PublishTool(AtomicTool):
                 setattr(msg, field, value)
 
     def run(self, **kwargs):
+        if not ROS2_AVAILABLE:
+            return
 
+        # Ros2 node to create the Publisher and print the log information
         node = self.bb.get("main_node", None)
         if node is None:
             raise Exception("Could not find shared node, aborting...")
@@ -1032,7 +1048,10 @@ class Ros2SubscribeTool(AtomicTool):
 
 
     def run(self, **kwargs):
+        if not ROS2_AVAILABLE:
+            return
 
+        # Ros2 node to create the Publisher and print the log information
         node = self.bb.get("main_node", None)
         if node is None:
             raise Exception("Could not find shared node, aborting...")
