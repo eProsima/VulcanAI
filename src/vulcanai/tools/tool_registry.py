@@ -207,9 +207,14 @@ class ToolRegistry:
 
     def discover_tools_from_entry_points(self, group: str = "custom_tools"):
         """Load tools from Python entry points."""
-        for ep in entry_points(group=group):
-            module = importlib.import_module(ep.module)
-            self._loaded_modules.append(module)
+        eps = entry_points()
+        group_eps = list(eps.select(group=group)) if hasattr(eps, "select") else list(eps.get(group, []))
+        for ep in group_eps:
+            try:
+                module = importlib.import_module(ep.module)
+                self._loaded_modules.append(module)
+            except Exception as e:
+                self.logger.log_registry(f"Failed importing EP {ep.name} ({ep.value}): {e!r}", error=True)
         self.register()
         self.help_tool.available_tools = self.tools
 

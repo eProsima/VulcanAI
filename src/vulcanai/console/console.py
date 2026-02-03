@@ -288,8 +288,8 @@ class VulcanConsole(App):
                 self.manager.register_tools_from_file(tool_file_path)
 
             # Entry points tools
-            if self.tools_from_entrypoints != "":
-                self.manager.register_tools_from_entry_points(self.tools_from_entrypoints)
+            for ep in self.tools_from_entrypoints:
+                self.manager.register_tools_from_entry_points(ep)
 
             # Add user context
             self.manager.add_user_context(self.user_context)
