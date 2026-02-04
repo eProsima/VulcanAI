@@ -30,8 +30,9 @@ class PlanManager(ToolManager):
         k: int = 5,
         hist_depth: int = 3,
         logger=None,
+        default_tools=True
     ):
-        super().__init__(model, registry=registry, validator=validator, k=k, hist_depth=hist_depth, logger=logger)
+        super().__init__(model, registry=registry, validator=validator, k=k, hist_depth=hist_depth, logger=logger, default_tools=default_tools)
 
     def _get_prompt_template(self) -> str:
         """

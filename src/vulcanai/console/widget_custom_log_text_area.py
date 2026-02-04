@@ -21,6 +21,8 @@ import pyperclip
 from rich.style import Style
 from textual.widgets import TextArea
 
+from vulcanai.console.logger import VulcanAILogger
+
 
 class CustomLogTextArea(TextArea):
     """
@@ -374,6 +376,12 @@ class CustomLogTextArea(TextArea):
             self.notify("No text selected to copy!")
             return
 
-        # Copy to clipboard, using pyperclip library
-        pyperclip.copy(self.selected_text)
-        self.notify("Selected area copied to clipboard!")
+        try:
+            # Copy to clipboard, using pyperclip library
+            pyperclip.copy(self.selected_text)
+            self.notify("Selected area copied to clipboard!")
+        except Exception as e:
+            error_color = VulcanAILogger.vulcanai_theme["error"]
+            self.append_line(f"<{error_color}>Clipboard error: {e}</{error_color}>")
+            return
+

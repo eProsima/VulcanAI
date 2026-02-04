@@ -120,6 +120,7 @@ class VulcanConsole(App):
         tools_from_entrypoints: str = "",
         user_context: str = "",
         main_node=None,
+        default_tools: bool = True,
     ):
         super().__init__()  # Textual lib
 
@@ -137,6 +138,8 @@ class VulcanConsole(App):
         self.model = model
         # 'k' value for top_k tools selection
         self.k = k
+        # Flag to indicate if default tools should be enabled
+        self.default_tools = default_tools
         # Iterative mode
         self.iterative = iterative
         # CustomLogTextArea instance
@@ -169,6 +172,16 @@ class VulcanConsole(App):
         # Suggestion index for RadioListModal
         self.suggestion_index = -1
         self.suggestion_index_changed = threading.Event()
+
+
+    def set_stream_task(self, input_stream):
+        """
+        Function used in the tools to set the current streaming task.
+        with this variable the user can finish the execution of the
+        task by using the signal "Ctrl + C"
+        """
+
+        self.stream_task = input_stream
 
     async def on_mouse_down(self, event: MouseEvent) -> None:
         """
@@ -281,7 +294,6 @@ class VulcanConsole(App):
                 pass
 
             # -- Register tools --
-            # Default tools
 
             # File paths tools
             for tool_file_path in self.register_from_file:
@@ -306,7 +318,7 @@ class VulcanConsole(App):
 
         self.is_ready = True
         self.logger.log_console("VulcanAI Interactive Console")
-        self.logger.log_console("Use <bold>'Ctrl+Q'</bold> to quit.")
+        self.logger.log_console("Use <bold>'/exit'</bold> or press <bold>'Ctrl+Q'</bold> to quit.")
 
         # Activate the terminal input
         self.set_input_enabled(True)
@@ -352,8 +364,11 @@ class VulcanConsole(App):
                 self.logger.log_console(f"Output of plan: {bb_ret}")
 
             except KeyboardInterrupt:
-                self.logger.log_msg("<yellow>Exiting...</yellow>")
-                return
+                if self.stream_task == None:
+                    self.logger.log_msg("<yellow>Exiting...</yellow>")
+                else:
+                    self.stream_task.cancel() # triggers CancelledError in the task
+                    self.stream_task = None
             except EOFError:
                 self.logger.log_msg("<yellow>Exiting...</yellow>")
                 return
@@ -1095,7 +1110,7 @@ class VulcanConsole(App):
 
         self.logger.log_console(f"Initializing Manager <bold>'{ConsoleManager.__name__}'</bold>...")
 
-        self.manager = ConsoleManager(model=self.model, k=self.k, logger=self.logger)
+        self.manager = ConsoleManager(model=self.model, k=self.k, logger=self.logger, default_tools=self.default_tools)
 
         self.logger.log_console(f"Manager initialized with model <bold>'{self.model.replace('ollama-', '')}</bold>'")
         # Update right panel info
