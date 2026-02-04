@@ -138,7 +138,7 @@ class VulcanConsole(App):
         self.model = model
         # 'k' value for top_k tools selection
         self.k = k
-        #
+        # Flag to indicate if default tools should be enabled
         self.default_tools = default_tools
         # Iterative mode
         self.iterative = iterative
@@ -1110,7 +1110,7 @@ class VulcanConsole(App):
 
         self.logger.log_console(f"Initializing Manager <bold>'{ConsoleManager.__name__}'</bold>...")
 
-        self.manager = ConsoleManager(model=self.model, k=self.k, logger=self.logger, _default_tools=self.default_tools)
+        self.manager = ConsoleManager(model=self.model, k=self.k, logger=self.logger, default_tools=self.default_tools)
 
         self.logger.log_console(f"Manager initialized with model <bold>'{self.model.replace('ollama-', '')}</bold>'")
         # Update right panel info

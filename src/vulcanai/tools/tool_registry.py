@@ -99,7 +99,11 @@ class ToolRegistry:
 
         # Default tools
         if default_tools:
-            self.discover_tools_from_entry_points("vulcanai.tools.default_tools")
+            try:
+                self.discover_tools_from_entry_points("ros2_default_tools")
+            except ImportError as e:
+                self.logger.log_msg(f"[error]{e}[/error]")
+                raise
 
     def register_tool(self, tool: ITool, solve_deps: bool = True):
         """Register a single tool instance."""
