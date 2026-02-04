@@ -29,11 +29,10 @@ import time
 try:
     import rclpy
     from std_msgs.msg import String
-    ROS2_AVAILABLE = True
 except ImportError:
-    ROS2_AVAILABLE = False
-    rclpy = None
-    String = None
+    raise ImportError(
+        "Unable to load default tools because no ROS 2 installation was found."
+    )
 
 """topics = topic_name_list_str.splitlines()
 
@@ -128,7 +127,6 @@ class Ros2NodeTool(AtomicTool):
     ]
 
     output_schema = {
-        "ros2": "bool",     # ros2 flag for pretty printing.
         "output": "string", # list of ros2 nodes or info of a node.
     }
 
@@ -142,7 +140,6 @@ class Ros2NodeTool(AtomicTool):
         node_name = kwargs.get("node_name", None)
 
         result = {
-            "ros2": True,
             "output": "",
         }
 
@@ -193,7 +190,6 @@ class Ros2TopicTool(AtomicTool):
     ]
 
     output_schema = {
-        "ros2": "bool",            # ros2 flag for pretty printing
         "output": "string",        # output
     }
 
@@ -211,7 +207,6 @@ class Ros2TopicTool(AtomicTool):
         max_lines = kwargs.get("max_lines", 1000)
 
         result = {
-            "ros2": True,
             "output": "",
         }
 
@@ -272,7 +267,6 @@ class Ros2TopicTool(AtomicTool):
             execute_subprocess(console, self.name, base_args, max_duration, max_lines)
 
             result["output"] = "True"
-            result["ros2"] = True
 
         # -- ros2 topic bw <topic_name> ---------------------------------------
         elif command == "bw":
@@ -280,7 +274,6 @@ class Ros2TopicTool(AtomicTool):
             execute_subprocess(console, self.name, base_args, max_duration, max_lines)
 
             result["output"] = "True"
-            result["ros2"] = True
 
         # -- ros2 topic delay <topic_name> ------------------------------------
         elif command == "delay":
@@ -288,7 +281,6 @@ class Ros2TopicTool(AtomicTool):
             execute_subprocess(console, self.name, base_args, max_duration, max_lines)
 
             result["output"] = "True"
-            result["ros2"] = True
 
         # -- ros2 topic hz <topic_name> ---------------------------------------
         elif command == "hz":
@@ -296,7 +288,6 @@ class Ros2TopicTool(AtomicTool):
             execute_subprocess(console, self.name, base_args, max_duration, max_lines)
 
             result["output"] = "True"
-            result["ros2"] = True
 
         # -- publisher --------------------------------------------------------
         elif command == "pub":
@@ -311,7 +302,6 @@ class Ros2TopicTool(AtomicTool):
             execute_subprocess(console, self.name, base_args, max_duration, max_lines)
 
             result["output"] = "True"
-            result["ros2"] = True
 
         # -- unknown ----------------------------------------------------------
         else:
@@ -346,7 +336,6 @@ class Ros2ServiceTool(AtomicTool):
     ]
 
     output_schema = {
-        "ros2": "bool",                # ros2 flag for pretty printing
         "output": "string",            # `ros2 service list`
     }
 
@@ -365,7 +354,6 @@ class Ros2ServiceTool(AtomicTool):
         max_lines = kwargs.get("max_lines", 50)
 
         result = {
-            "ros2": True,
             "output": "",
         }
 
@@ -440,7 +428,6 @@ class Ros2ServiceTool(AtomicTool):
             execute_subprocess(console, self.name, base_args, max_duration, max_lines)
 
             result["output"] = "True"
-            result["ros2"] = True
 
         # -- unknown ------------------------------------------------------------
         else:
@@ -473,7 +460,6 @@ class Ros2ActionTool(AtomicTool):
     ]
 
     output_schema = {
-        "ros2": "bool",      # ros2 flag for pretty printing
         "output": "string",  # `ros2 action list`
     }
 
@@ -489,7 +475,6 @@ class Ros2ActionTool(AtomicTool):
         goal_args = kwargs.get("goal_args", None)
 
         result = {
-            "ros2": True,
             "output": "",
         }
 
@@ -574,7 +559,6 @@ class Ros2ParamTool(AtomicTool):
     ]
 
     output_schema = {
-        "ros2": "bool",     # ros2 flag for pretty printing
         "output": "string",
     }
 
@@ -591,7 +575,6 @@ class Ros2ParamTool(AtomicTool):
         file_path = kwargs.get("file_path", None)
 
         result = {
-            "ros2": True,
             "output": "",
         }
 
@@ -717,7 +700,6 @@ class Ros2PkgTool(AtomicTool):
     ]
 
     output_schema = {
-        "ros2": "bool",     # ros2 flag for pretty printing.
         "output": "string", # list of packages or list of executables for a package.
     }
 
@@ -725,7 +707,6 @@ class Ros2PkgTool(AtomicTool):
         # Get the package name if provided by the query
         command = kwargs.get("command", None)
         result = {
-            "ros2": True,
             "output": "",
         }
 
@@ -770,7 +751,6 @@ class Ros2InterfaceTool(AtomicTool):
     ]
 
     output_schema = {
-        "ros2": "bool",     # ros2 flag for pretty printing.
         "output": "string", # list of interfaces (as list of strings) or full interface definition.
     }
 
@@ -785,7 +765,6 @@ class Ros2InterfaceTool(AtomicTool):
         interface_name = kwargs.get("interface_name", None)
 
         result = {
-            "ros2": True,
             "output": "",
         }
 
@@ -918,9 +897,6 @@ class Ros2PublishTool(AtomicTool):
                 setattr(msg, field, value)
 
     def run(self, **kwargs):
-        if not ROS2_AVAILABLE:
-            return
-
         # Ros2 node to create the Publisher and print the log information
         node = self.bb.get("main_node", None)
         if node is None:
@@ -1048,9 +1024,6 @@ class Ros2SubscribeTool(AtomicTool):
 
 
     def run(self, **kwargs):
-        if not ROS2_AVAILABLE:
-            return
-
         # Ros2 node to create the Publisher and print the log information
         node = self.bb.get("main_node", None)
         if node is None:
@@ -1084,7 +1057,7 @@ class Ros2SubscribeTool(AtomicTool):
             else:
                 d = self.msg_to_dict(msg)
                 received_msgs.append(d["data"] if "data" in d else d)
-                node.get_logger().info(f"I heard: [{d["data"]}]")
+                node.get_logger().info(f"I heard: [{d['data']}]")
 
         MsgType = import_msg_type(msg_type_str, node)
         sub = node.create_subscription(MsgType, topic, callback, qos_depth)
