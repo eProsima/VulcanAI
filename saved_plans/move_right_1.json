@@ -1,0 +1,40 @@
+{
+  "plan": [
+    {
+      "kind": "SEQUENCE",
+      "steps": [
+        {
+          "tool": "move_safe_bot",
+          "args": [
+            {
+              "key": "left_wheel",
+              "val": -1.0
+            },
+            {
+              "key": "right_wheel",
+              "val": 1.0
+            },
+            {
+              "key": "tray",
+              "val": 0.0
+            },
+            {
+              "key": "duration",
+              "val": 1
+            }
+          ],
+          "condition": null,
+          "success_criteria": null,
+          "timeout_ms": 0,
+          "retry": 0
+        }
+      ],
+      "condition": null,
+      "success_criteria": null,
+      "timeout_ms": 0,
+      "retry": 0,
+      "on_fail": null
+    }
+  ],
+  "summary": "Action plan: Move SafeBot to the right for 1 second"
+}
