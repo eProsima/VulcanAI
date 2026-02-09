@@ -18,6 +18,7 @@ import difflib
 import heapq
 import subprocess
 import sys
+import threading
 import time
 
 from textual.markup import escape  # To remove potential errors in textual terminal
@@ -61,27 +62,37 @@ class SpinnerHook:
     def on_request_end(self):
         self.spinner_status.stop()
 
-
 def attach_ros_logger_to_console(console, node):
     """
     Function that remove ROS node overlaping prints in the terminal
+
+    Redirect the logger of the 'node' to a Textual console.
+    Works both from UI thread and from background threads.
     """
-
     logger = node.get_logger()
+    app = console.app  # Textual App
 
-    def info_hook(msg, *args, **kwargs):
-        console.call_from_thread(console.logger.log_msg, f"<gray>[ROS] [INFO] {msg}</gray>")
+    def _write(markup: str) -> None:
+        console.logger.log_msg(markup)
 
-    def warn_hook(msg, *args, **kwargs):
-        console.call_from_thread(console.logger.log_msg, f"<gray>[ROS] [WARN] {msg}</gray>")
+    def _emit(level: str, msg, *args, **kwargs):
+        try:
+            text = (msg % args) if args else str(msg)
+        except Exception:
+            text = f"{msg} {args}"
 
-    def error_hook(msg, *args, **kwargs):
-        console.call_from_thread(console.logger.log_msg, f"<gray>[ROS] [ERROR] {msg}</gray>")
+        markup = f"<gray>[ROS] [{level}] {text}</gray>"
 
-    logger.info = info_hook
-    logger.warning = warn_hook
-    logger.error = error_hook
+        if threading.get_ident() == getattr(app, "_thread_id", None):
+            # Already on the UI thread
+            app.call_later(_write, markup)
+        else:
+            app.call_from_thread(_write, markup)
 
+    logger.info = lambda msg, *a, **k: _emit("INFO", msg, *a, **k)
+    logger.warn = lambda msg, *a, **k: _emit("WARN", msg, *a, **k)
+    logger.warning = logger.warn
+    logger.error = lambda msg, *a, **k: _emit("ERROR", msg, *a, **k)
 
 def common_prefix(strings: str) -> str:
     if not strings:

@@ -18,8 +18,11 @@ import argparse
 import asyncio
 import sys
 import threading
-
 import pyperclip  # To paste the clipboard into the terminal
+
+import rclpy
+from rclpy.node import Node
+
 from textual import events, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -241,20 +244,20 @@ class VulcanConsole(App):
 
     async def bootstrap(self) -> None:
         """
-        Function used to initialize the console manager.
-        Print information at runtime execution of a function, without blocking the main thread
-        so Textual Log does not freeze.
+        Function used to initialize the console manager asynchronously.
+        Blocking operations (file I/O) run in executor, non-blocking in event loop.
         """
 
-        def worker() -> None:
+        async def async_worker() -> None:
             """
-            Worker function to run in a separate thread.
+            Async worker function that handles initialization without creating threads.
+            File I/O operations run in executor to avoid blocking the event loop.
             """
+            # Initialize manager (potentially blocking, run in executor)
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, self.init_manager)
 
-            self.init_manager()
-
-            # -- Add the commands --
-            # Command registry: name -> handler
+            # -- Add the commands (non-blocking, runs in event loop) --
             self.commands = {
                 "/help": self.cmd_help,
                 "/tools": self.cmd_tools,
@@ -280,29 +283,27 @@ class VulcanConsole(App):
             except Exception:
                 pass
 
-            # -- Register tools --
-            # Default tools
-
+            # -- Register tools (file I/O - run in executor) --
             # File paths tools
             for tool_file_path in self.register_from_file:
-                self.manager.register_tools_from_file(tool_file_path)
+                await loop.run_in_executor(None, self.manager.register_tools_from_file, tool_file_path)
 
             # Entry points tools
             for ep in self.tools_from_entrypoints:
-                self.manager.register_tools_from_entry_points(ep)
+                await loop.run_in_executor(None, self.manager.register_tools_from_entry_points, ep)
 
-            # Add user context
+            # Add user context (non-blocking)
             self.manager.add_user_context(self.user_context)
             # Add console to blackboard
             self.manager.bb["console"] = self
 
-            # Add the shared node to the console manager blackboard to be used by tools
+            # Add the shared node to the console manager blackboard
             if self.main_node is not None:
                 self.manager.bb["main_node"] = self.main_node
                 attach_ros_logger_to_console(self, self.main_node)
 
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, lambda: worker())
+        # Run the async worker
+        await async_worker()
 
         self.is_ready = True
         self.logger.log_console("VulcanAI Interactive Console")
@@ -366,6 +367,33 @@ class VulcanConsole(App):
         self.set_input_enabled(True)
 
     # region Utilities
+
+    def spin_ros_node_async(self, ros_node: Node, timeout_sec: float = 0.05) -> None:
+        """
+        Function used to spin a ROS 2 node without blocking by integrating with Textual async event loop.
+        This uses rclpy.spin_once() in a periodic async task instead of creating a separate thread.
+
+        Advantages:
+        - No separate thread needed
+        - Better resource efficiency
+        """
+        # Attach ROS logger to console to capture ROS 2 logs in the terminal
+        attach_ros_logger_to_console(self, ros_node)
+
+        # Create an async task that periodically spins the node
+        async def spin_loop():
+            try:
+                while True:
+                    # Process one batch of ROS callbacks with sufficient timeout
+                    rclpy.spin_once(ros_node, timeout_sec=timeout_sec)
+                    # Yield control back to the event loop to keep UI responsive
+                    # Add a small sleep to prevent 100% CPU usage
+                    await asyncio.sleep(0.05)
+            except asyncio.CancelledError:
+                pass
+
+        # Start the spin loop as a background task
+        asyncio.create_task(spin_loop())
 
     def _apply_history_to_input(self) -> None:
         """
