@@ -414,7 +414,6 @@ class VulcanConsole(App):
         timeout_sec: float = 0.05,
         period_sec: float = 0.05,
     ):
-
         # Add nodes
         for n in nodes:
             # This function does not add duplicates
