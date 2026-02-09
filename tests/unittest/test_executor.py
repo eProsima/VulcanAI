@@ -823,7 +823,7 @@ class TestPlanExecutor(unittest.TestCase):
 
     def test_text_snapshot_select_keys_when_given(self):
         """
-        Test that the method text_snapshot of the blackboard properly filter per keys when given.
+        Test that the text_snapshot method of the blackboard properly filters by the provided keys.
         """
         executor_mod = importlib.import_module("vulcanai.core.executor")
         blackboard_class = executor_mod.Blackboard

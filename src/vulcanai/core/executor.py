@@ -39,7 +39,7 @@ class Blackboard(dict):
         """
         Return a string representing the blackboard.
 
-        :param keys: Optional list of keys to include. If None, include all.
+        :param keys: Optional list of keys to include. If None, include all except default blocked keys.
         :return: A string representation of the blackboard entries.
         """
         snapshot = {}
