@@ -33,7 +33,7 @@ TYPE_CAST = {
 class Blackboard(dict):
     """Shared memory for passing outputs between steps."""
 
-    _default_blocked_keys = {"main_node"}
+    _default_blocked_keys = {"main_node", "console"}
 
     def text_snapshot(self, keys: Optional[List[str]] = None) -> str:
         """
