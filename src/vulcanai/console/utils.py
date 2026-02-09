@@ -216,7 +216,6 @@ def execute_subprocess(console, tool_name, base_args, max_duration, max_lines):
         asyncio.get_running_loop()
     except RuntimeError:
         # No loop here → probably ROS thread. Bounce into Textual thread.
-        # `console.app` is your Textual App instance.
         console.app.call_from_thread(_launcher)
     else:
         # We *are* in the loop → just launch directly.
@@ -289,7 +288,6 @@ def suggest_string(console, tool_name, string_name, input_string, real_string_li
         return most_topic_similar, ret_list
 
     if input_string not in real_string_list:
-        # console.add_line(f"{tool_header_str} {string_name}: \"{input_string}\" does not exists")
         console.logger.log_tool(f'{string_name}: "{input_string}" does not exists', tool_name=tool_name)
 
         # Get the suggestions list sorted by similitud value

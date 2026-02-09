@@ -348,8 +348,9 @@ class VulcanConsole(App):
 
                 # Print the backboard state
                 bb_ret = result.get("blackboard", None)
-                bb_ret = str(bb_ret).replace("<", "'").replace(">", "'")
-                self.logger.log_console(f"Output of plan: {bb_ret}")
+                if bb_ret:
+                    bb_ret = bb_ret.text_snapshot().replace("<", "'").replace(">", "'")
+                    self.logger.log_console(f"Output of plan: {bb_ret}")
 
             except KeyboardInterrupt:
                 self.logger.log_msg("<yellow>Exiting...</yellow>")

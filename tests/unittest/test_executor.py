@@ -801,6 +801,50 @@ class TestPlanExecutor(unittest.TestCase):
         self.assertEqual(bb["add"]["result"], 8.5)
         self.assertTrue(isinstance(bb["add"]["result"], float))
 
+    def test_default_blocked_keys_in_output(self):
+        """
+        Test that default keys are blocked and not printed.
+        """
+        executor_mod = importlib.import_module("vulcanai.core.executor")
+        blackboard_class = executor_mod.Blackboard
+
+        test_bb = blackboard_class()
+
+        test_bb["speak"] = True
+        test_bb["main_node"] = "This should not be printed"
+        test_bb["console"] = "This should not be printed either"
+        self.assertIn("speak", test_bb)
+        self.assertIn("main_node", test_bb)
+        self.assertIn("console", test_bb)
+        string_output = test_bb.text_snapshot()
+        self.assertIn("speak", string_output)
+        self.assertNotIn("main_node", string_output)
+        self.assertNotIn("console", string_output)
+
+    def test_text_snapshot_select_keys_when_given(self):
+        """
+        Test that the text_snapshot method of the blackboard properly filters by the provided keys.
+        """
+        executor_mod = importlib.import_module("vulcanai.core.executor")
+        blackboard_class = executor_mod.Blackboard
+
+        test_bb = blackboard_class()
+
+        test_bb["speak"] = True
+        test_bb["another_potential_tool"] = "Random text"
+        test_bb["other_tool"] = "Whatever output"
+        self.assertIn("speak", test_bb)
+        self.assertIn("another_potential_tool", test_bb)
+        self.assertIn("other_tool", test_bb)
+        string_output = test_bb.text_snapshot(keys=["speak"])
+        self.assertIn("speak", string_output)
+        self.assertNotIn("another_potential_tool", string_output)
+        self.assertNotIn("other_tool", string_output)
+        string_output = test_bb.text_snapshot(keys=["other_tool", "another_potential_tool"])
+        self.assertNotIn("speak", string_output)
+        self.assertIn("another_potential_tool", string_output)
+        self.assertIn("other_tool", string_output)
+
 
 if __name__ == "__main__":
     unittest.main()
