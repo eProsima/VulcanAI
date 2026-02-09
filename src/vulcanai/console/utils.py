@@ -21,9 +21,8 @@ import sys
 import threading
 import time
 
-from rclpy.logging import LoggingSeverity
 from rclpy.impl.rcutils_logger import RcutilsLogger
-
+from rclpy.logging import LoggingSeverity
 from textual.markup import escape  # To remove potential errors in textual terminal
 
 
@@ -64,6 +63,7 @@ class SpinnerHook:
 
     def on_request_end(self):
         self.spinner_status.stop()
+
 
 def attach_ros_logging_to_console(console):
     """
@@ -122,6 +122,7 @@ def attach_ros_logging_to_console(console):
     RcutilsLogger.log = patched_log
     RcutilsLogger._textual_patched = True
 
+
 def attach_ros_logger_to_console(console, node):
     """
     Function that remove ROS node overlaping prints in the terminal
@@ -153,6 +154,7 @@ def attach_ros_logger_to_console(console, node):
     logger.warn = lambda msg, *a, **k: _emit("WARN", msg, *a, **k)
     logger.warning = logger.warn
     logger.error = lambda msg, *a, **k: _emit("ERROR", msg, *a, **k)
+
 
 def common_prefix(strings: str) -> str:
     if not strings:

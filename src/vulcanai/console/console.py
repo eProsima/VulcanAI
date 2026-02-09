@@ -18,12 +18,11 @@ import argparse
 import asyncio
 import sys
 import threading
+
 import pyperclip  # To paste the clipboard into the terminal
-
 import rclpy
-from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor, SingleThreadedExecutor
-
+from rclpy.node import Node
 from textual import events, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -34,7 +33,7 @@ from textual.widgets import Input, Static
 
 from vulcanai.console.logger import VulcanAILogger
 from vulcanai.console.modal_screens import CheckListModal, RadioListModal, ReverseSearchModal
-from vulcanai.console.utils import SpinnerHook, StreamToTextual, common_prefix, attach_ros_logging_to_console
+from vulcanai.console.utils import SpinnerHook, StreamToTextual, attach_ros_logging_to_console, common_prefix
 from vulcanai.console.widget_custom_log_text_area import CustomLogTextArea
 from vulcanai.console.widget_spinner import SpinnerStatus
 
@@ -408,8 +407,13 @@ class VulcanConsole(App):
         task.add_done_callback(lambda t: self._ros_tasks.remove(t) if t in self._ros_tasks else None)
         return task
 
-    def spin_ros_executor_async(self, executor: MultiThreadedExecutor | SingleThreadedExecutor, *nodes: Node,
-                            timeout_sec: float = 0.05, period_sec: float = 0.05):
+    def spin_ros_executor_async(
+        self,
+        executor: MultiThreadedExecutor | SingleThreadedExecutor,
+        *nodes: Node,
+        timeout_sec: float = 0.05,
+        period_sec: float = 0.05,
+    ):
 
         # Add nodes
         for n in nodes:
