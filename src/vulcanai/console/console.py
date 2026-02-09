@@ -22,6 +22,7 @@ import pyperclip  # To paste the clipboard into the terminal
 
 import rclpy
 from rclpy.node import Node
+from rclpy.executors import MultiThreadedExecutor, SingleThreadedExecutor
 
 from textual import events, work
 from textual.app import App, ComposeResult
@@ -33,7 +34,7 @@ from textual.widgets import Input, Static
 
 from vulcanai.console.logger import VulcanAILogger
 from vulcanai.console.modal_screens import CheckListModal, RadioListModal, ReverseSearchModal
-from vulcanai.console.utils import SpinnerHook, StreamToTextual, attach_ros_logger_to_console, common_prefix
+from vulcanai.console.utils import SpinnerHook, StreamToTextual, common_prefix, attach_ros_logging_to_console
 from vulcanai.console.widget_custom_log_text_area import CustomLogTextArea
 from vulcanai.console.widget_spinner import SpinnerStatus
 
@@ -173,6 +174,11 @@ class VulcanConsole(App):
         self.suggestion_index = -1
         self.suggestion_index_changed = threading.Event()
 
+        # Callables we will run once the app loop exists
+        self._deferred_starts: list[callable] = []
+        # Keep tasks to can cancel on exit
+        self._ros_tasks: list[asyncio.Task] = []
+
     async def on_mouse_down(self, event: MouseEvent) -> None:
         """
         Function used to paste the string for the user clipboard
@@ -200,8 +206,29 @@ class VulcanConsole(App):
         sys.stdout = StreamToTextual(self, "stdout")
         sys.stderr = StreamToTextual(self, "stderr")
 
+        attach_ros_logging_to_console(self)
+
+        # Run all deferred starts now that the loop exists (VulcanConsole is running)
+        for start in self._deferred_starts:
+            start()
+        self._deferred_starts.clear()
+
         self.loop = asyncio.get_running_loop()
         asyncio.create_task(self.bootstrap())
+
+    async def on_shutdown(self) -> None:
+        """
+        Function called when the console is closed.
+        """
+
+        self._deferred_starts.clear()
+        # Cancel ROS background tasks
+        for task in self._ros_tasks:
+            if not task.done():
+                task.cancel()
+
+        # Let cancellation propagate cleanly
+        await asyncio.gather(*self._ros_tasks, return_exceptions=True)
 
     def compose(self) -> ComposeResult:
         """
@@ -300,7 +327,6 @@ class VulcanConsole(App):
             # Add the shared node to the console manager blackboard
             if self.main_node is not None:
                 self.manager.bb["main_node"] = self.main_node
-                attach_ros_logger_to_console(self, self.main_node)
 
         # Run the async worker
         await async_worker()
@@ -368,6 +394,58 @@ class VulcanConsole(App):
 
     # region Utilities
 
+    def textual_app_is_running(self) -> bool:
+        try:
+            asyncio.get_running_loop()
+            return True
+        except RuntimeError:
+            return False
+
+    def _start_task(self, coro) -> asyncio.Task:
+        """Create a task and keep a reference to it."""
+        task = asyncio.create_task(coro)
+        self._ros_tasks.append(task)
+        task.add_done_callback(lambda t: self._ros_tasks.remove(t) if t in self._ros_tasks else None)
+        return task
+
+    def spin_ros_executor_async(self, executor: MultiThreadedExecutor | SingleThreadedExecutor, *nodes: Node,
+                            timeout_sec: float = 0.05, period_sec: float = 0.05):
+
+        # Add nodes
+        for n in nodes:
+            # This function does not add duplicates
+            executor.add_node(n)
+
+        # Create an async task that periodically spins the node
+        async def spin_loop():
+            try:
+                while rclpy.ok():
+                    # Process one batch of ROS callbacks with sufficient timeout
+                    executor.spin_once(timeout_sec=timeout_sec)
+                    # Yield control back to the event loop to keep UI responsive
+                    # Add a small sleep to prevent 100% CPU usage
+                    await asyncio.sleep(period_sec)
+            except asyncio.CancelledError:
+                pass
+            finally:
+                for n in nodes:
+                    try:
+                        executor.remove_node(n)
+                    except Exception:
+                        pass
+
+        # Start the spin loop as a background task
+        def start_now():
+            self._start_task(spin_loop())
+
+        # Check if the textual loop is acive (VulcanConsole is running)
+        if self.textual_app_is_running():
+            # It is running, execute it
+            start_now()
+        else:
+            # It is not running, scheduled the execution
+            self._deferred_starts.append(start_now)
+
     def spin_ros_node_async(self, ros_node: Node, timeout_sec: float = 0.05) -> None:
         """
         Function used to spin a ROS 2 node without blocking by integrating with Textual async event loop.
@@ -377,13 +455,11 @@ class VulcanConsole(App):
         - No separate thread needed
         - Better resource efficiency
         """
-        # Attach ROS logger to console to capture ROS 2 logs in the terminal
-        attach_ros_logger_to_console(self, ros_node)
 
         # Create an async task that periodically spins the node
         async def spin_loop():
             try:
-                while True:
+                while rclpy.ok():
                     # Process one batch of ROS callbacks with sufficient timeout
                     rclpy.spin_once(ros_node, timeout_sec=timeout_sec)
                     # Yield control back to the event loop to keep UI responsive
@@ -393,7 +469,16 @@ class VulcanConsole(App):
                 pass
 
         # Start the spin loop as a background task
-        asyncio.create_task(spin_loop())
+        def start_now():
+            self._start_task(spin_loop())
+
+        # Check if the textual loop is acive (VulcanConsole is running)
+        if self.textual_app_is_running():
+            # It is running, execute it
+            start_now()
+        else:
+            # It is not running, scheduled the execution
+            self._deferred_starts.append(start_now)
 
     def _apply_history_to_input(self) -> None:
         """

@@ -21,6 +21,9 @@ import sys
 import threading
 import time
 
+from rclpy.logging import LoggingSeverity
+from rclpy.impl.rcutils_logger import RcutilsLogger
+
 from textual.markup import escape  # To remove potential errors in textual terminal
 
 
@@ -61,6 +64,63 @@ class SpinnerHook:
 
     def on_request_end(self):
         self.spinner_status.stop()
+
+def attach_ros_logging_to_console(console):
+    """
+    Redirect ALL rclpy RcutilsLogger output (nodes + executor + rclpy internals)
+    to a Textual console.
+    """
+    # Textual
+    app = console.app
+
+    # Avoid double-patching
+    if getattr(RcutilsLogger, "_textual_patched", False):
+        # Already attached
+        return
+
+    severity_to_str = {
+        LoggingSeverity.DEBUG: "DEBUG",
+        LoggingSeverity.INFO: "INFO",
+        LoggingSeverity.WARN: "WARN",
+        LoggingSeverity.ERROR: "ERROR",
+        LoggingSeverity.FATAL: "FATAL",
+    }
+
+    def _write(markup: str) -> None:
+        console.logger.log_msg(markup)
+
+    def patched_log(self, severity, level, *args, **kwargs):
+        # Format message similarly to printf-style logger
+        try:
+            level = (level % args) if args else str(level)
+        except Exception:
+            level = f"{level} {args}"
+
+        ros_log_lev_dict = {
+            "10": "DEBUG",
+            "20": "INFO",
+            "30": "WARN",
+            "40": "ERROR",
+            "50": "FATAL",
+        }
+
+        msg = severity_to_str.get(severity, str(severity))
+
+        markup = f"<gray>[ROS] [{ros_log_lev_dict[level]}]"
+
+        name = getattr(self, "name", "ros")  # Logger name if available
+        if name != "":
+            markup += f" [{name}] "
+        markup += f"[{msg}]</gray>"
+
+        # Ensure UI-thread safe write
+        if threading.get_ident() == getattr(app, "_thread_id", None):
+            app.call_later(_write, markup)
+        else:
+            app.call_from_thread(_write, markup)
+
+    RcutilsLogger.log = patched_log
+    RcutilsLogger._textual_patched = True
 
 def attach_ros_logger_to_console(console, node):
     """
