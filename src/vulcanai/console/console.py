@@ -197,6 +197,8 @@ class VulcanConsole(App):
         sys.stdout = StreamToTextual(self, "stdout")
         sys.stderr = StreamToTextual(self, "stderr")
 
+        attach_ros_logger_to_console(self)
+
         self.loop = asyncio.get_running_loop()
         asyncio.create_task(self.bootstrap())
 
@@ -245,62 +247,56 @@ class VulcanConsole(App):
         Blocking operations (file I/O) run in executor, non-blocking in event loop.
         """
 
-        async def async_worker() -> None:
-            """
-            Async worker function that handles initialization without creating threads.
-            File I/O operations run in executor to avoid blocking the event loop.
-            """
-            # Initialize manager (potentially blocking, run in executor)
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, self.init_manager)
+        # Initialize manager (potentially blocking, run in executor)
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self.init_manager)
 
-            # -- Add the commands (non-blocking, runs in event loop) --
-            self.commands = {
-                "/help": self.cmd_help,
-                "/tools": self.cmd_tools,
-                "/edit_tools": self.cmd_edit_tools,
-                "/change_k": self.cmd_change_k,
-                "/history": self.cmd_history_index,
-                "/show_history": self.cmd_show_history,
-                "/clear_history": self.cmd_clear_history,
-                "/plan": self.cmd_plan,
-                "/rerun": self.cmd_rerun,
-                "/bb": self.cmd_blackboard_state,
-                "/clear": self.cmd_clear,
-                "/exit": self.cmd_quit,
-            }
+        # -- Add the commands (non-blocking, runs in event loop) --
+        self.commands = {
+            "/help": self.cmd_help,
+            "/tools": self.cmd_tools,
+            "/edit_tools": self.cmd_edit_tools,
+            "/change_k": self.cmd_change_k,
+            "/history": self.cmd_history_index,
+            "/show_history": self.cmd_show_history,
+            "/clear_history": self.cmd_clear_history,
+            "/plan": self.cmd_plan,
+            "/rerun": self.cmd_rerun,
+            "/bb": self.cmd_blackboard_state,
+            "/clear": self.cmd_clear,
+            "/exit": self.cmd_quit,
+        }
 
-            # Tab matches initialization
-            self.tab_matches = []
-            self.tab_index = 0
+        # Tab matches initialization
+        self.tab_matches = []
+        self.tab_index = 0
 
-            # -- Spinner controller --
-            try:
-                self.manager.llm.set_hooks(self.hooks)
-            except Exception:
-                pass
+        # -- Spinner controller --
+        try:
+            self.manager.llm.set_hooks(self.hooks)
+        except Exception:
+            pass
 
-            # -- Register tools (file I/O - run in executor) --
-            # File paths tools
-            for tool_file_path in self.register_from_file:
-                await loop.run_in_executor(None, self.manager.register_tools_from_file, tool_file_path)
+        # -- Register tools (file I/O - run in executor) --
+        # File paths tools
+        for tool_file_path in self.register_from_file:
+            await loop.run_in_executor(None, self.manager.register_tools_from_file, tool_file_path)
 
-            # Entry points tools
-            for ep in self.tools_from_entrypoints:
-                await loop.run_in_executor(None, self.manager.register_tools_from_entry_points, ep)
+        # Entry points tools
+        for ep in self.tools_from_entrypoints:
+            await loop.run_in_executor(None, self.manager.register_tools_from_entry_points, ep)
 
-            # Add user context (non-blocking)
-            self.manager.add_user_context(self.user_context)
-            # Add console to blackboard
-            self.manager.bb["console"] = self
+        # Add user context (non-blocking)
+        self.manager.add_user_context(self.user_context)
+        # Add console to blackboard
+        self.manager.bb["console"] = self
 
-            # Add the shared node to the console manager blackboard
-            if self.main_node is not None:
-                self.manager.bb["main_node"] = self.main_node
-                attach_ros_logger_to_console(self, self.main_node)
+        # Add the shared node to the console manager blackboard
+        if self.main_node is not None:
+            self.manager.bb["main_node"] = self.main_node
 
         # Run the async worker
-        await async_worker()
+        #await async_worker()
 
         self.is_ready = True
         self.logger.log_console("VulcanAI Interactive Console")

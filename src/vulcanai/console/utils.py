@@ -76,6 +76,8 @@ def attach_ros_logger_to_console(console):
         return
     # Textual
     app = console.app
+    if app == None:
+        return
 
     # Avoid double-patching
     if getattr(RcutilsLogger, "_textual_patched", False):
@@ -115,40 +117,6 @@ def attach_ros_logger_to_console(console):
 
     RcutilsLogger.log = patched_log
     RcutilsLogger._textual_patched = True
-
-
-def attach_ros_logger_to_console(console, node):
-    """
-    Function that remove ROS node overlaping prints in the terminal
-
-    Redirect the logger of the 'node' to a Textual console.
-    Works both from UI thread and from background threads.
-    """
-    logger = node.get_logger()
-    app = console.app  # Textual App
-
-    def _write(markup: str) -> None:
-        console.logger.log_msg(markup)
-
-    def _emit(level: str, msg, *args, **kwargs):
-        try:
-            text = (msg % args) if args else str(msg)
-        except Exception:
-            text = f"{msg} {args}"
-
-        markup = f"<gray>[ROS] [{level}] {text}</gray>"
-
-        if threading.get_ident() == getattr(app, "_thread_id", None):
-            # Already on the UI thread
-            app.call_later(_write, markup)
-        else:
-            app.call_from_thread(_write, markup)
-
-    logger.info = lambda msg, *a, **k: _emit("INFO", msg, *a, **k)
-    logger.warn = lambda msg, *a, **k: _emit("WARN", msg, *a, **k)
-    logger.warning = logger.warn
-    logger.error = lambda msg, *a, **k: _emit("ERROR", msg, *a, **k)
-
 
 def common_prefix(strings: str) -> str:
     if not strings:
