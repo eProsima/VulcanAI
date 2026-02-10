@@ -18,6 +18,7 @@ import difflib
 import heapq
 import subprocess
 import sys
+import threading
 import time
 
 from textual.markup import escape  # To remove potential errors in textual terminal
@@ -62,25 +63,64 @@ class SpinnerHook:
         self.spinner_status.stop()
 
 
-def attach_ros_logger_to_console(console, node):
+def attach_ros_logger_to_console(console):
     """
-    Function that remove ROS node overlaping prints in the terminal
+    Redirect ALL rclpy RcutilsLogger output (nodes + executor + rclpy internals)
+    to a Textual console.
     """
 
-    logger = node.get_logger()
+    try:
+        from rclpy.impl.rcutils_logger import RcutilsLogger
+    except ImportError:
+        console.logger.log_msg(
+            "No ROS 2 installation could be found. ROS 2 logs will not be redirected to VulcanAI console."
+        )
+        return
 
-    def info_hook(msg, *args, **kwargs):
-        console.call_from_thread(console.logger.log_msg, f"<gray>[ROS] [INFO] {msg}</gray>")
+    # Textual
+    app = console.app
+    if app is None:
+        # The textual terminal is not initialized
+        return
 
-    def warn_hook(msg, *args, **kwargs):
-        console.call_from_thread(console.logger.log_msg, f"<gray>[ROS] [WARN] {msg}</gray>")
+    # Avoid double-patching
+    if getattr(RcutilsLogger, "_textual_patched", False):
+        # Already attached
+        return
 
-    def error_hook(msg, *args, **kwargs):
-        console.call_from_thread(console.logger.log_msg, f"<gray>[ROS] [ERROR] {msg}</gray>")
+    def _write(markup: str) -> None:
+        console.logger.log_msg(markup)
 
-    logger.info = info_hook
-    logger.warning = warn_hook
-    logger.error = error_hook
+    def patched_log(self, msg, level, *args, **kwargs):
+        # Format message similarly to printf-style logger
+        try:
+            level = (level % args) if args else str(level)
+        except Exception:
+            level = f"{level} {args}"
+
+        ros_log_lev_dict = {
+            "10": "DEBUG",
+            "20": "INFO",
+            "30": "WARN",
+            "40": "ERROR",
+            "50": "FATAL",
+        }
+
+        markup = f"<gray>[ROS] [{ros_log_lev_dict[level]}]"
+
+        name = getattr(self, "name", "ros")  # Logger name if available
+        if name != "":
+            markup += f" [{name}] "
+        markup += f"[{msg}]</gray>"
+
+        # Ensure UI-thread safe write
+        if threading.get_ident() == getattr(app, "_thread_id", None):
+            app.call_later(_write, markup)
+        else:
+            app.call_from_thread(_write, markup)
+
+    RcutilsLogger.log = patched_log
+    RcutilsLogger._textual_patched = True
 
 
 def common_prefix(strings: str) -> str:

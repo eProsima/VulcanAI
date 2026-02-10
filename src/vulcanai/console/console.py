@@ -197,6 +197,9 @@ class VulcanConsole(App):
         sys.stdout = StreamToTextual(self, "stdout")
         sys.stderr = StreamToTextual(self, "stderr")
 
+        if self.main_node is not None:
+            attach_ros_logger_to_console(self)
+
         self.loop = asyncio.get_running_loop()
         asyncio.create_task(self.bootstrap())
 
@@ -241,68 +244,57 @@ class VulcanConsole(App):
 
     async def bootstrap(self) -> None:
         """
-        Function used to initialize the console manager.
-        Print information at runtime execution of a function, without blocking the main thread
-        so Textual Log does not freeze.
+        Function used to initialize the console manager asynchronously.
+        Blocking operations (file I/O) run in executor, non-blocking in event loop.
         """
 
-        def worker() -> None:
-            """
-            Worker function to run in a separate thread.
-            """
-
-            self.init_manager()
-
-            # -- Add the commands --
-            # Command registry: name -> handler
-            self.commands = {
-                "/help": self.cmd_help,
-                "/tools": self.cmd_tools,
-                "/edit_tools": self.cmd_edit_tools,
-                "/change_k": self.cmd_change_k,
-                "/history": self.cmd_history_index,
-                "/show_history": self.cmd_show_history,
-                "/clear_history": self.cmd_clear_history,
-                "/plan": self.cmd_plan,
-                "/rerun": self.cmd_rerun,
-                "/bb": self.cmd_blackboard_state,
-                "/clear": self.cmd_clear,
-                "/exit": self.cmd_quit,
-            }
-
-            # Tab matches initialization
-            self.tab_matches = []
-            self.tab_index = 0
-
-            # -- Spinner controller --
-            try:
-                self.manager.llm.set_hooks(self.hooks)
-            except Exception:
-                pass
-
-            # -- Register tools --
-            # Default tools
-
-            # File paths tools
-            for tool_file_path in self.register_from_file:
-                self.manager.register_tools_from_file(tool_file_path)
-
-            # Entry points tools
-            for ep in self.tools_from_entrypoints:
-                self.manager.register_tools_from_entry_points(ep)
-
-            # Add user context
-            self.manager.add_user_context(self.user_context)
-            # Add console to blackboard
-            self.manager.bb["console"] = self
-
-            # Add the shared node to the console manager blackboard to be used by tools
-            if self.main_node is not None:
-                self.manager.bb["main_node"] = self.main_node
-                attach_ros_logger_to_console(self, self.main_node)
-
+        # Initialize manager (potentially blocking, run in executor)
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, lambda: worker())
+        await loop.run_in_executor(None, self.init_manager)
+
+        # -- Add the commands (non-blocking, runs in event loop) --
+        self.commands = {
+            "/help": self.cmd_help,
+            "/tools": self.cmd_tools,
+            "/edit_tools": self.cmd_edit_tools,
+            "/change_k": self.cmd_change_k,
+            "/history": self.cmd_history_index,
+            "/show_history": self.cmd_show_history,
+            "/clear_history": self.cmd_clear_history,
+            "/plan": self.cmd_plan,
+            "/rerun": self.cmd_rerun,
+            "/bb": self.cmd_blackboard_state,
+            "/clear": self.cmd_clear,
+            "/exit": self.cmd_quit,
+        }
+
+        # Tab matches initialization
+        self.tab_matches = []
+        self.tab_index = 0
+
+        # -- Spinner controller --
+        try:
+            self.manager.llm.set_hooks(self.hooks)
+        except Exception:
+            pass
+
+        # -- Register tools (file I/O - run in executor) --
+        # File paths tools
+        for tool_file_path in self.register_from_file:
+            await loop.run_in_executor(None, self.manager.register_tools_from_file, tool_file_path)
+
+        # Entry points tools
+        for ep in self.tools_from_entrypoints:
+            await loop.run_in_executor(None, self.manager.register_tools_from_entry_points, ep)
+
+        # Add user context (non-blocking)
+        self.manager.add_user_context(self.user_context)
+        # Add console to blackboard
+        self.manager.bb["console"] = self
+
+        # Add the shared node to the console manager blackboard
+        if self.main_node is not None:
+            self.manager.bb["main_node"] = self.main_node
 
         self.is_ready = True
         self.logger.log_console("VulcanAI Interactive Console")
