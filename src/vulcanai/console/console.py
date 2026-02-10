@@ -197,7 +197,8 @@ class VulcanConsole(App):
         sys.stdout = StreamToTextual(self, "stdout")
         sys.stderr = StreamToTextual(self, "stderr")
 
-        attach_ros_logger_to_console(self)
+        if self.main_node is not None:
+            attach_ros_logger_to_console(self)
 
         self.loop = asyncio.get_running_loop()
         asyncio.create_task(self.bootstrap())
