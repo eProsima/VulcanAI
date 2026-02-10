@@ -16,10 +16,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from datetime import datetime
 import json
 import sys
 import threading
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -38,6 +38,7 @@ from vulcanai.console.utils import SpinnerHook, StreamToTextual, attach_ros_logg
 from vulcanai.console.widget_custom_log_text_area import CustomLogTextArea
 from vulcanai.console.widget_spinner import SpinnerStatus
 from vulcanai.core.plan_types import GlobalPlan
+
 
 class TextualLogSink:
     """A default console that prints to standard output."""
@@ -175,7 +176,7 @@ class VulcanConsole(App):
         self.suggestion_index_changed = threading.Event()
         # Log creation files
         now = datetime.now()
-        self.execution_time = now.strftime('%Y-%m-%d-%H-%M')
+        self.execution_time = now.strftime("%Y-%m-%d-%H-%M")
 
     async def on_mouse_down(self, event: MouseEvent) -> None:
         """
@@ -407,21 +408,23 @@ class VulcanConsole(App):
             # Log tittle
             log_lines = [
                 "╔" + "═" * 78 + "╗",
-                f"║  VulcanAI Console Session History".ljust(79) + "║",
+                "║  VulcanAI Console Session History".ljust(79) + "║",
                 f"║  Execution Time: {self.execution_time}".ljust(79) + "║",
                 "╚" + "═" * 78 + "╝",
-                ""
+                "",
             ]
 
             # Add queries from manager history
-            if self.manager and hasattr(self.manager, 'history') and self.manager.history:
+            if self.manager and hasattr(self.manager, "history") and self.manager.history:
                 log_lines.append(f"Total Queries: {len(self.manager.history)}")
                 log_lines.append("-" * 48)
                 log_lines.append("")
 
                 for i, (user_text, plan_summary) in enumerate(self.manager.history, 1):
                     log_lines.append(f"Query #{i}")
-                    log_lines.append(f"  User Input: {user_text.split(chr(10))[-1] if chr(10) in user_text else user_text}")
+                    log_lines.append(
+                        f"  User Input: {user_text.split(chr(10))[-1] if chr(10) in user_text else user_text}"
+                    )
                     log_lines.append(f"  Plan Summary: {plan_summary}")
                     log_lines.append("")
             else:
@@ -467,10 +470,7 @@ class VulcanConsole(App):
                 plan_dict = plan.model_dump()
 
                 # Save to file
-                filepath.write_text(
-                    json.dumps(plan_dict, indent=2),
-                    encoding="utf-8"
-                )
+                filepath.write_text(json.dumps(plan_dict, indent=2), encoding="utf-8")
 
                 saved_files.append(filepath)
                 self.logger.log_console(f"Saved plan {idx} to: {filepath}")
@@ -503,7 +503,7 @@ class VulcanConsole(App):
             plan = GlobalPlan.model_validate(plan_data)
 
             self.logger.log_console(f"Loaded plan from: {plan_file}")
-            self.logger.log_console(f"Executing plan...")
+            self.logger.log_console("Executing plan...")
 
             # Execute the plan using the manager's executor and blackboard
             result = self.manager.executor.run(plan, self.manager.bb)
