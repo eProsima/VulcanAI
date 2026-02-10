@@ -383,5 +383,5 @@ class CustomLogTextArea(TextArea):
         except Exception as e:
             error_color = VulcanAILogger.vulcanai_theme["error"]
             self.append_line(f"<{error_color}>Clipboard error: {e}</{error_color}>")
+            self.notify(f"Clipboard error: {e}")
             return
-

@@ -173,16 +173,6 @@ class VulcanConsole(App):
         self.suggestion_index = -1
         self.suggestion_index_changed = threading.Event()
 
-
-    def set_stream_task(self, input_stream):
-        """
-        Function used in the tools to set the current streaming task.
-        with this variable the user can finish the execution of the
-        task by using the signal "Ctrl + C"
-        """
-
-        self.stream_task = input_stream
-
     async def on_mouse_down(self, event: MouseEvent) -> None:
         """
         Function used to paste the string for the user clipboard
@@ -357,10 +347,10 @@ class VulcanConsole(App):
                     self.logger.log_console(f"Output of plan: {bb_ret}")
 
             except KeyboardInterrupt:
-                if self.stream_task == None:
+                if self.stream_task is None:
                     self.logger.log_msg("<yellow>Exiting...</yellow>")
                 else:
-                    self.stream_task.cancel() # triggers CancelledError in the task
+                    self.stream_task.cancel()  # triggers CancelledError in the task
                     self.stream_task = None
             except EOFError:
                 self.logger.log_msg("<yellow>Exiting...</yellow>")

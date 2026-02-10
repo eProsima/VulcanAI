@@ -62,15 +62,7 @@ class SpinnerHook:
     def on_request_end(self):
         self.spinner_status.stop()
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 def attach_ros_logger_to_console(console):
-=======
-
-=======
->>>>>>> c235ed6 ([#23897] Applied revision)
-def attach_ros_logger_to_console(console, node):
->>>>>>> dc8f6d1 ([#23897] Fixed rebase changes)
     """
     Redirect ALL rclpy RcutilsLogger output (nodes + executor + rclpy internals)
     to a Textual console.
@@ -128,6 +120,7 @@ def attach_ros_logger_to_console(console, node):
 
     RcutilsLogger.log = patched_log
     RcutilsLogger._textual_patched = True
+
 
 def common_prefix(strings: str) -> str:
     if not strings:
