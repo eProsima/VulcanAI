@@ -148,6 +148,7 @@ def common_prefix(strings: str) -> str:
 
     return common_prefix, commands
 
+
 async def run_streaming_cmd_async(
     console, args: list[str], max_duration: float = 60, max_lines: int = 1000, echo: bool = True, tool_name=""
 ) -> str:
@@ -344,4 +345,3 @@ def suggest_string(console, tool_name, string_name, input_string, real_string_li
         console.suggestion_index_changed.clear()
 
     return ret
-
