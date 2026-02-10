@@ -19,6 +19,7 @@ _EXPORTS = {
     "VulcanAILogger": ".logger:VulcanAILogger",
     "LogSink": ".logger:LogSink",
     "RichStdoutSink": ".logger:RichStdoutSink",
+    "attach_ros_logger_to_console": ".utils:attach_ros_logger_to_console",
 }
 
 __all__ = list(_EXPORTS.keys())

@@ -14,7 +14,6 @@
 
 from importlib import import_module
 from types import ModuleType
-from .console import attach_ros_logger_to_console
 
 _SUBPACKAGES = ("core", "tools", "console", "models")
 _submods: dict[str, ModuleType] = {name: import_module(f"{__name__}.{name}") for name in _SUBPACKAGES}

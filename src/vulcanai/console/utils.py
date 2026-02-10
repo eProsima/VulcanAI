@@ -72,8 +72,9 @@ def attach_ros_logger_to_console(console):
     try:
         from rclpy.impl.rcutils_logger import RcutilsLogger
     except ImportError:
-        console.logger.log_msg("No ROS 2 installation could be found. " \
-            "ROS 2 logs will not be redirected to VulcanAI console.")
+        console.logger.log_msg(
+            "No ROS 2 installation could be found. ROS 2 logs will not be redirected to VulcanAI console."
+        )
         return
 
     # Textual
