@@ -295,9 +295,6 @@ class VulcanConsole(App):
         if self.main_node is not None:
             self.manager.bb["main_node"] = self.main_node
 
-        # Run the async worker
-        #await async_worker()
-
         self.is_ready = True
         self.logger.log_console("VulcanAI Interactive Console")
         self.logger.log_console("Use <bold>'Ctrl+Q'</bold> to quit.")

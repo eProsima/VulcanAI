@@ -71,12 +71,13 @@ def attach_ros_logger_to_console(console):
 
     try:
         from rclpy.impl.rcutils_logger import RcutilsLogger
-    except:
-        console.logger.log_msg("No ROS")
+    except ImportError:
+        console.logger.log_msg("Not found ROS in environment")
         return
+
     # Textual
     app = console.app
-    if app == None:
+    if app is None:
         return
 
     # Avoid double-patching
@@ -117,6 +118,7 @@ def attach_ros_logger_to_console(console):
 
     RcutilsLogger.log = patched_log
     RcutilsLogger._textual_patched = True
+
 
 def common_prefix(strings: str) -> str:
     if not strings:
