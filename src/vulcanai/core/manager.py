@@ -33,7 +33,7 @@ class ToolManager:
         k: int = 10,
         hist_depth: int = 3,
         logger: Optional[VulcanAILogger] = None,
-        default_tools: bool = True
+        default_tools: bool = True,
     ):
         # Logger default to a stdout logger if none is provided (StdoutLogSink)
         self.logger = logger or VulcanAILogger.default()

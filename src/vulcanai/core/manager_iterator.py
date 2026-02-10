@@ -43,7 +43,7 @@ class IterativeManager(ToolManager):
         logger=None,
         max_iters: int = 5,
         step_timeout_ms: Optional[int] = None,
-        default_tools: bool = True
+        default_tools: bool = True,
     ):
         super().__init__(model, registry, validator, k, max(3, hist_depth), logger, default_tools)
 

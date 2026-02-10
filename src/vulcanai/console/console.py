@@ -208,29 +208,6 @@ class VulcanConsole(App):
         self.suggestion_index = -1
         self.suggestion_index_changed = threading.Event()
 
-
-    def set_stream_task(self, input_stream):
-        """
-        Function used in the tools to set the current streaming task.
-        with this variable the user can finish the execution of the
-        task by using the signal "Ctrl + C"
-        """
-
-        self.stream_task = input_stream
-
-    def run(self):
-        self.print("VulcanAI Interactive Console")
-        self.print("Type 'exit' to quit.\n")
-
-        # Terminal qol
-        self.history = []
-
-        # Streaming task control
-        self.stream_task = None
-        # Suggestion index for RadioListModal
-        self.suggestion_index = -1
-        self.suggestion_index_changed = threading.Event()
-
         self._gnome_profile_schema: str | None = None
         self._gnome_scrollbar_policy_backup: str | None = None
 
@@ -408,10 +385,10 @@ class VulcanConsole(App):
                     self.logger.log_console(f"Output of plan: {bb_ret}")
 
             except KeyboardInterrupt:
-                if self.stream_task == None:
+                if self.stream_task is None:
                     self.logger.log_msg("<yellow>Exiting...</yellow>")
                 else:
-                    self.stream_task.cancel() # triggers CancelledError in the task
+                    self.stream_task.cancel()  # triggers CancelledError in the task
                     self.stream_task = None
             except EOFError:
                 self.logger.log_msg("<yellow>Exiting...</yellow>")
