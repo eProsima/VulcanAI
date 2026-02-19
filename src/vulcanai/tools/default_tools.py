@@ -843,6 +843,13 @@ class Ros2PublishTool(AtomicTool):
         # Optional console handle to route logs to the subprocess panel.
         console = self.bb.get("console", None)
 
+        result = {
+            "published": "False",
+            "published_msgs": "",
+            "count": "0",
+            "topic": "",
+        }
+
         panel_enabled = console is not None and hasattr(console, "show_subprocess_panel")
         if panel_enabled:
             console.call_from_thread(console.show_subprocess_panel)
@@ -876,13 +883,6 @@ class Ros2PublishTool(AtomicTool):
                 )
                 return result
 
-        result = {
-            "published": "False",
-            "published_msgs": "",
-            "count": "0",
-            "topic": "",
-        }
-
         if console is None:
             print("[ERROR] Console not is None")
 
@@ -900,7 +900,8 @@ class Ros2PublishTool(AtomicTool):
             if count <= 0:
                 # No messages to publish
                 console.call_from_thread(
-                    console.logger.log_msg, "<gray>[ROS] [WARN] Count <= 0, nothing to publish.</gray>")
+                    console.logger.log_msg, "<gray>[ROS] [WARN] Count <= 0, nothing to publish.</gray>"
+                )
                 return result
 
             topic_name_list_str = run_oneshot_cmd(["ros2", "topic", "list"])
@@ -944,20 +945,25 @@ class Ros2PublishTool(AtomicTool):
                         payload = json.loads(message_data)
                         self.msg_from_dict(msg, payload)
                     except json.JSONDecodeError as e:
-                        console.call_from_thread(console.logger.log_msg,
-                            f"<gray>[ROS] [ERROR] Failed to parse message_data as JSON for custom type '{msg_type_str}': {e}</gray>")
+                        console.call_from_thread(
+                            console.logger.log_msg,
+                            "<gray>[ROS] [ERROR] Failed to parse message_data as JSON for custom type"
+                            + f"'{msg_type_str}': {e}</gray>",
+                        )
                         return result
 
                 with node.node_lock:
                     if hasattr(msg, "data"):
                         console.call_from_thread(
-                            console.logger.log_msg, f"<gray>[ROS] [INFO] Publishing: '{msg.data}'</gray>")
+                            console.logger.log_msg, f"<gray>[ROS] [INFO] Publishing: '{msg.data}'</gray>"
+                        )
                     else:
-                        console.call_from_thread(console.logger.log_msg,
-                            f"<gray>[ROS] [INFO] Publishing custom message to '{topic_name}'</gray>")
+                        console.call_from_thread(
+                            console.logger.log_msg,
+                            f"<gray>[ROS] [INFO] Publishing custom message to '{topic_name}'</gray>",
+                        )
                     publisher.publish(msg)
                     published_msgs.appned(msg.data)
-
 
                 rclpy.spin_once(node, timeout_sec=0.05)
 
@@ -1032,6 +1038,13 @@ class Ros2SubscribeTool(AtomicTool):
         # Optional console handle to support Ctrl+C cancellation.
         console = self.bb.get("console", None)
 
+        result = {
+            "published": "False",
+            "published_msgs": "",
+            "count": "0",
+            "topic": "",
+        }
+
         panel_enabled = console is not None and hasattr(console, "show_subprocess_panel")
         if panel_enabled:
             console.call_from_thread(console.show_subprocess_panel)
@@ -1076,15 +1089,7 @@ class Ros2SubscribeTool(AtomicTool):
             )
             return result
 
-
         output_format = kwargs.get("output_format", "data")
-
-        result = {
-            "subscribed": "False",
-            "received_msgs": "",
-            "count": "0",
-            "topic": "",
-        }
 
         def callback(msg: String):
             # received_msgs.append(msg.data)
@@ -1101,7 +1106,6 @@ class Ros2SubscribeTool(AtomicTool):
             return result
 
         try:
-
             if not topic_name:
                 # No topic
                 console.call_from_thread(console.logger.log_msg, "<gray>[ROS] [ERROR] No topic provided.</gray>")
@@ -1112,7 +1116,8 @@ class Ros2SubscribeTool(AtomicTool):
             if count <= 0:
                 # No messages to publish
                 console.call_from_thread(
-                    console.logger.log_msg, "<gray>[ROS] [WARN] Count <= 0, nothing to publish.</gray>")
+                    console.logger.log_msg, "<gray>[ROS] [WARN] Count <= 0, nothing to publish.</gray>"
+                )
                 return result
 
             topic_name_list_str = run_oneshot_cmd(["ros2", "topic", "list"])
@@ -1136,10 +1141,11 @@ class Ros2SubscribeTool(AtomicTool):
             console.set_stream_task(cancel_token)
             console.logger.log_tool("[tool]Subscription created![tool]", tool_name=self.name)
 
-
             while rclpy.ok():
                 if cancel_token is not None and cancel_token.cancelled():
-                    console.logger.log_tool("[tool]Ctrl+C received:[/tool] stopping subscription...", tool_name=self.name)
+                    console.logger.log_tool(
+                        "[tool]Ctrl+C received:[/tool] stopping subscription...", tool_name=self.name
+                    )
                     break
 
                 # Stop conditions

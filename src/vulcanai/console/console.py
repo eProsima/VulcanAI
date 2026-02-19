@@ -51,7 +51,6 @@ class VulcanConsole(App):
     #   Right panel: 48 characters length
     #   Left panel: fills remaining space
 
-
     # #right {
     #     width: 48;
     #     layout: vertical;
@@ -489,7 +488,9 @@ class VulcanConsole(App):
                         self.logger.log_console(f"Deactivated tool <bold>'{tool}'</bold>")
 
     @work
-    async def open_radiolist(self, option_list: list[str], tool: str = "", category: str = "", input_string: str = "") -> str:
+    async def open_radiolist(
+        self, option_list: list[str], tool: str = "", category: str = "", input_string: str = ""
+    ) -> str:
         """
         Function used to open a RadioList ModalScreen in the console.
         Used in the tool suggestion selection, for default tools.

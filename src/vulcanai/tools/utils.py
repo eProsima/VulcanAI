@@ -216,7 +216,7 @@ def suggest_string(console, tool_name, string_name, input_string, real_string_li
 
     # Add '/' for Topic, service, action, node
     ros_categories_list = ["Topic", "Service", "Action", "Node"]
-    if string_name in ros_categories_list and len(input_string) > 0 and input_string[0] != '/':
+    if string_name in ros_categories_list and len(input_string) > 0 and input_string[0] != "/":
         input_string = f"/{input_string}"
         ret = input_string
 

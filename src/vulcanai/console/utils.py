@@ -14,8 +14,6 @@
 
 
 import asyncio
-import difflib
-import heapq
 import subprocess
 import sys
 import threading
@@ -61,6 +59,7 @@ class SpinnerHook:
 
     def on_request_end(self):
         self.spinner_status.stop()
+
 
 def attach_ros_logger_to_console(console):
     """
