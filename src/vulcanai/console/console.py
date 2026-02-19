@@ -30,11 +30,18 @@ from textual.widgets import Input, Static
 
 from vulcanai.console.logger import VulcanAILogger
 from vulcanai.console.modal_screens import CheckListModal, RadioListModal, ReverseSearchModal
-from vulcanai.console.utils import SpinnerHook, StreamToTextual, attach_ros_logger_to_console, common_prefix
+from vulcanai.console.utils import (
+    SpinnerHook,
+    StreamToTextual,
+    attach_ros_logger_to_console,
+    common_prefix,
+    disable_gnome_scrollbar,
+    restore_gnome_scrollbar,
+    write_terminal_sequence,
+)
 from vulcanai.console.widget_custom_log_text_area import CustomLogTextArea
 from vulcanai.console.widget_spinner import SpinnerStatus
 
-from vulcanai.console.utils import disable_gnome_scrollbar, write_terminal_sequence, restore_gnome_scrollbar
 
 class TextualLogSink:
     """A default console that prints to standard output."""
@@ -47,7 +54,6 @@ class TextualLogSink:
 
 
 class VulcanConsole(App):
-
     _vulcanai_bg_color = "#121212"
 
     # CSS Styles

@@ -41,7 +41,9 @@ class SpinnerHook:
     def on_request_end(self):
         self.spinner_status.stop()
 
+
 # region CONSOLE_REDIRECT
+
 
 class StreamToTextual:
     """
@@ -124,9 +126,11 @@ def attach_ros_logger_to_console(console):
     RcutilsLogger.log = patched_log
     RcutilsLogger._textual_patched = True
 
+
 # endregion
 
 # region TEXTUAL
+
 
 def common_prefix(strings: str) -> str:
     if not strings:
@@ -355,9 +359,11 @@ def suggest_string(console, tool_name, string_name, input_string, real_string_li
 
     return ret
 
+
 # endregion
 
 # region TERMINAL_CONFIG
+
 
 def write_terminal_sequence(console, sequence: str) -> None:
     """
@@ -435,10 +441,7 @@ def disable_gnome_scrollbar(console) -> None:
         return
 
     # Build the profile-specific schema path used by GNOME Terminal settings.
-    schema = (
-        "org.gnome.Terminal.Legacy.Profile:"
-        f"/org/gnome/terminal/legacy/profiles:/:{profile_id}/"
-    )
+    schema = f"org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:{profile_id}/"
     current_policy = run_gsettings("get", schema, "scrollbar-policy")
     if not current_policy:
         return
