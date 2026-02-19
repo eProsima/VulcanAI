@@ -47,7 +47,10 @@ class CustomLogTextArea(TextArea):
     TAG_TOKEN_RE = re.compile(r"</?[^>]+>")
 
     def __init__(self, **kwargs):
-        super().__init__(read_only=True, **kwargs)
+        # Disable the TextArea cursor in this read-only log panel.
+        # This prevents Textual from auto-scrolling to keep cursor/selection visible
+        # every time new text is inserted.
+        super().__init__(read_only=True, show_cursor=False, **kwargs)
 
         # Lock used to avoid data races in 'self._lines_styles'
         #   when VulcanAI and ROS threads writes at the same time
@@ -281,6 +284,10 @@ class CustomLogTextArea(TextArea):
         # [EXECUTOR] Invoking 'move_turtle' with args: ...
         # [ROS] [INFO] Publishing message 1 to ...
         with self._lock:
+            # Terminal-like behavior:
+            # keep following output only if the user was already at the bottom.
+            should_follow_output = self.is_vertical_scroll_end
+
             # Append via document API to keep row tracking consistent
             # Only add a newline before the new line if there is already content
             insert_text = ("\n" if self.document.text else "") + plain
@@ -303,8 +310,9 @@ class CustomLogTextArea(TextArea):
             # Trim now
             self._trim_highlights()
 
-            # Scroll to end
-            self.scroll_end(animate=False)
+            # Scroll to end only when the user was already at the bottom.
+            if should_follow_output:
+                self.scroll_end(animate=False, immediate=False, x_axis=False)
 
             # Rebuild highlights and refresh
             self._rebuild_highlights()
