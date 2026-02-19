@@ -14,8 +14,6 @@
 
 
 import asyncio
-import difflib
-import heapq
 import subprocess
 import sys
 import threading

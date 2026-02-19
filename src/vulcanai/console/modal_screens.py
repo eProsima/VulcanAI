@@ -14,8 +14,8 @@
 
 from textual import events
 from textual.app import ComposeResult
-from textual.content import Content
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
+from textual.content import Content
 from textual.screen import ModalScreen
 from textual.widgets import Button, Checkbox, Input, Label, RadioButton, RadioSet
 
