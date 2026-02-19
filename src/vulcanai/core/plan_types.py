@@ -89,7 +89,7 @@ class GlobalPlan(BaseModel):
             lines.append(f"- <bold>Plan Summary</bold>: {self.summary}\n")
 
         color_tool = VulcanAILogger.vulcanai_theme["executor"]
-        color_variable = VulcanAILogger.vulcanai_theme["validator"]
+        color_variable = VulcanAILogger.vulcanai_theme["tool"]
         color_value = VulcanAILogger.vulcanai_theme["registry"]
         color_error = VulcanAILogger.vulcanai_theme["error"]
 

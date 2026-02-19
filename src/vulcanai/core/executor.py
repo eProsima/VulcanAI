@@ -277,9 +277,9 @@ class PlanExecutor:
         msg += "'{"
         for key, value in arg_dict.items():
             if first:
-                msg += f"[validator]'{key}'[/validator]: " + f"[registry]'{value}'[/registry]"
+                msg += f"[tool]'{key}'[/tool]: " + f"[registry]'{value}'[/registry]"
             else:
-                msg += f", [validator]'{key}'[/validator]: " + f"[registry]'{value}'[/registry]"
+                msg += f", [tool]'{key}'[/tool]: " + f"[registry]'{value}'[/registry]"
             first = False
         msg += "}'"
         self.logger.log_executor(msg)

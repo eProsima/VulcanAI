@@ -14,6 +14,7 @@
 
 from textual import events
 from textual.app import ComposeResult
+from textual.content import Content
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, Checkbox, Input, Label, RadioButton, RadioSet
@@ -170,9 +171,16 @@ class CheckListModal(ModalScreen[list[str] | None]):
     }
 
     .btns {
-        height: 3;            /* give buttons row a fixed height */
-        padding-top: 1;
-        content-align: right middle;
+        height: auto;
+        width: 100%;
+        margin-top: 1;
+        padding: 0;
+        content-align: center middle;
+        align-horizontal: center;
+    }
+
+    .btns Button {
+        padding: 0 3;
     }
     """
 
@@ -209,6 +217,18 @@ class CheckListModal(ModalScreen[list[str] | None]):
 
 
 class RadioListModal(ModalScreen[str | None]):
+    class SquareRadioButton(RadioButton):
+        # BUTTON_INNER = '●'
+        @property
+        def _button(self) -> Content:
+            button_style = self.get_visual_style("toggle--button")
+            symbol = "☒" if self.value else "☐"
+            return Content.assemble(
+                (" ", button_style),
+                (symbol, button_style),
+                (" ", button_style),
+            )
+
     CSS = """
     RadioListModal {
         align: center middle;
@@ -218,7 +238,6 @@ class RadioListModal(ModalScreen[str | None]):
         width: 60%;
         max-width: 90%;
         height: 40%;
-        border: round $accent;
         padding: 1 2;
         background: $panel;
     }
@@ -233,9 +252,16 @@ class RadioListModal(ModalScreen[str | None]):
     }
 
     .btns {
-        height: 3;
-        padding-top: 1;
-        content-align: right middle;
+        height: auto;
+        width: 100%;
+        margin-top: 1;
+        padding: 0;
+        content-align: center middle;
+        align-horizontal: center;
+    }
+
+    .btns Button {
+        padding: 0 1;
     }
     """
 
@@ -255,7 +281,7 @@ class RadioListModal(ModalScreen[str | None]):
             with VerticalScroll(classes="radio-list"):
                 with RadioSet(id="radio-set"):
                     for i, line in enumerate(self.lines):
-                        yield RadioButton(line, id=f"rb{i}", value=(i == self.default_index))
+                        yield self.SquareRadioButton(line, id=f"rb{i}", value=(i == self.default_index))
 
             # Buttons
             with Horizontal(classes="btns"):
@@ -263,7 +289,7 @@ class RadioListModal(ModalScreen[str | None]):
                 yield Button("Submit", variant="primary", id="submit")
 
     def on_mount(self) -> None:
-        first_rb = self.query_one(RadioButton)
+        first_rb = self.query_one(self.SquareRadioButton)
         self.set_focus(first_rb)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:

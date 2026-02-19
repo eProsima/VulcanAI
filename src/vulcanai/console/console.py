@@ -58,6 +58,28 @@ class VulcanConsole(App):
     # Two panels: left (log + input) and right (history + variables)
     #   Right panel: 48 characters length
     #   Left panel: fills remaining space
+
+
+    # #right {
+    #     width: 48;
+    #     layout: vertical;
+    #     border: tall #56AA08;
+    #     padding: 0;
+    # }
+
+    # #logcontent {
+    #     height: auto;
+    #     min-height: 1;
+    #     max-height: 1fr;
+    #     border: tall #333333;
+    # }
+
+    # #streamcontent {
+    #     height: 0;
+    #     min-height: 0;
+    #     border: tall #56AA08;
+    #     display: none;
+    # }
     CSS = """
     Screen {
         layout: horizontal;
@@ -97,7 +119,7 @@ class VulcanConsole(App):
     #streamcontent {
         height: 0;
         min-height: 0;
-        border: tall #56AA08;
+        border: solid #56AA08;
         display: none;
     }
 
@@ -740,17 +762,15 @@ class VulcanConsole(App):
         self.stream_pannel.refresh(layout=True)
         self.refresh(layout=True)
 
-    def enable_subprocess_log_routing(self) -> None:
+    def change_route_logs(self, value: bool = False) -> None:
         """
-        Route logger sink output to subprocess panel.
-        """
-        self._route_logs_to_stream_panel = True
+        Route logger sink output to stream panel.
 
-    def disable_subprocess_log_routing(self) -> None:
+        value = True -> Stream panel
+        value = False -> Main panel
         """
-        Route logger sink output to main panel.
-        """
-        self._route_logs_to_stream_panel = False
+
+        self._route_logs_to_stream_panel = value
 
     def hide_subprocess_panel(self) -> None:
         """
