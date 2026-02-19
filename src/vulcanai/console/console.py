@@ -34,6 +34,7 @@ from vulcanai.console.utils import SpinnerHook, StreamToTextual, attach_ros_logg
 from vulcanai.console.widget_custom_log_text_area import CustomLogTextArea
 from vulcanai.console.widget_spinner import SpinnerStatus
 
+from vulcanai.console.utils import disable_gnome_scrollbar, write_terminal_sequence, restore_gnome_scrollbar
 
 class TextualLogSink:
     """A default console that prints to standard output."""
@@ -46,59 +47,79 @@ class TextualLogSink:
 
 
 class VulcanConsole(App):
+
+    _vulcanai_bg_color = "#121212"
+
     # CSS Styles
     # Two panels: left (log + input) and right (history + variables)
     #   Right panel: 48 characters length
     #   Left panel: fills remaining space
-    CSS = """
-    Screen {
+    CSS = f"""
+    Screen {{
         layout: horizontal;
-    }
+        background: {_vulcanai_bg_color};
+        overflow: hidden hidden;
+    }}
 
-    #left {
+    #root {{
+        width: 100%;
+        height: 100%;
+        background: {_vulcanai_bg_color};
+        overflow: hidden hidden;
+    }}
+
+    #left {{
         width: 1fr;
         layout: vertical;
-    }
+        background: {_vulcanai_bg_color};
+        overflow: hidden hidden;
+    }}
 
-    #right {
+    #right {{
         width: 48;
         layout: vertical;
         border: tall #56AA08;
         padding: 0;
-    }
+        background: {_vulcanai_bg_color};
+        overflow: hidden hidden;
+    }}
 
-    #logcontent {
-        height: auto;
-        min-height: 1;
-        max-height: 1fr;
+    #logcontent {{
+        height: 1fr;
         border: tall #333333;
-    }
+        background: {_vulcanai_bg_color};
+        scrollbar-size-vertical: 0;
+        scrollbar-size-horizontal: 0;
+    }}
 
-    #llm_spinner {
+    #llm_spinner {{
         height: 0;
         display: none;
         content-align: left middle;
         padding-left: 2;
-    }
+    }}
 
-    #cmd {
-        dock: bottom;
-    }
+    #cmd {{
+        width: 100%;
+        background: {_vulcanai_bg_color};
+    }}
 
-    #history_title {
+    #history_title {{
         content-align: center middle;
         margin: 0;
         padding: 0;
-    }
+    }}
 
-    #history_scroll {
+    #history_scroll {{
         height: 1fr;
         margin: 1;
-    }
+        scrollbar-size-vertical: 0;
+        scrollbar-size-horizontal: 0;
+    }}
 
-    #history {
+    #history {{
         width: 100%;
-    }
+    }}
     """
 
     # Bindings for the console
@@ -169,6 +190,9 @@ class VulcanConsole(App):
         # Suggestion index for RadioListModal
         self.suggestion_index = -1
         self.suggestion_index_changed = threading.Event()
+
+        self._gnome_profile_schema: str | None = None
+        self._gnome_scrollbar_policy_backup: str | None = None
 
     async def on_mouse_down(self, event: MouseEvent) -> None:
         """
@@ -1075,7 +1099,25 @@ class VulcanConsole(App):
         """
         Function used to run VulcanAI.
         """
-        self.run()
+        osc_set_bg_black = f"\x1b]11;{self._vulcanai_bg_color}\x07"
+        osc_reset_bg = "\x1b]111\x07"
+        csi_hide_scrollbar = "\x1b[?30l"
+        csi_show_scrollbar = "\x1b[?30h"
+
+        disable_gnome_scrollbar(self)
+        # Terminals leave pixel gutters (right and bottom side of the terminal)
+        # Force terminal background while app is running
+        write_terminal_sequence(self, osc_set_bg_black)
+        # Try to hide terminal scrollbar while app runs (xterm private mode)
+        write_terminal_sequence(self, csi_hide_scrollbar)
+        try:
+            self.run()
+        finally:
+            restore_gnome_scrollbar(self)
+            # Restore terminal scrollbar state
+            write_terminal_sequence(self, csi_show_scrollbar)
+            # Restore terminal default background
+            write_terminal_sequence(self, osc_reset_bg)
 
     def init_manager(self) -> None:
         """
