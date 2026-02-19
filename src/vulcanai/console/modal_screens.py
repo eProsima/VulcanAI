@@ -239,14 +239,17 @@ class RadioListModal(ModalScreen[str | None]):
     }
     """
 
-    def __init__(self, lines: list[str], default_index: int = 0) -> None:
+    def __init__(self, lines: list[str], category: str = "", input_string: str = "", default_index: int = 0) -> None:
         super().__init__()
         self.lines = lines
+        self.category = category
+        self.input_string = input_string
         self.default_index = default_index
 
     def compose(self) -> ComposeResult:
+        dialog_msg = f"{self.category} '{self.input_string}' does not exist. Choose a suggestion:"
         with Vertical(classes="dialog"):
-            yield Label("Pick one option", classes="title")
+            yield Label(dialog_msg, classes="title")
 
             # One-select radio list
             with VerticalScroll(classes="radio-list"):

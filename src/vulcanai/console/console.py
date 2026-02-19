@@ -74,6 +74,13 @@ class VulcanConsole(App):
         border: tall #333333;
     }
 
+    #streamcontent {
+        height: 0;
+        min-height: 0;
+        border: tall #56AA08;
+        display: none;
+    }
+
     #llm_spinner {
         height: 0;
         display: none;
@@ -143,7 +150,9 @@ class VulcanConsole(App):
         # Iterative mode
         self.iterative = iterative
         # CustomLogTextArea instance
-        self.left_pannel = None
+        self.main_pannel = None
+        # Subprocess output panel
+        self.stream_pannel = None
         # Logger instance
         self.logger = VulcanAILogger.default()
         self.logger.set_textualizer_console(TextualLogSink(self))
@@ -169,6 +178,8 @@ class VulcanConsole(App):
 
         # Streaming task control
         self.stream_task = None
+        # Route logger output to subprocess panel when needed.
+        self._route_logs_to_stream_panel = False
         # Suggestion index for RadioListModal
         self.suggestion_index = -1
         self.suggestion_index_changed = threading.Event()
@@ -191,7 +202,8 @@ class VulcanConsole(App):
         Function called when the console is mounted.
         """
 
-        self.left_pannel = self.query_one("#logcontent", CustomLogTextArea)
+        self.main_pannel = self.query_one("#logcontent", CustomLogTextArea)
+        self.stream_pannel = self.query_one("#streamcontent", CustomLogTextArea)
         self.spinner_status = self.query_one("#llm_spinner", SpinnerStatus)
         self.hooks = SpinnerHook(self.spinner_status)
 
@@ -226,6 +238,9 @@ class VulcanConsole(App):
         with Horizontal():
             # Left
             with Vertical(id="left"):
+                # Subprocess stream area (hidden by default, shown on-demand)
+                streamcontent = CustomLogTextArea(id="streamcontent")
+                yield streamcontent
                 # Log Area
                 logcontent = CustomLogTextArea(id="logcontent")
                 yield logcontent
@@ -452,17 +467,18 @@ class VulcanConsole(App):
                         self.logger.log_console(f"Deactivated tool <bold>'{tool}'</bold>")
 
     @work
-    async def open_radiolist(self, option_list: list[str], tool: str = "") -> str:
+    async def open_radiolist(self, option_list: list[str], tool: str = "", category: str = "", input_string: str = "") -> str:
         """
         Function used to open a RadioList ModalScreen in the console.
         Used in the tool suggestion selection, for default tools.
         """
         # Create the checklist dialog
-        selected = await self.push_screen_wait(RadioListModal(option_list))
+        selected = await self.push_screen_wait(RadioListModal(option_list, category, input_string))
 
         if selected is None:
             self.logger.log_tool("Suggestion cancelled", tool_name=tool)
             self.suggestion_index = -2
+            self.suggestion_index_changed.set()
             return
 
         self.logger.log_tool(f'Selected suggestion: "{option_list[selected]}"', tool_name=tool)
@@ -662,7 +678,9 @@ class VulcanConsole(App):
             self.logger.log_console("No blackboard available.")
 
     def cmd_clear(self, _) -> None:
-        self.left_pannel.clear_console()
+        if self.stream_pannel is not None:
+            self.stream_pannel.clear_console()
+        self.main_pannel.clear_console()
 
     def cmd_quit(self, _) -> None:
         self.exit()
@@ -670,6 +688,56 @@ class VulcanConsole(App):
     # endregion
 
     # region Logging
+
+    def show_subprocess_panel(self) -> None:
+        """
+        Show the dedicated subprocess output panel at the top of the main panel.
+        """
+        if self.stream_pannel is None:
+            return
+
+        self.stream_pannel.clear_console()
+        self.stream_pannel.display = True
+        self.stream_pannel.styles.height = 12
+        self.stream_pannel.refresh(layout=True)
+        self.refresh(layout=True)
+
+    def enable_subprocess_log_routing(self) -> None:
+        """
+        Route logger sink output to subprocess panel.
+        """
+        self._route_logs_to_stream_panel = True
+
+    def disable_subprocess_log_routing(self) -> None:
+        """
+        Route logger sink output to main panel.
+        """
+        self._route_logs_to_stream_panel = False
+
+    def hide_subprocess_panel(self) -> None:
+        """
+        Hide the subprocess output panel and return space to the main log panel.
+        """
+        if self.stream_pannel is None:
+            return
+
+        self.stream_pannel.display = False
+        self.stream_pannel.styles.height = 0
+        self.stream_pannel.refresh(layout=True)
+        self.refresh(layout=True)
+
+    def add_subprocess_line(self, input: str) -> None:
+        """
+        Write output into the dedicated subprocess panel.
+        """
+        if self.stream_pannel is None:
+            self.add_line(input)
+            return
+
+        lines = input.splitlines()
+        for line in lines:
+            if not self.stream_pannel.append_line(line):
+                self.logger.log_console("Warning: Trying to add an empty subprocess line.")
 
     def add_line(self, input: str, color: str = "", subprocess_flag: bool = False) -> None:
         """
@@ -684,20 +752,24 @@ class VulcanConsole(App):
             color_begin = f"<{color}>"
             color_end = f"</{color}>"
 
+        target_panel = self.main_pannel
+        if self._route_logs_to_stream_panel and self.stream_pannel is not None and self.stream_pannel.display:
+            target_panel = self.stream_pannel
+
         # Append each line; deque automatically truncates old ones
         for line in lines:
             line_processed = line
             if subprocess_flag:
                 line_processed = escape(line)
             text = f"{color_begin}{line_processed}{color_end}"
-            if not self.left_pannel.append_line(text):
+            if not target_panel.append_line(text):
                 self.logger.log_console("Warning: Trying to add an empty line.")
 
     def delete_last_line(self):
         """
         Function used to remove the last line in the VulcanAI terminal.
         """
-        self.left_pannel.delete_last_row()
+        self.main_pannel.delete_last_row()
 
     # endregion
 

@@ -315,6 +315,7 @@ class PlanExecutor:
                 + "with result:"
             )
 
+            # TODO. danip Extra print of result
             if isinstance(result, dict):
                 for key, value in result.items():
                     if key == "ros2":

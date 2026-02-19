@@ -28,20 +28,21 @@ async def run_streaming_cmd_async(
     # Unpack the command
     cmd, *cmd_args = args
 
-    # Create the subprocess
-    process = await asyncio.create_subprocess_exec(
-        cmd,
-        *cmd_args,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-    )
-
-    assert process.stdout is not None
-
-    start_time = time.monotonic()
-    line_count = 0
-
+    process = None
     try:
+        # Create the subprocess
+        process = await asyncio.create_subprocess_exec(
+            cmd,
+            *cmd_args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+
+        assert process.stdout is not None
+
+        start_time = time.monotonic()
+        line_count = 0
+
         # Subprocess main loop. Read line by line
         async for raw_line in process.stdout:
             line = raw_line.decode(errors="ignore").rstrip("\n")
@@ -49,7 +50,10 @@ async def run_streaming_cmd_async(
             # Print the line
             if echo:
                 line_processed = escape(line)
-                console.add_line(line_processed)
+                if hasattr(console, "add_subprocess_line"):
+                    console.add_subprocess_line(line_processed)
+                else:
+                    console.add_line(line_processed)
 
             # Count the line
             line_count += 1
@@ -71,21 +75,28 @@ async def run_streaming_cmd_async(
     except asyncio.CancelledError:
         # Task was cancelled → stop the subprocess
         console.logger.log_tool("[tool]Cancellation received:[/tool] terminating subprocess...", tool_name=tool_name)
-        process.terminate()
+        if process is not None:
+            process.terminate()
         raise
     # Not necessary, textual terminal get the keyboard input
     except KeyboardInterrupt:
         # Ctrl+C pressed → stop subprocess
         console.logger.log_tool("[tool]Ctrl+C received:[/tool] terminating subprocess...", tool_name=tool_name)
-        process.terminate()
+        if process is not None:
+            process.terminate()
 
     finally:
         try:
-            await asyncio.wait_for(process.wait(), timeout=3.0)
+            if process is not None:
+                await asyncio.wait_for(process.wait(), timeout=3.0)
         except asyncio.TimeoutError:
             console.logger.log_tool("Subprocess didn't exit in time → killing it.", tool_name=tool_name, error=True)
-            process.kill()
-            await process.wait()
+            if process is not None:
+                process.kill()
+                await process.wait()
+        finally:
+            if hasattr(console, "hide_subprocess_panel"):
+                console.hide_subprocess_panel()
 
     return "Process stopped due to Ctrl+C"
 
@@ -95,6 +106,9 @@ def execute_subprocess(console, tool_name, base_args, max_duration, max_lines):
 
     def _launcher() -> None:
         nonlocal stream_task
+        if hasattr(console, "show_subprocess_panel"):
+            console.show_subprocess_panel()
+
         # This always runs in the Textual event-loop thread
         loop = asyncio.get_running_loop()
         stream_task = loop.create_task(
@@ -200,15 +214,20 @@ def suggest_string(console, tool_name, string_name, input_string, real_string_li
 
         return most_topic_similar, ret_list
 
+    # Add '/' for Topic, service, action, node
+    ros_categories_list = ["Topic", "Service", "Action", "Node"]
+    if string_name in ros_categories_list and len(input_string) > 0 and input_string[0] != '/':
+        input_string = f"/{input_string}"
+        ret = input_string
+
     if input_string not in real_string_list:
-        # console.add_line(f"{tool_header_str} {string_name}: \"{input_string}\" does not exists")
         console.logger.log_tool(f'{string_name}: "{input_string}" does not exists', tool_name=tool_name)
 
         # Get the suggestions list sorted by similitud value
         _, topic_sim_list = _get_suggestions(real_string_list, input_string)
 
         # Open the ModalScreen
-        console.open_radiolist(topic_sim_list, f"{tool_name}")
+        console.open_radiolist(topic_sim_list, tool_name, string_name, input_string)
 
         # Wait for the user to select and item in the
         # RadioList ModalScreen
