@@ -598,6 +598,374 @@ class TestExecutorLoggingInConsoleFile(unittest.TestCase):
         # Textual log
         self._assert_executor_log_contains("Execution failed for 'error_tool': boom")
 
+# MANAGER PRINTS
+class TestManagerLoggingInConsoleFile(unittest.TestCase):
+    """Iterative manager tests kept in this console-focused test module."""
+
+    class _FakeExecutor:
+        def safe_eval(self, expr, bb):
+            if expr == "True":
+                return True
+            if expr == "False":
+                return False
+            return False
+
+    class _FakeRegistry:
+        def __init__(self, tools=None, topk_action=None, topk_validation=None):
+            self.tools = tools or {}
+            self._topk_action = topk_action if topk_action is not None else list(self.tools.values())
+            self._topk_validation = topk_validation if topk_validation is not None else []
+
+        def top_k(self, query, k, validation=False):
+            if validation:
+                return list(self._topk_validation)
+            return list(self._topk_action)
+
+    class _FakeValidator:
+        def __init__(self, side_effects):
+            self._side_effects = list(side_effects)
+
+        def validate(self, plan):
+            if not self._side_effects:
+                return
+            nxt = self._side_effects.pop(0)
+            if isinstance(nxt, Exception):
+                raise nxt
+
+    def setUp(self):
+        executor_mod = importlib.import_module("vulcanai.core.executor")
+        manager_iterator_mod = importlib.import_module("vulcanai.core.manager_iterator")
+        plan_types_mod = importlib.import_module("vulcanai.core.plan_types")
+
+        self.Blackboard = executor_mod.Blackboard
+        self.IterativeManager = manager_iterator_mod.IterativeManager
+        self.TimelineEvent = manager_iterator_mod.TimelineEvent
+        self.Step = plan_types_mod.Step
+        self.GoalSpec = plan_types_mod.GoalSpec
+        self.AIValidation = plan_types_mod.AIValidation
+
+    def _assert_manager_log_contains(self, manager, text: str, error: bool | None = None):
+        normalized_logs = [normalize_log(m) for m in manager._sink.messages]
+        manager_logs = [m for m in normalized_logs if "[MANAGER]" in m]
+        if error is None:
+            found = any(text in msg for msg in manager_logs)
+        else:
+            found = any((text in msg and ("[ERROR]" in msg) == error) for msg in manager_logs)
+        self.assertTrue(found, f"Missing manager log '{text}'. Logs: {manager_logs}")
+
+    def _new_manager(self, max_iters=2):
+        manager = self.IterativeManager.__new__(self.IterativeManager)
+        manager._sink = FakeSink()
+        manager.logger = VulcanAILogger(sink=manager._sink)
+        manager.k = 3
+        manager.history_depth = 5
+        manager.history = []
+        manager.user_context = ""
+        manager.registry = self._FakeRegistry()
+        manager.validator = None
+        manager.executor = self._FakeExecutor()
+        manager.llm = FakeLLM()
+        manager.bb = self.Blackboard()
+        manager.iter = 0
+        manager.max_iters = max_iters
+        manager.step_timeout_ms = 10000
+        manager.goal = None
+        manager._used_plans = set()
+        manager._timeline = []
+        manager._timeline_events_printed = 3
+        manager._single_tool_plan = self.IterativeManager._init_single_tool_plan(manager)
+        return manager
+
+    def _sample_plan(self, summary: str = "sample"):
+        plan_types_mod = importlib.import_module("vulcanai.core.plan_types")
+        return plan_types_mod.GlobalPlan(
+            summary=summary,
+            plan=[plan_types_mod.PlanNode(kind="SEQUENCE", steps=[plan_types_mod.Step(tool="noop", args=[])])],
+        )
+
+    def test_log_manager_error_getting_goal_from_user_request(self):
+        manager = self._new_manager(max_iters=1)
+
+        # Temporarily replaces manager._get_goal_from_user_request so it always raises RuntimeError("goal boom").
+        with patch.object(manager, "_get_goal_from_user_request", side_effect=RuntimeError("goal boom")):
+            # VulcanAI function
+            ret = manager.handle_user_request("user req", {})
+
+        self.assertIn("error", ret)
+        # Textual log
+        self._assert_manager_log_contains(manager, "Error getting goal from user request: goal boom", error=True)
+
+    def test_log_manager_iteration_banner(self):
+        manager = self._new_manager(max_iters=1)
+
+        # Temporarily replaces all other functions in manager.handle_user_request()
+        # to only print the iteration banner
+        with patch.object(manager, "_get_goal_from_user_request", return_value=self.GoalSpec(summary="g")):
+            with patch.object(manager, "_verify_progress", return_value=False):
+                with patch.object(manager, "get_plan_from_user_request", return_value=self._sample_plan("p1")):
+                    with patch.object(manager, "execute_plan", return_value={"success": True}):
+                        # VulcanAI function
+                        manager.handle_user_request("user req", {})
+        # Textual log
+        self._assert_manager_log_contains(manager, "--- Iteration 1 ---")
+
+    def test_log_manager_error_getting_plan_from_model(self):
+        manager = self._new_manager(max_iters=2)
+
+        # Temporarily replaces all other functions in manager.handle_user_request()
+        # get_plan_from_user_request returns None, then try to get another plan and then suceeds.
+        with patch.object(manager, "_get_goal_from_user_request", return_value=self.GoalSpec(summary="g")):
+            with patch.object(manager, "_verify_progress", return_value=False):
+                with patch.object(manager, "get_plan_from_user_request", side_effect=[None, self._sample_plan("p2")]):
+                    with patch.object(manager, "execute_plan", return_value={"success": True}):
+                        # VulcanAI function
+                        ret = manager.handle_user_request("user req", {})
+        self.assertIn("plan", ret)
+        # Textual log
+        self._assert_manager_log_contains(manager, "Error getting plan from model", error=True)
+
+    def test_log_manager_repeated_plan(self):
+        manager = self._new_manager(max_iters=2)
+        # Create a plan and add it to the used plans
+        repeated = self._sample_plan("repeat")
+        manager._used_plans.add(str(repeated.plan))
+
+        # Temporarily replaces all other functions in manager.handle_user_request()
+        # get_plan_from_user_request returns a repeated plan
+        with patch.object(manager, "_get_goal_from_user_request", return_value=self.GoalSpec(summary="g")):
+            with patch.object(manager, "_verify_progress", return_value=False):
+                with patch.object(manager, "get_plan_from_user_request", side_effect=[repeated, self._sample_plan("new")]):
+                    with patch.object(manager, "execute_plan", return_value={"success": True}):
+                        # VulcanAI function
+                        manager.handle_user_request("user req", {})
+        # Textual log
+        self._assert_manager_log_contains(manager, "LLM produced a repeated plan. Stopping iterations.", error=True)
+
+    def test_log_manager_plan_validation_error(self):
+        manager = self._new_manager(max_iters=2)
+        manager.validator = self._FakeValidator([RuntimeError("invalid plan"), None])
+
+        # TODO. danip
+        with patch.object(manager, "_get_goal_from_user_request", return_value=self.GoalSpec(summary="g")):
+            with patch.object(manager, "_verify_progress", return_value=False):
+                with patch.object(
+                    manager,
+                    "get_plan_from_user_request",
+                    side_effect=[self._sample_plan("p1"), self._sample_plan("p2")],
+                ):
+                    with patch.object(manager, "execute_plan", return_value={"success": True}):
+                        # VulcanAI function
+                        manager.handle_user_request("user req", {})
+        # Textual log
+        self._assert_manager_log_contains(manager, "Plan validation error. Asking for new plan: invalid plan")
+
+    def test_log_manager_iteration_failed(self):
+        manager = self._new_manager(max_iters=1)
+
+        # Temporarily replaces all other functions in manager.handle_user_request()
+        # Change the output of execute_plan() with 'False' and see the print
+        with patch.object(manager, "_get_goal_from_user_request", return_value=self.GoalSpec(summary="g")):
+            with patch.object(manager, "_verify_progress", return_value=False):
+                with patch.object(manager, "get_plan_from_user_request", return_value=self._sample_plan("p1")):
+                    with patch.object(manager, "execute_plan", return_value={"success": False}):
+                        # VulcanAI function
+                        manager.handle_user_request("user req", {})
+        # Textual log
+        self._assert_manager_log_contains(manager, "Iteration 1 failed.", error=True)
+
+    def test_log_manager_error_handling_user_request(self):
+        manager = self._new_manager(max_iters=1)
+
+        # Temporarily replaces all other functions in manager.handle_user_request()
+        # Change execute_plan() to throw an exception and see the print
+        with patch.object(manager, "_get_goal_from_user_request", return_value=self.GoalSpec(summary="g")):
+            with patch.object(manager, "_verify_progress", return_value=False):
+                with patch.object(manager, "get_plan_from_user_request", return_value=self._sample_plan("p1")):
+                    with patch.object(manager, "execute_plan", side_effect=RuntimeError("execute boom")):
+                        # VulcanAI function
+                        ret = manager.handle_user_request("user req", {})
+        self.assertEqual(ret["error"], "execute boom")
+        # Textual log
+        self._assert_manager_log_contains(manager, "Error handling user request: execute boom", error=True)
+
+    def test_log_manager_no_tools_available_in_build_prompt(self):
+        manager = self._new_manager()
+        # No tools
+        manager.registry = self._FakeRegistry(tools={}, topk_action=[])
+
+        # VulcanAI function
+        sys_prompt, user_prompt = manager._build_prompt("test", {})
+        self.assertEqual(sys_prompt, "")
+        self.assertEqual(user_prompt, "")
+        # Textual log
+        self._assert_manager_log_contains(manager, "No tools available in the registry.", error=True)
+
+    def test_log_manager_goal_received(self):
+        manager = self._new_manager()
+        manager.llm.goal_return = self.GoalSpec(summary="goal from llm")
+
+        # Temporarily replaces _build_goal_prompt() to return a tuple without executing the functions inside of it
+        with patch.object(manager, "_build_goal_prompt", return_value=("sys", "user")):
+            # VulcanAI function
+            goal = manager._get_goal_from_user_request("req", {})
+        self.assertEqual(goal.summary, "goal from llm")
+        # Textual log
+        self._assert_manager_log_contains(manager, "Goal received:")
+
+    def test_log_manager_single_tool_plan_not_initialized(self):
+        manager = self._new_manager()
+        manager._single_tool_plan = None
+
+        # VulcanAI function
+        manager._set_single_tool_params("verify_tool", [])
+        # Textual log
+        self._assert_manager_log_contains(manager, "Single tool plan is not initialized properly.", error=True)
+
+    def test_log_manager_goal_achieved_objective_mode(self):
+        manager = self._new_manager()
+        manager.goal = self.GoalSpec(summary="g", mode="objective", success_predicates=["True"], verify_tools=[])
+
+        # Temporarily replaces _run_verification_tools() to return None without executing the functions inside of it
+        with patch.object(manager, "_run_verification_tools", return_value=None):
+            # VulcanAI function
+            achieved = manager._verify_progress()
+        self.assertTrue(achieved)
+        self.assertTrue(manager.bb["goal_achieved"])
+        # Textual log
+        self._assert_manager_log_contains(manager, "Goal achieved in objective mode. Stopping iterations.")
+
+    def test_log_manager_perceptual_verification(self):
+        manager = self._new_manager()
+        verify_step = self.Step(tool="verify_tool", args=[])
+        manager.goal = self.GoalSpec(summary="g", mode="perceptual", verify_tools=[verify_step], evidence_bb_keys=["k1"])
+        manager.registry.tools["verify_tool"] = FakeTool("verify_tool", is_validation_tool=True, provide_images=True)
+        manager.bb["verify_tool"] = {"images": ["/tmp/image.png"]}
+        # No achieved (Not yet)
+        manager.llm.validation_return = self.AIValidation(success=False, confidence=0.2, explanation="not yet")
+
+        # Temporarily replaces all other functions in manager._verify_progress()
+        # And prints no instructions
+        with patch.object(manager, "_run_verification_tools", return_value=None):
+            with patch.object(manager, "_build_validation_prompt", return_value=("sys", "user")):
+                # VulcanAI function
+                manager._verify_progress()
+        # Textual log
+        self._assert_manager_log_contains(manager, "Running perceptual verification with instruction:")
+
+    def test_log_manager_perceptual_goal_achieved(self):
+        manager = self._new_manager()
+        manager.goal = self.GoalSpec(summary="g", mode="perceptual", verify_tools=[])
+        # Achieved
+        manager.llm.validation_return = self.AIValidation(success=True, confidence=0.9, explanation="done")
+
+        # Temporarily replaces all other functions in manager._verify_progress()
+        with patch.object(manager, "_run_verification_tools", return_value=None):
+            with patch.object(manager, "_build_validation_prompt", return_value=("sys", "user")):
+                # VulcanAI function
+                achieved = manager._verify_progress()
+        self.assertTrue(achieved)
+        # Textual log
+        self._assert_manager_log_contains(manager, "Goal achieved in perceptual mode. Stopping iterations.")
+
+    def test_log_manager_perceptual_goal_not_achieved(self):
+        manager = self._new_manager()
+        manager.goal = self.GoalSpec(summary="g", mode="perceptual", verify_tools=[])
+        # No achieved (No)
+        manager.llm.validation_return = self.AIValidation(success=False, confidence=0.4, explanation="no")
+
+        # Temporarily replaces all other functions in manager._verify_progress()
+        with patch.object(manager, "_run_verification_tools", return_value=None):
+            with patch.object(manager, "_build_validation_prompt", return_value=("sys", "user")):
+                # VulcanAI function
+                achieved = manager._verify_progress()
+        self.assertFalse(achieved)
+        # Textual log
+        self._assert_manager_log_contains(manager, "Goal not achieved in perceptual mode.")
+
+    def test_log_manager_perceptual_error_during_verification(self):
+        manager = self._new_manager()
+        manager.goal = self.GoalSpec(summary="g", mode="perceptual", verify_tools=[])
+        # No achieved (Exception)
+        manager.llm.validation_error = RuntimeError("validation boom")
+
+        # Temporarily replaces all other functions in manager._verify_progress()
+        with patch.object(manager, "_run_verification_tools", return_value=None):
+            with patch.object(manager, "_build_validation_prompt", return_value=("sys", "user")):
+                # VulcanAI function
+                achieved = manager._verify_progress()
+        self.assertFalse(achieved)
+        # Textual log
+        self._assert_manager_log_contains(manager, "Error during perceptual verification: validation boom", error=True)
+
+    def test_log_manager_verification_tools_skip(self):
+        manager = self._new_manager()
+        manager._timeline = [{"iteration": 1, "event": self.TimelineEvent.PLAN_REPEATED.value}]
+        tool_name = "verify_tool"
+        manager.goal = self.GoalSpec(summary="g", verify_tools=[self.Step(tool=tool_name, args=[])])
+
+        # VulcanAI function
+        manager._run_verification_tools()
+        # Textual log
+        self._assert_manager_log_contains(
+            manager, "Skipping verification tools as no plan has been executed in this iteration."
+        )
+
+    def test_log_manager_verification_tools_not_found(self):
+        manager = self._new_manager()
+        manager._timeline = [{"iteration": 0, "event": self.TimelineEvent.GOAL_SET.value}]
+        tool_name = "missing_tool"
+        manager.goal = self.GoalSpec(summary="g", verify_tools=[self.Step(tool=tool_name, args=[])])
+
+        # VulcanAI function
+        manager._run_verification_tools()
+        # Textual log
+        self._assert_manager_log_contains(manager, f"Verification tool '{tool_name}' not found in registry.", error=True)
+
+    def test_log_manager_verification_tools_running(self):
+        manager = self._new_manager()
+        manager._timeline = [{"iteration": 0, "event": self.TimelineEvent.GOAL_SET.value}]
+        tool_name = "verify_tool"
+        manager.registry.tools[tool_name] = FakeTool(tool_name)
+        manager.goal = self.GoalSpec(summary="g", verify_tools=[self.Step(tool=tool_name, args=[])])
+
+        # Temporarily replaces _run_verification_tools() to return True without executing the functions inside of it
+        with patch.object(manager, "execute_plan", return_value={"success": True}):
+            # VulcanAI function
+            manager._run_verification_tools()
+        # Textual log
+        self._assert_manager_log_contains(manager, f"Running verification tool: {tool_name}")
+
+    def test_log_manager_verification_tools_running_error(self):
+        manager = self._new_manager()
+        manager._timeline = [{"iteration": 0, "event": self.TimelineEvent.GOAL_SET.value}]
+        tool_name = "verify_tool"
+        manager.registry.tools[tool_name] = FakeTool(tool_name)
+        manager.goal = self.GoalSpec(summary="g", verify_tools=[self.Step(tool=tool_name, args=[])])
+
+        # Temporarily replaces _run_verification_tools() to return False without executing the functions inside of it
+        with patch.object(manager, "execute_plan", return_value={"success": False}):
+            # VulcanAI function
+            manager._run_verification_tools()
+        self.assertEqual(manager.bb[tool_name]["error"], "Validation tool execution failed")
+        # Textual log
+        self._assert_manager_log_contains(
+            manager, f"Error running verification tool '{tool_name}'. BB entry of this tool will be empty.", error=True
+        )
+
+    def test_log_manager_verification_tools_running_exception(self):
+        manager = self._new_manager()
+        manager._timeline = [{"iteration": 0, "event": self.TimelineEvent.GOAL_SET.value}]
+        tool_name = "verify_tool"
+        manager.registry.tools["verify_tool"] = FakeTool(tool_name)
+        manager.goal = self.GoalSpec(summary="g", verify_tools=[self.Step(tool=tool_name, args=[])])
+
+        # Temporarily replaces execute_plan() to throw an exeception without executing the functions inside of it
+        with patch.object(manager, "execute_plan", side_effect=RuntimeError("exec crash")):
+            # VulcanAI function
+            manager._run_verification_tools()
+        # Textual log
+        self._assert_manager_log_contains(manager, f"Error running verification tool '{tool_name}': exec crash", error=True)
+
 # TERMINAL INPUT
 class TestConsoleInputOutput(unittest.IsolatedAsyncioTestCase):
     """End-to-end Textual UI tests focused on terminal output behavior."""
