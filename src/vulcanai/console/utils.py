@@ -367,7 +367,7 @@ def suggest_string(console, tool_name, string_name, input_string, real_string_li
 
 def write_terminal_sequence(console, sequence: str) -> None:
     """
-    Send terminal control sequence if stdout is a teletypewriter (Textual).
+    Send terminal control sequence if stdout is a teletypewriter (TTY).
     Used for OSC / CSI compatibility tweaks.
 
     OSC: Operating System Command
@@ -381,20 +381,16 @@ def write_terminal_sequence(console, sequence: str) -> None:
         sys.stdout.flush()
     except Exception as e:
         console.logger.log_msg(f"[error] Unsupported terminal: {e}[/error]")
-        pass
 
 
 def is_gnome_terminal() -> bool:
     """
     Return True when running inside GNOME Terminal.
     """
-    terminal_emulator = os.environ.get("TERMINAL_EMULATOR", "").lower()
-    term_program = os.environ.get("TERM_PROGRAM", "").lower()
-    return (
-        "gnome-terminal" in terminal_emulator
-        or "gnome-terminal" in term_program
-        or "GNOME_TERMINAL_SCREEN" in os.environ
-    )
+    is_gnome = "GNOME_TERMINAL_SCREEN" in os.environ or \
+                "gnome-terminal" in os.environ.get("TERMINAL_EMULATOR", "").lower() or \
+                "gnome-terminal" in os.environ.get("TERM_PROGRAM", "").lower()
+    return is_gnome
 
 
 def run_gsettings(*args: str) -> str | None:
@@ -460,7 +456,8 @@ def restore_gnome_scrollbar(console) -> None:
 
     If no backup values were saved, this function is a no-op.
     """
-    if not console._gnome_profile_schema or not console._gnome_scrollbar_policy_backup:
+    if not getattr(console, "_gnome_profile_schema", None) or not getattr(
+        console, "_gnome_scrollbar_policy_backup", None):
         return
 
     # gsettings expects the enum token without shell-style quotes.
