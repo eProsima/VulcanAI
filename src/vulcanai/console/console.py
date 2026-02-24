@@ -51,26 +51,6 @@ class VulcanConsole(App):
     #   Right panel: 48 characters length
     #   Left panel: fills remaining space
 
-    # #right {
-    #     width: 48;
-    #     layout: vertical;
-    #     border: tall #56AA08;
-    #     padding: 0;
-    # }
-
-    # #logcontent {
-    #     height: auto;
-    #     min-height: 1;
-    #     max-height: 1fr;
-    #     border: tall #333333;
-    # }
-
-    # #streamcontent {
-    #     height: 0;
-    #     min-height: 0;
-    #     border: tall #56AA08;
-    #     display: none;
-    # }
     CSS = """
     Screen {
         layout: horizontal;

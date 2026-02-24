@@ -29,7 +29,6 @@ from vulcanai.tools.utils import execute_subprocess, run_oneshot_cmd, suggest_st
 # ROS2 imports
 try:
     import rclpy
-    from rclpy.qos import QoSProfile
     from std_msgs.msg import String
 except ImportError:
     raise ImportError("Unable to load default tools because no ROS 2 installation was found.")
@@ -799,7 +798,7 @@ class Ros2PublishTool(AtomicTool):
         "For custom types, pass message_data as a JSON object with field names and values. "
         "By default 10 messages 'Hello from VulcanAI PublishTool!' "
         "with type 'std_msgs/msg/String' in topic '/chatter' "
-        "with 0.1 seconds of delay between messages to publish with a qos_depth of 10. "
+        "with 0.1 seconds of delay between messages to publish"
         'Example for custom type: msg_type=\'my_pkg/msg/MyMessage\', message_data=\'{"index": 1, "message": "Hello"}\''
     )
     tags = ["ros2", "publish", "message", "std_msgs"]
@@ -810,7 +809,6 @@ class Ros2PublishTool(AtomicTool):
         ("msg_type", "string?"),  # (optional) e.g. "std_msgs/msg/String" or "my_pkg/msg/CustomMsg"
         ("count", "int?"),  # (optional) number of messages to publish
         ("period_sec", "float?"),  # (optional) delay between publishes (in seconds)
-        ("qos_depth", "int?"),  # (optional) publisher queue depth
         ("message", "string?"),  # (deprecated) use message_data instead
     ]
 
@@ -861,39 +859,37 @@ class Ros2PublishTool(AtomicTool):
         message_data = kwargs.get("message_data", kwargs.get("message", "Hello from VulcanAI PublishTool!"))
         msg_type_str = kwargs.get("msg_type", "std_msgs/msg/String")
 
-        # Number of messages hte publisher is going to write
+        # Number of messages the publisher is going to write.
         count = kwargs.get("count", 10)
-        # Ensure "count" is not null or empty to avoid errors
-        if count is None or count == "":
-            count = 10
 
         period_sec = kwargs.get("period_sec", 0.1)
 
-        qos_depth = kwargs.get("qos_depth", 10.0)
-        # Ensure qos_depth is not null or empty to avoid errors
-        # `create_subscription` accepts QoSProfile or int depth.
-        # Most tool inputs come as scalars/strings, so coerce to int depth.
-        if not isinstance(qos_depth, int) and not isinstance(qos_depth, QoSProfile):
-            try:
-                qos_depth = int(qos_depth)
-            except (TypeError, ValueError):
-                console.call_from_thread(
-                    console.logger.log_msg,
-                    f"<gray>[ROS] [ERROR] Invalid 'qos_depth': {qos_depth!r}. Expected integer or QoSProfile.</gray>",
-                )
-                return result
+        qos_depth = 10
 
         if console is None:
             print("[ERROR] Console not is None")
 
             return result
 
+        published_msgs = []
+        publisher = None
+        cancel_token = None
+
         try:
             if not topic_name:
-                # No topic
                 console.call_from_thread(console.logger.log_msg, "<gray>[ROS] [ERROR] No topic provided.</gray>")
-
                 return result
+
+            if count is None or count == "":
+                count = 10
+            else:
+                try:
+                    count = int(count)
+                except (TypeError, ValueError):
+                    console.call_from_thread(
+                        console.logger.log_msg, "<gray>[ROS] [ERROR] 'count' must be an integer.</gray>"
+                    )
+                    return result
 
             result["topic"] = topic_name
 
@@ -904,36 +900,18 @@ class Ros2PublishTool(AtomicTool):
                 )
                 return result
 
-            topic_name_list_str = run_oneshot_cmd(["ros2", "topic", "list"])
-            topic_name_list = topic_name_list_str.splitlines()
-            # Check if the topic is not available ros2 topic list
-            # if it is not create a window for the user to choose a correct topic name
-            suggested_topic_name = suggest_string(console, self.name, "Topic", topic_name, topic_name_list)
-            if suggested_topic_name is not None:
-                topic_name = suggested_topic_name
-
-            published_msgs = []
-
             MsgType = import_msg_type(msg_type_str, node)
             publisher = node.create_publisher(MsgType, topic_name, qos_depth)
+            cancel_token = Future()
+            console.set_stream_task(cancel_token)
+            console.logger.log_tool("[tool]Publisher created![tool]", tool_name=self.name)
 
             for _ in range(count):
+                if cancel_token.cancelled():
+                    console.logger.log_tool("[tool]Ctrl+C received:[/tool] stopping publish...", tool_name=self.name)
+                    break
+
                 msg = MsgType()
-
-                # TODO. danip Check custom messages implementation
-                """
-                E.G.:
-                PlanNode 1: kind=SEQUENCE
-                Step 1: ros_publish(topic=/custom_topic, msg_type=my_pkg/msg/CustomMsg,
-                message_data={"id":1,"text":"Custom message 1"}, count=1, period_sec=0.1, qos_depth=10)
-
-                [EXECUTOR] Invoking 'ros_publish' with args:'{'topic': '/custom_topic',
-                'msg_type': 'my_pkg/msg/CustomMsg', 'message_data': '{"id":1,"text":"Custom message 1"}',
-                'count': '1', 'period_sec': '0.1', 'qos_depth': '10'}'
-                [EXECUTOR] Execution failed for 'ros_publish': No module named 'my_pkg'
-                [EXECUTOR] Step 'ros_publish' attempt 1/1 failed
-                [EXECUTOR] [ERROR] PlanNode SEQUENCE failed on attempt 1/1
-                """
 
                 # Try to populate message based on message type
                 if hasattr(msg, "data"):
@@ -952,18 +930,17 @@ class Ros2PublishTool(AtomicTool):
                         )
                         return result
 
-                with node.node_lock:
-                    if hasattr(msg, "data"):
-                        console.call_from_thread(
-                            console.logger.log_msg, f"<gray>[ROS] [INFO] Publishing: '{msg.data}'</gray>"
-                        )
-                    else:
-                        console.call_from_thread(
-                            console.logger.log_msg,
-                            f"<gray>[ROS] [INFO] Publishing custom message to '{topic_name}'</gray>",
-                        )
-                    publisher.publish(msg)
-                    published_msgs.appned(msg.data)
+                if hasattr(msg, "data"):
+                    console.call_from_thread(
+                        console.logger.log_msg, f"<gray>[ROS] [INFO] Publishing: '{msg.data}'</gray>"
+                    )
+                else:
+                    console.call_from_thread(
+                        console.logger.log_msg,
+                        f"<gray>[ROS] [INFO] Publishing custom message to '{topic_name}'</gray>",
+                    )
+                publisher.publish(msg)
+                published_msgs.append(msg.data if hasattr(msg, "data") else str(msg))
 
                 rclpy.spin_once(node, timeout_sec=0.05)
 
@@ -971,10 +948,16 @@ class Ros2PublishTool(AtomicTool):
                     time.sleep(period_sec)
 
         finally:
+            console.set_stream_task(None)
             if panel_enabled:
                 if hasattr(console, "change_route_logs"):
                     console.call_from_thread(console.change_route_logs, False)
                 console.call_from_thread(console.hide_subprocess_panel)
+            if publisher is not None:
+                try:
+                    node.destroy_publisher(publisher)
+                except Exception:
+                    pass
 
         result["published_msgs"] = published_msgs
         result["count"] = len(published_msgs)
@@ -987,7 +970,7 @@ class Ros2SubscribeTool(AtomicTool):
     description = "Subscribe to a topic and stop after receiving N messages or a timeout."
     description = (
         "Subscribe to a given ROS 2 topic and stop after receiving N messages or a timeout."
-        "By default 100 messages and 300 seconds duration and a qos_depth of 10"
+        "By default 100 messages and 300 seconds duration"
     )
     tags = ["ros2", "subscribe", "topic", "std_msgs"]
 
@@ -996,8 +979,7 @@ class Ros2SubscribeTool(AtomicTool):
         ("msg_type", "string"),  # e.g. "std_msgs/msg/String"
         ("output_format", "string"),  # "data" | "dict"
         ("count", "int?"),  # (optional) stop after this number of messages
-        ("timeout_sec", "float?"),  # (optional) stop after this seconds
-        ("qos_depth", "int?"),  # (optional) subscription queue depth
+        ("timeout_sec", "int?"),  # (optional) stop after this seconds
     ]
 
     output_schema = {
@@ -1045,6 +1027,7 @@ class Ros2SubscribeTool(AtomicTool):
             "topic": "",
         }
 
+        # Check if the console have the function show_subprocess_panel() to open
         panel_enabled = console is not None and hasattr(console, "show_subprocess_panel")
         if panel_enabled:
             console.call_from_thread(console.show_subprocess_panel)
@@ -1059,35 +1042,9 @@ class Ros2SubscribeTool(AtomicTool):
             msg_type_str = "std_msgs/msg/String"
 
         count = kwargs.get("count", 100)
-        # Ensure "count" is not null or empty to avoid errors
-        if count is None or count == "":
-            count = 10
+        timeout_sec = kwargs.get("timeout_sec", 60)
 
-        timeout_sec = kwargs.get("timeout_sec", 60.0)
-        # Ensure "timeout_sec" is not null or empty to avoid errors
-        if timeout_sec is None or timeout_sec == "":
-            timeout_sec = 60.0
-
-        qos_depth = kwargs.get("qos_depth", 10.0)
-        # Ensure qos_depth is not null or empty to avoid errors
-        # `create_subscription` accepts QoSProfile or int depth.
-        # Most tool inputs come as scalars/strings, so coerce to int depth.
-        if not isinstance(qos_depth, int) and not isinstance(qos_depth, QoSProfile):
-            try:
-                qos_depth = int(qos_depth)
-            except (TypeError, ValueError):
-                console.call_from_thread(
-                    console.logger.log_msg,
-                    f"<gray>[ROS] [ERROR] Invalid 'qos_depth': {qos_depth!r}. Expected integer or QoSProfile.</gray>",
-                )
-                return result
-
-        if qos_depth <= 0:
-            console.call_from_thread(
-                console.logger.log_msg,
-                f"<gray>[ROS] [ERROR] Invalid 'qos_depth': {qos_depth}. Must be > 0.</gray>",
-            )
-            return result
+        qos_depth = 10
 
         output_format = kwargs.get("output_format", "data")
 
@@ -1107,9 +1064,30 @@ class Ros2SubscribeTool(AtomicTool):
 
         try:
             if not topic_name:
-                # No topic
                 console.call_from_thread(console.logger.log_msg, "<gray>[ROS] [ERROR] No topic provided.</gray>")
                 return result
+
+            if count is None or count == "":
+                count = 10
+            else:
+                try:
+                    count = int(count)
+                except (TypeError, ValueError):
+                    console.call_from_thread(
+                        console.logger.log_msg, "<gray>[ROS] [ERROR] 'count' must be an integer.</gray>"
+                    )
+                    return result
+
+            if timeout_sec is None or timeout_sec == "":
+                timeout_sec = 60
+            else:
+                try:
+                    timeout_sec = int(timeout_sec)
+                except (TypeError, ValueError):
+                    console.call_from_thread(
+                        console.logger.log_msg, "<gray>[ROS] [ERROR] 'timeout_sec' must be an integer.</gray>"
+                    )
+                    return result
 
             result["topic"] = topic_name
 
