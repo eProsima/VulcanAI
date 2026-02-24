@@ -44,8 +44,9 @@ tools_mod = importlib.import_module("vulcanai.tools.tools")
 class FakeTool(tools_mod.AtomicTool):
     """Small tool descriptor used by FakeRegistry for /tools output tests."""
 
-    def __init__(self, name: str, description: str = "Fake tool description",
-                 is_validation_tool=True, provide_images=True):
+    def __init__(
+        self, name: str, description: str = "Fake tool description", is_validation_tool=True, provide_images=True
+    ):
         self.name = name
         self.description = description
         self.tags = ["empty", "fake", "tool", "move"]
@@ -62,6 +63,7 @@ class FakeTool(tools_mod.AtomicTool):
 # endregion
 
 # region LLM
+
 
 class FakeLLM:
     def __init__(self, logger=None):
@@ -85,26 +87,50 @@ class FakeLLM:
     def set_hooks(self, _hooks) -> None:
         self.logger.log_manager("LLM hooks set.")
 
+
+# endregion
+
 # region REGISTRY
 
 
 class FakeRegistry:
     """In-memory registry used to avoid real tool discovery in most command tests."""
 
-    def __init__(self):
-        self.tools = {
-            "nav": FakeTool("nav", "Navigate to target pose."),
-            "scan": FakeTool("scan", "Scan surroundings."),
-        }
-        self.deactivated_tools = {
-            "old_tool": FakeTool("old_tool", "Deprecated tool."),
-        }
+    def __init__(self, tools=None, topk_action=None, topk_validation=None):
+        if tools is None:
+            self.tools = {
+                "nav": FakeTool("nav", "Navigate to target pose."),
+                "scan": FakeTool("scan", "Scan surroundings."),
+            }
+            self.deactivated_tools = {
+                "old_tool": FakeTool("old_tool", "Deprecated tool."),
+            }
+            self.validation_tools = []
+        else:
+            self.tools = tools
+
+        self._topk_action = topk_action if topk_action is not None else list(self.tools.values())
+        self._topk_validation = topk_validation if topk_validation is not None else []
+
+    def register_tool(self, tool, solve_deps: bool = True) -> None:
+        """Register a tool in-memory for tests."""
+        del solve_deps  # Unused in fake registry, kept for API compatibility
+        if tool.name in self.tools:
+            return
+        self.tools[tool.name] = tool
+        if getattr(tool, "is_validation_tool", False):
+            self.validation_tools.append(tool.name)
 
     def activate_tool(self, _tool) -> bool:
         return True
 
     def deactivate_tool(self, _tool) -> bool:
         return True
+
+    def top_k(self, query, k, validation=False):
+        if validation:
+            return list(self._topk_validation)
+        return list(self._topk_action)
 
 
 class FileToolsRegistry:
@@ -164,6 +190,8 @@ class ThreeToolsStatefulRegistry:
         del self.tools[tool_name]
         return True
 
+
+# endregion
 
 # region MANAGER
 
@@ -250,7 +278,10 @@ class QuietFileToolsFakeManager(FileToolsFakeManager):
         return {"plan": {"summary": "fake"}, "success": True, "blackboard": bb}
 
 
+# endregion
+
 # region TESTS
+
 
 def normalize_log(msg: str) -> str:
     """
@@ -387,10 +418,6 @@ class FileToolsConsole(VulcanConsole):
 class TestExecutorLoggingInConsoleFile(unittest.TestCase):
     """Executor logging-path tests kept in this console-focused test module."""
 
-    class SimpleRegistry:
-        def __init__(self):
-            self.tools = {}
-
     class PrintTool(tools_mod.AtomicTool):
         name = "print_tool"
         input_schema = []
@@ -427,7 +454,7 @@ class TestExecutorLoggingInConsoleFile(unittest.TestCase):
         # Test changes
         self.sink = FakeSink()
         self.logger = VulcanAILogger(sink=self.sink)
-        self.registry = self.SimpleRegistry()
+        self.registry = FakeRegistry()
         self.exec = self.PlanExecutor(self.registry, logger=self.logger)
 
     def _assert_executor_log_contains(self, text: str, error: bool | None = None):
@@ -598,6 +625,7 @@ class TestExecutorLoggingInConsoleFile(unittest.TestCase):
         # Textual log
         self._assert_executor_log_contains("Execution failed for 'error_tool': boom")
 
+
 # MANAGER PRINTS
 class TestManagerLoggingInConsoleFile(unittest.TestCase):
     """Iterative manager tests kept in this console-focused test module."""
@@ -609,17 +637,6 @@ class TestManagerLoggingInConsoleFile(unittest.TestCase):
             if expr == "False":
                 return False
             return False
-
-    class _FakeRegistry:
-        def __init__(self, tools=None, topk_action=None, topk_validation=None):
-            self.tools = tools or {}
-            self._topk_action = topk_action if topk_action is not None else list(self.tools.values())
-            self._topk_validation = topk_validation if topk_validation is not None else []
-
-        def top_k(self, query, k, validation=False):
-            if validation:
-                return list(self._topk_validation)
-            return list(self._topk_action)
 
     class _FakeValidator:
         def __init__(self, side_effects):
@@ -661,7 +678,7 @@ class TestManagerLoggingInConsoleFile(unittest.TestCase):
         manager.history_depth = 5
         manager.history = []
         manager.user_context = ""
-        manager.registry = self._FakeRegistry()
+        manager.registry = FakeRegistry()
         manager.validator = None
         manager.executor = self._FakeExecutor()
         manager.llm = FakeLLM()
@@ -734,7 +751,9 @@ class TestManagerLoggingInConsoleFile(unittest.TestCase):
         # get_plan_from_user_request returns a repeated plan
         with patch.object(manager, "_get_goal_from_user_request", return_value=self.GoalSpec(summary="g")):
             with patch.object(manager, "_verify_progress", return_value=False):
-                with patch.object(manager, "get_plan_from_user_request", side_effect=[repeated, self._sample_plan("new")]):
+                with patch.object(
+                    manager, "get_plan_from_user_request", side_effect=[repeated, self._sample_plan("new")]
+                ):
                     with patch.object(manager, "execute_plan", return_value={"success": True}):
                         # VulcanAI function
                         manager.handle_user_request("user req", {})
@@ -745,7 +764,6 @@ class TestManagerLoggingInConsoleFile(unittest.TestCase):
         manager = self._new_manager(max_iters=2)
         manager.validator = self._FakeValidator([RuntimeError("invalid plan"), None])
 
-        # TODO. danip
         with patch.object(manager, "_get_goal_from_user_request", return_value=self.GoalSpec(summary="g")):
             with patch.object(manager, "_verify_progress", return_value=False):
                 with patch.object(
@@ -791,7 +809,7 @@ class TestManagerLoggingInConsoleFile(unittest.TestCase):
     def test_log_manager_no_tools_available_in_build_prompt(self):
         manager = self._new_manager()
         # No tools
-        manager.registry = self._FakeRegistry(tools={}, topk_action=[])
+        manager.registry = FakeRegistry(tools={}, topk_action=[])
 
         # VulcanAI function
         sys_prompt, user_prompt = manager._build_prompt("test", {})
@@ -837,7 +855,9 @@ class TestManagerLoggingInConsoleFile(unittest.TestCase):
     def test_log_manager_perceptual_verification(self):
         manager = self._new_manager()
         verify_step = self.Step(tool="verify_tool", args=[])
-        manager.goal = self.GoalSpec(summary="g", mode="perceptual", verify_tools=[verify_step], evidence_bb_keys=["k1"])
+        manager.goal = self.GoalSpec(
+            summary="g", mode="perceptual", verify_tools=[verify_step], evidence_bb_keys=["k1"]
+        )
         manager.registry.tools["verify_tool"] = FakeTool("verify_tool", is_validation_tool=True, provide_images=True)
         manager.bb["verify_tool"] = {"images": ["/tmp/image.png"]}
         # No achieved (Not yet)
@@ -919,7 +939,9 @@ class TestManagerLoggingInConsoleFile(unittest.TestCase):
         # VulcanAI function
         manager._run_verification_tools()
         # Textual log
-        self._assert_manager_log_contains(manager, f"Verification tool '{tool_name}' not found in registry.", error=True)
+        self._assert_manager_log_contains(
+            manager, f"Verification tool '{tool_name}' not found in registry.", error=True
+        )
 
     def test_log_manager_verification_tools_running(self):
         manager = self._new_manager()
@@ -964,7 +986,10 @@ class TestManagerLoggingInConsoleFile(unittest.TestCase):
             # VulcanAI function
             manager._run_verification_tools()
         # Textual log
-        self._assert_manager_log_contains(manager, f"Error running verification tool '{tool_name}': exec crash", error=True)
+        self._assert_manager_log_contains(
+            manager, f"Error running verification tool '{tool_name}': exec crash", error=True
+        )
+
 
 # TERMINAL INPUT
 class TestConsoleInputOutput(unittest.IsolatedAsyncioTestCase):
@@ -1749,12 +1774,345 @@ class TestConsoleInputOutput(unittest.IsolatedAsyncioTestCase):
         self.assertIn("[USER] >>> this is a query", lines)
         self.assertIn("Output of plan: {'fake_query': 'this is a query'}", lines)
 
-    # TODO.
-    # async def test_vulcanai_save_plan(self):
-    #
-    # async def test_vulcanai_load_plan(self):
-    #  gpt-5-nano, ollama-llama3.1:8b
-    #  default_tools?
+
+# TERMINAL PLANS
+class TestConsoleQueriesOutput(unittest.TestCase):
+    def setUp(self):
+        # Import package modules dynamically
+        tools_mod = importlib.import_module("vulcanai.tools.tools")
+        registry_mod = importlib.import_module("vulcanai.tools.tool_registry")
+        plan_types_mod = importlib.import_module("vulcanai.core.plan_types")
+        validator_mod = importlib.import_module("vulcanai.core.validator")
+        executor_mod = importlib.import_module("vulcanai.core.executor")
+
+        # Keep references
+        self.ToolRegistry = registry_mod.ToolRegistry
+        self.Validator = validator_mod.PlanValidator
+        self.PlanExecutor = executor_mod.PlanExecutor
+        self.Blackboard = executor_mod.Blackboard
+
+        # Expose for tests
+        self.GlobalPlan = plan_types_mod.GlobalPlan
+        self.PlanNode = plan_types_mod.PlanNode
+        self.PlanBase = plan_types_mod.PlanBase
+        self.Step = plan_types_mod.Step
+        self.Arg = plan_types_mod.ArgValue
+
+        self.sink = FakeSink()
+        self.logger = VulcanAILogger(sink=self.sink)
+        self.registry = FakeRegistry()
+
+        # Define and register tools
+        class EmptyTool(tools_mod.AtomicTool):
+            name = "empty"
+            description = "Empty tool."
+            input_schema = []
+            output_schema = {"result": "bool"}
+
+            def run(self):
+                return {"result": True}
+
+        class DetectTool(tools_mod.AtomicTool):
+            name = "detect_object"
+            description = "Detect an object in the environment"
+            tags = ["vision", "perception"]
+            input_schema = [("label", "string")]
+            output_schema = {"found": "bool", "pose": "dict(x: float, y: float, z: float)"}
+            version = "0.1"
+
+            def run(self, **kwargs):
+                return {"found": True, "pose": {"x": 4.0, "y": 2.0, "z": 0.0}}
+
+        class NavTool(tools_mod.AtomicTool):
+            name = "go_to_pose"
+            description = "Navigate robot to a target location"
+            tags = ["navigation", "goal", "go to", "move"]
+            input_schema = [("x", "float"), ("y", "float"), ("z", "float")]
+            output_schema = {"arrived": "bool"}
+            version = "0.1"
+
+            def run(self, **kwargs):
+                return {"arrived": True}
+
+        class SpeakTool(tools_mod.AtomicTool):
+            name = "speak"
+            description = "Speak a text string"
+            tags = ["speech", "text"]
+            input_schema = [("text", "string")]
+            output_schema = {"spoken": "bool"}
+            version = "0.1"
+
+            def run(self, **kwargs):
+                return {"spoken": True, "spoken_text": kwargs.get("text", "")}
+
+        class TypesTool(tools_mod.AtomicTool):
+            name = "types"
+            description = "Get the types of the non-string input arguments"
+            tags = ["type", "input"]
+            input_schema = [
+                ("int", "int"),
+                ("integer", "integer"),
+                ("float", "float"),
+                ("bool", "bool"),
+                ("boolean", "boolean"),
+            ]
+            output_schema = {"types": "bool"}
+            version = "0.1"
+
+            def run(self, **kwargs):
+                return {"types": True}
+
+        class FailingTool(tools_mod.AtomicTool):
+            name = "failing_tool"
+            description = "Tool that always fails at runtime"
+            input_schema = []
+            output_schema = {"ok": "bool"}
+            version = "0.1"
+
+            def run(self, **kwargs):
+                raise RuntimeError("forced failure")
+
+        self.registry.register_tool(EmptyTool())
+        self.registry.register_tool(DetectTool())
+        self.registry.register_tool(NavTool())
+        self.registry.register_tool(SpeakTool())
+        self.registry.register_tool(TypesTool())
+        self.registry.register_tool(FailingTool())
+
+        self.validator = self.Validator(self.registry, logger=self.logger)
+        self.exec = self.PlanExecutor(self.registry, logger=self.logger)
+
+    def _assert_log_contains(self, text: str, prefix: str | None = None):
+        logs = [normalize_log(msg) for msg in self.sink.messages]
+        if prefix:
+            logs = [msg for msg in logs if prefix in msg]
+        found = any(text in msg for msg in logs)
+        self.assertTrue(found, f"Missing log '{text}'. Logs: {logs}")
+
+    def _assert_log_not_contains(self, text: str):
+        logs = [normalize_log(msg) for msg in self.sink.messages]
+        self.assertFalse(any(text in msg for msg in logs), f"Unexpected log '{text}'. Logs: {logs}")
+
+    def _run_and_log_plan(self, plan):
+        self.validator.validate(plan)
+        self.logger.log_manager(f"Plan received:\n{plan}")
+        bb = self.Blackboard()
+        result = self.exec.run(plan, bb)
+        self.logger.log_console(f"Output of plan: {bb.text_snapshot()}")
+        return result
+
+    def test_log_query_correct_plan(self):
+        plan = self.GlobalPlan(
+            summary="Navigate to a location, detect an object, and speak the result",
+            plan=[
+                self.PlanNode(
+                    kind="SEQUENCE",
+                    steps=[
+                        self.Step(
+                            tool="go_to_pose",
+                            args=[self.Arg(key="x", val=1.0), self.Arg(key="y", val=2.0), self.Arg(key="z", val=0.0)],
+                        ),
+                        self.Step(tool="detect_object", args=[self.Arg(key="label", val="mug")]),
+                        self.Step(
+                            tool="go_to_pose",
+                            args=[self.Arg(key="x", val=3.0), self.Arg(key="y", val=4.0), self.Arg(key="z", val=0.0)],
+                        ),
+                        self.Step(tool="speak", args=[self.Arg(key="text", val="I have arrived and detected a mug.")]),
+                    ],
+                )
+            ],
+        )
+
+        ret = self._run_and_log_plan(plan)
+
+        self.assertTrue(ret["success"])
+
+        self._assert_log_contains("Plan received:", prefix="[MANAGER]")
+        self._assert_log_contains(
+            "Plan Summary: Navigate to a location, detect an object, and speak the result",
+            prefix="[MANAGER]",
+        )
+        self._assert_log_contains("PlanNode 1: kind=SEQUENCE", prefix="[MANAGER]")
+        self._assert_log_contains("Step 1: go_to_pose(x=1.0, y=2.0, z=0.0)", prefix="[MANAGER]")
+        self._assert_log_contains("Step 2: detect_object(label=mug)", prefix="[MANAGER]")
+        self._assert_log_contains("Step 3: go_to_pose(x=3.0, y=4.0, z=0.0)", prefix="[MANAGER]")
+        self._assert_log_contains("Step 4: speak(text=I have arrived and detected a mug.)", prefix="[MANAGER]")
+
+        self._assert_log_contains(
+            "Invoking 'go_to_pose' with args:'{'x': '1.0', 'y': '2.0', 'z': '0.0'}'",
+            prefix="[EXECUTOR]",
+        )
+        # ROS msgs
+
+        self._assert_log_contains("Invoking 'detect_object' with args:'{'label': 'mug'}'", prefix="[EXECUTOR]")
+        # ROS msgs
+        self._assert_log_contains(
+            "Invoking 'go_to_pose' with args:'{'x': '3.0', 'y': '4.0', 'z': '0.0'}'",
+            prefix="[EXECUTOR]",
+        )
+        # ROS msgs
+        self._assert_log_contains(
+            "Invoking 'speak' with args:'{'text': 'I have arrived and detected a mug.'}'",
+            prefix="[EXECUTOR]",
+        )
+        # ROS msgs
+        self._assert_log_contains("PlanNode SEQUENCE succeeded on attempt 1/1", prefix="[EXECUTOR]")
+
+        self._assert_log_contains("Output of plan: {")
+        self._assert_log_contains("'detect_object': {'found': True")
+        self._assert_log_contains("'speak': {'spoken': True")
+        self._assert_log_contains("'go_to_pose': {'arrived': True}")
+
+    def test_log_query_parallel_plan(self):
+        plan = self.GlobalPlan(
+            summary="Run detection and speech in parallel",
+            plan=[
+                self.PlanNode(
+                    kind="PARALLEL",
+                    steps=[
+                        self.Step(tool="detect_object", args=[self.Arg(key="label", val="book")]),
+                        self.Step(tool="speak", args=[self.Arg(key="text", val="Scanning now.")]),
+                    ],
+                )
+            ],
+        )
+
+        ret = self._run_and_log_plan(plan)
+
+        self.assertTrue(ret["success"])
+
+        self._assert_log_contains("PlanNode 1: kind=PARALLEL", prefix="[MANAGER]")
+        self._assert_log_contains("Step 1: detect_object(label=book)", prefix="[MANAGER]")
+        self._assert_log_contains("Step 2: speak(text=Scanning now.)", prefix="[MANAGER]")
+        self._assert_log_contains("Invoking 'detect_object' with args:'{'label': 'book'}'", prefix="[EXECUTOR]")
+        # ROS msgs
+        self._assert_log_contains("Invoking 'speak' with args:'{'text': 'Scanning now.'}'", prefix="[EXECUTOR]")
+        # ROS msgs
+        self._assert_log_contains("PlanNode PARALLEL succeeded on attempt 1/1", prefix="[EXECUTOR]")
+        self._assert_log_contains("'detect_object': {'found': True")
+        self._assert_log_contains("'speak': {'spoken': True")
+
+    def test_log_query_step_condition_skip(self):
+        plan = self.GlobalPlan(
+            summary="Move first and skip speech step",
+            plan=[
+                self.PlanNode(
+                    kind="SEQUENCE",
+                    steps=[
+                        self.Step(
+                            tool="go_to_pose",
+                            args=[self.Arg(key="x", val=1.0), self.Arg(key="y", val=1.5), self.Arg(key="z", val=0.0)],
+                        ),
+                        self.Step(
+                            tool="speak",
+                            args=[self.Arg(key="text", val="This should be skipped.")],
+                            condition="False",
+                        ),
+                    ],
+                )
+            ],
+        )
+
+        ret = self._run_and_log_plan(plan)
+
+        self.assertTrue(ret["success"])
+
+        self._assert_log_contains("PlanNode 1: kind=SEQUENCE", prefix="[MANAGER]")
+        self._assert_log_contains("Condition: False", prefix="[MANAGER]")
+        self._assert_log_contains("Skipping step 'speak' due to condition=False", prefix="[EXECUTOR]")
+        self._assert_log_contains("PlanNode SEQUENCE succeeded on attempt 1/1", prefix="[EXECUTOR]")
+        self._assert_log_contains("Output of plan: {'go_to_pose': {'arrived': True}}")
+        self._assert_log_not_contains("'speak': {'spoken': True")
+
+    def test_log_query_failing_runtime_error(self):
+        plan = self.GlobalPlan(
+            summary="Execute a tool that fails at runtime",
+            plan=[
+                self.PlanNode(
+                    kind="SEQUENCE",
+                    steps=[
+                        self.Step(tool="failing_tool", args=[]),
+                    ],
+                )
+            ],
+        )
+
+        ret = self._run_and_log_plan(plan)
+
+        self.assertFalse(ret["success"])
+
+        self._assert_log_contains("Plan received:", prefix="[MANAGER]")
+        self._assert_log_contains("Plan Summary: Execute a tool that fails at runtime", prefix="[MANAGER]")
+        self._assert_log_contains("PlanNode 1: kind=SEQUENCE", prefix="[MANAGER]")
+        self._assert_log_contains("Step 1: failing_tool(no args)", prefix="[MANAGER]")
+        self._assert_log_contains("Invoking 'failing_tool' with args:'{}'", prefix="[EXECUTOR]")
+        # ROS msgs
+        self._assert_log_contains("Execution failed for 'failing_tool': forced failure", prefix="[EXECUTOR]")
+        self._assert_log_contains("Step 'failing_tool' attempt 1/1 failed", prefix="[EXECUTOR]")
+        self._assert_log_contains("PlanNode SEQUENCE failed on attempt 1/1", prefix="[EXECUTOR]")
+        self._assert_log_contains("Output of plan: {'failing_tool': None}")
+
+    def test_log_query_failing_success_criteria(self):
+        plan = self.GlobalPlan(
+            summary="Navigate but force node-level failure criteria",
+            plan=[
+                self.PlanNode(
+                    kind="SEQUENCE",
+                    steps=[
+                        self.Step(
+                            tool="go_to_pose",
+                            args=[self.Arg(key="x", val=2.0), self.Arg(key="y", val=3.0), self.Arg(key="z", val=0.0)],
+                        ),
+                    ],
+                    success_criteria="False",
+                )
+            ],
+        )
+
+        ret = self._run_and_log_plan(plan)
+
+        self.assertFalse(ret["success"])
+
+        self._assert_log_contains("Plan received:", prefix="[MANAGER]")
+        self._assert_log_contains("Plan Summary: Navigate but force node-level failure criteria", prefix="[MANAGER]")
+        self._assert_log_contains("PlanNode 1: kind=SEQUENCE", prefix="[MANAGER]")
+        self._assert_log_contains("Success Criteria: False", prefix="[MANAGER]")
+        self._assert_log_contains(
+            "Invoking 'go_to_pose' with args:'{'x': '2.0', 'y': '3.0', 'z': '0.0'}'",
+            prefix="[EXECUTOR]",
+        )
+        # ROS msgs
+        self._assert_log_contains("Entity 'SEQUENCE' failed with criteria=False", prefix="[EXECUTOR]")
+        self._assert_log_contains("PlanNode SEQUENCE failed on attempt 1/1", prefix="[EXECUTOR]")
+        self._assert_log_contains("Output of plan: {'go_to_pose': {'arrived': True}}")
+
+    def test_log_query_failing_non_existent_tool(self):
+        # Intentionally bypass validator to exercise executor "tool not found" path.
+        plan = self.GlobalPlan(
+            summary="Try invoking a non-existent tool",
+            plan=[
+                self.PlanNode(
+                    kind="SEQUENCE",
+                    steps=[self.Step(tool="non_existent_tool", args=[])],
+                )
+            ],
+        )
+
+        self.logger.log_manager(f"Plan received:\n{plan}")
+        bb = self.Blackboard()
+        ret = self.exec.run(plan, bb)
+        self.logger.log_console(f"Output of plan: {bb.text_snapshot()}")
+
+        self.assertFalse(ret["success"])
+
+        self._assert_log_contains("Plan received:", prefix="[MANAGER]")
+        self._assert_log_contains("Plan Summary: Try invoking a non-existent tool", prefix="[MANAGER]")
+        self._assert_log_contains("PlanNode 1: kind=SEQUENCE", prefix="[MANAGER]")
+        self._assert_log_contains("Step 1: non_existent_tool(no args)", prefix="[MANAGER]")
+        self._assert_log_contains("Tool 'non_existent_tool' not found", prefix="[EXECUTOR]")
+        self._assert_log_contains("Step 'non_existent_tool' attempt 1/1 failed", prefix="[EXECUTOR]")
+        self._assert_log_contains("PlanNode SEQUENCE failed on attempt 1/1", prefix="[EXECUTOR]")
+        self._assert_log_contains("Output of plan: {'non_existent_tool': None}")
+
 
 # endregion
-
