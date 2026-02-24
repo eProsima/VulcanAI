@@ -38,9 +38,18 @@ class StreamToTextual:
             return
 
         if data.strip():
-            # Ensure update happens on the app thread
-            # self.app.call_from_thread(self.app.append_log_text, data)
-            self.app.call_from_thread(self.app.add_line, data)
+            # Try cross-thread UI update first; if already on app thread,
+            # Textual raises RuntimeError and we can write directly.
+            try:
+                self.app.call_from_thread(self.app.add_line, data)
+            except RuntimeError as e:
+                if "must run in a different thread" in str(e):
+                    try:
+                        self.app.add_line(data)
+                    except Exception:
+                        self.real_stream.write(data)
+                else:
+                    self.real_stream.write(data)
 
     def flush(self):
         self.real_stream.flush()
