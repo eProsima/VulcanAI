@@ -382,6 +382,222 @@ class FileToolsConsole(VulcanConsole):
         self.logger.log_console("Use <bold>'Ctrl+Q'</bold> to quit.")
         self.set_input_enabled(True)
 
+
+# EXECUTOR PRINTS
+class TestExecutorLoggingInConsoleFile(unittest.TestCase):
+    """Executor logging-path tests kept in this console-focused test module."""
+
+    class SimpleRegistry:
+        def __init__(self):
+            self.tools = {}
+
+    class PrintTool(tools_mod.AtomicTool):
+        name = "print_tool"
+        input_schema = []
+
+        def run(self, **kwargs):
+            print("tool output")
+            return {"ok": True}
+
+    class SleepTool(tools_mod.AtomicTool):
+        name = "sleep_tool"
+        input_schema = [("duration", "float")]
+
+        def run(self, **kwargs):
+            time.sleep(kwargs.get("duration", 0.01))
+            return {"ok": True}
+
+    class ErrorTool(tools_mod.AtomicTool):
+        name = "error_tool"
+        input_schema = []
+
+        def run(self, **kwargs):
+            raise RuntimeError("boom")
+
+    def setUp(self):
+        executor_mod = importlib.import_module("vulcanai.core.executor")
+        plan_types_mod = importlib.import_module("vulcanai.core.plan_types")
+
+        self.PlanExecutor = executor_mod.PlanExecutor
+        self.Arg = plan_types_mod.ArgValue
+        self.Step = plan_types_mod.Step
+        self.PlanNode = plan_types_mod.PlanNode
+        self.PlanBase = plan_types_mod.PlanBase
+
+        # Test changes
+        self.sink = FakeSink()
+        self.logger = VulcanAILogger(sink=self.sink)
+        self.registry = self.SimpleRegistry()
+        self.exec = self.PlanExecutor(self.registry, logger=self.logger)
+
+    def _assert_executor_log_contains(self, text: str, error: bool | None = None):
+        """
+        Check if 'text' is written in the logger
+        """
+        normalized_logs = [normalize_log(m) for m in self.sink.messages]
+        executor_logs = [m for m in normalized_logs if "[EXECUTOR]" in m]
+
+        if error is None:
+            found = any(text in msg for msg in executor_logs)
+        else:
+            found = any((text in msg and ("[ERROR]" in msg) == error) for msg in executor_logs)
+
+        self.assertTrue(found, f"Missing executor log '{text}'. Logs: {executor_logs}")
+
+    def test_log_executor_plan_node_skipped_due_condition(self):
+        node = self.PlanNode(kind="SEQUENCE", steps=[], condition="False")
+        self.assertTrue(self.exec._run_plan_node(node, {}))
+        self._assert_executor_log_contains("Skipping PlanNode SEQUENCE due to not fulfilled condition=False")
+
+    def test_log_executor_plan_node_succeeded_on_attempt(self):
+        self.registry.tools["noop"] = FakeTool("noop", "No operation tool.")
+        node = self.PlanNode(kind="SEQUENCE", steps=[self.Step(tool="noop", args=[])])
+
+        # VulcanAI function
+        self.assertTrue(self.exec._run_plan_node(node, {}))
+        # Textual log
+        self._assert_executor_log_contains("PlanNode SEQUENCE succeeded on attempt")
+
+    def test_log_executor_plan_node_failed_on_attempt(self):
+        node = self.PlanNode(kind="SEQUENCE", steps=[self.Step(tool="missing", args=[])])
+        self.assertFalse(self.exec._run_plan_node(node, {}))
+        self._assert_executor_log_contains("PlanNode SEQUENCE failed on attempt", error=True)
+
+    def test_log_executor_plan_node_timeout(self):
+        self.registry.tools["sleep_tool"] = self.SleepTool()
+        node = self.PlanNode(
+            kind="SEQUENCE",
+            steps=[self.Step(tool="sleep_tool", args=[self.Arg(key="duration", val=0.05)])],
+            timeout_ms=1,
+        )
+
+        # VulcanAI function
+        self.assertFalse(self.exec._execute_plan_node_with_timeout(node, {}))
+        # Textual log
+        self._assert_executor_log_contains("PlanNode SEQUENCE timed out", error=True)
+
+    def test_log_executor_plan_node_kind_unknown(self):
+        unknown_node = type("UnknownNode", (), {"kind": "UNKNOWN", "steps": []})()
+        self.assertTrue(self.exec._execute_plan_node(unknown_node, {}))
+        self._assert_executor_log_contains("Unknown PlanNode kind UNKNOWN, skipping", error=True)
+
+    def test_log_executor_executing_on_fail_branch(self):
+        self.registry.tools["noop"] = FakeTool("noop", "No operation tool.")
+        node = self.PlanNode(
+            kind="SEQUENCE",
+            steps=[self.Step(tool="missing", args=[])],
+            on_fail=self.PlanBase(kind="SEQUENCE", steps=[self.Step(tool="noop", args=[])]),
+        )
+
+        # VulcanAI function
+        self.assertFalse(self.exec._run_plan_node(node, {}))
+        # Textual log
+        self._assert_executor_log_contains("Executing on_fail branch for PlanNode SEQUENCE")
+
+    def test_log_executor_step_skipped_due_to_condition(self):
+        self.registry.tools["noop"] = FakeTool("noop", "No operation tool.")
+        step = self.Step(tool="noop", args=[], condition="False")
+
+        # VulcanAI function
+        self.assertTrue(self.exec._run_step(step, {}))
+        # Textual log
+        self._assert_executor_log_contains("Skipping step 'noop' due to condition=False")
+
+    def test_log_executor_step_attempt_failed(self):
+        step = self.Step(tool="missing", args=[], retry=1)
+
+        # VulcanAI function
+        self.assertFalse(self.exec._run_step(step, {}))
+        # Textual log
+        self._assert_executor_log_contains("Step 'missing' attempt 1/2 failed")
+
+    def test_log_executor_step_entity_succeeded_with_criteria(self):
+        step = self.Step(tool="noop", args=[], success_criteria="True")
+
+        # VulcanAI function
+        self.assertTrue(self.exec._check_success(step, {}, is_step=True))
+        # Textual log
+        self._assert_executor_log_contains("Entity 'noop' succeeded with criteria=True")
+
+    def test_log_executor_step_entity_failed_with_criteria(self):
+        step = self.Step(tool="noop", args=[], success_criteria="False")
+
+        # VulcanAI function
+        self.assertFalse(self.exec._check_success(step, {}, is_step=True))
+        # Textual log
+        self._assert_executor_log_contains("Entity 'noop' failed with criteria=False")
+
+    def test_log_executor_condition_evaluation_failed(self):
+        # VulcanAI function
+        self.assertFalse(self.exec.safe_eval("{{", {}))
+        # Textual log
+        self._assert_executor_log_contains("Condition evaluation failed: {{", error=True)
+
+    def test_log_executor_blackboard_substitution_failed(self):
+        with patch.object(self.exec, "_get_from_bb", side_effect=RuntimeError("boom")):
+            out = self.exec._make_bb_subs("{{bb.value}}", {})
+
+        # VulcanAI function
+        self.assertEqual(out, "{{bb.value}}")
+        # Textual log
+        self._assert_executor_log_contains("Blackboard substitution failed: {{bb.value}} (boom)", error=True)
+
+    def test_log_executor_tool_not_found(self):
+        # VulcanAI function
+        ok, out = self.exec._call_tool("missing", args=[])
+        self.assertFalse(ok)
+        self.assertIsNone(out)
+        # Textual log
+        self._assert_executor_log_contains("Tool 'missing' not found", error=True)
+
+    def test_log_executor_tool_invoking(self):
+        self.registry.tools["noop"] = FakeTool("noop", "No operation tool.")
+        args = [self.Arg(key="value", val="abc")]
+
+        # VulcanAI function
+        self.exec._call_tool("noop", args=args, bb={})
+        # Textual log
+        self._assert_executor_log_contains("Invoking 'noop' with args:")
+
+    def test_log_executor_tool_stdout_log(self):
+        self.registry.tools["print_tool"] = self.PrintTool()
+
+        # VulcanAI function
+        self.exec._call_tool("print_tool", args=[], bb={})
+        # Textual log
+        self._assert_executor_log_contains("tool output: print_tool")
+
+    def test_log_executor_tool_executed_duration(self):
+        self.registry.tools["noop"] = FakeTool("noop", "No operation tool.")
+
+        # VulcanAI function
+        self.exec._call_tool("noop", args=[self.Arg(key="value", val="abc")], bb={})
+        # Textual log
+        self._assert_executor_log_contains("Executed 'noop' in")
+
+    def test_log_executor_tool_execution_timeout(self):
+        self.registry.tools["sleep_tool"] = self.SleepTool()
+
+        args = [self.Arg(key="duration", val=0.05)]
+        # VulcanAI function
+        ok, out = self.exec._call_tool("sleep_tool", args=args, timeout_ms=1, bb={})
+        self.assertFalse(ok)
+        self.assertIsNone(out)
+
+        # Textual log
+        self._assert_executor_log_contains("Execution of 'sleep_tool' timed out after 1 ms", error=False)
+
+    def test_log_executor_tool_execution_failed(self):
+        self.registry.tools["error_tool"] = self.ErrorTool()
+
+        # VulcanAI function
+        ok, out = self.exec._call_tool("error_tool", args=[], bb={})
+        self.assertFalse(ok)
+        self.assertIsNone(out)
+
+        # Textual log
+        self._assert_executor_log_contains("Execution failed for 'error_tool': boom")
+
 # TERMINAL INPUT
 class TestConsoleInputOutput(unittest.IsolatedAsyncioTestCase):
     """End-to-end Textual UI tests focused on terminal output behavior."""
