@@ -16,7 +16,6 @@
 import asyncio
 import difflib
 import heapq
-import os
 import subprocess
 import sys
 import threading
@@ -358,117 +357,6 @@ def suggest_string(console, tool_name, string_name, input_string, real_string_li
         console.suggestion_index_changed.clear()
 
     return ret
-
-
-# endregion
-
-# region TERMINAL_CONFIG
-
-
-def write_terminal_sequence(console, sequence: str) -> None:
-    """
-    Send terminal control sequence if stdout is a teletypewriter (TTY).
-    Used for OSC / CSI compatibility tweaks.
-
-    OSC: Operating System Command
-    CSI: Control Sequence Introducer
-    """
-    if not sys.stdout.isatty():
-        return
-
-    try:
-        sys.stdout.write(sequence)
-        sys.stdout.flush()
-    except Exception as e:
-        console.logger.log_msg(f"[error] Unsupported terminal: {e}[/error]")
-
-
-def is_gnome_terminal() -> bool:
-    """
-    Return True when running inside GNOME Terminal.
-    """
-    is_gnome = "GNOME_TERMINAL_SCREEN" in os.environ or \
-                "gnome-terminal" in os.environ.get("TERMINAL_EMULATOR", "").lower() or \
-                "gnome-terminal" in os.environ.get("TERM_PROGRAM", "").lower()
-    return is_gnome
-
-
-def run_gsettings(*args: str) -> str | None:
-    """
-    Run a gsettings command and return stdout or None on failure.
-    """
-
-    try:
-        completed = subprocess.run(
-            ["gsettings", *args],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-    except Exception:
-        return None
-
-    if completed.returncode != 0:
-        return None
-
-    return completed.stdout.strip()
-
-
-def disable_gnome_scrollbar(console) -> None:
-    """
-    Temporarily set the active GNOME Terminal profile scrollbar policy to ``never``.
-
-    The function is intentionally best-effort:
-    - It does nothing outside GNOME Terminal.
-    - It does nothing if ``gsettings`` queries fail.
-    - It stores the original profile schema and scrollbar policy on ``console`` so
-      ``restore_gnome_scrollbar()`` can revert the change when the session ends.
-    """
-
-    if not is_gnome_terminal():
-        return
-
-    # GNOME returns quoted strings (for example: "'<profile-id>'").
-    profile_id = run_gsettings("get", "org.gnome.Terminal.ProfilesList", "default")
-    if not profile_id:
-        return
-    profile_id = profile_id.strip("'")
-    if not profile_id:
-        return
-
-    # Build the profile-specific schema path used by GNOME Terminal settings.
-    schema = f"org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:{profile_id}/"
-    current_policy = run_gsettings("get", schema, "scrollbar-policy")
-    if not current_policy:
-        return
-
-    console._gnome_profile_schema = schema
-    console._gnome_scrollbar_policy_backup = current_policy
-
-    if current_policy != "'never'":
-        run_gsettings("set", schema, "scrollbar-policy", "never")
-
-
-def restore_gnome_scrollbar(console) -> None:
-    """
-    Restore the GNOME Terminal scrollbar policy saved by
-    ``disable_gnome_scrollbar()``.
-
-    If no backup values were saved, this function is a no-op.
-    """
-    if not getattr(console, "_gnome_profile_schema", None) or not getattr(
-        console, "_gnome_scrollbar_policy_backup", None):
-        return
-
-    # gsettings expects the enum token without shell-style quotes.
-    restore_value = console._gnome_scrollbar_policy_backup.strip("'")
-    if restore_value:
-        run_gsettings(
-            "set",
-            console._gnome_profile_schema,
-            "scrollbar-policy",
-            restore_value,
-        )
 
 
 # endregion

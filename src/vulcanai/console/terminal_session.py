@@ -1,8 +1,22 @@
-from typing import Any, Protocol, Optional, List
-from dataclasses import dataclass
+# Copyright 2026 Proyectos y Sistemas de Mantenimiento SL (eProsima).
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import os
 import subprocess
 import sys
+from dataclasses import dataclass
+from typing import Any, Optional, Protocol
 
 
 def write_terminal_sequence(sequence: str) -> None:
@@ -19,25 +33,14 @@ def write_terminal_sequence(sequence: str) -> None:
         sys.stdout.write(sequence)
         sys.stdout.flush()
     except Exception:
-        # best-effort: ignore
         pass
 
 
 class TerminalAdapter(Protocol):
     """
-    Protocol implemented by terminal-specific adapters.
-
-    Parent class for each terminal adapter.
-    Done:
-    - GNOME
-
-    TODO:
-    - Terminator
-    - Zsh
-    - Kitty
-    - XTerm
-    - Alackritty
-    - Alacritty
+    Abstract parent class to enhance VulcanAI visualization in each terminal.
+    Currently supported: Gnome
+    Not yet implemented: Terminator, Zsh
     """
 
     name: str
@@ -48,9 +51,11 @@ class TerminalAdapter(Protocol):
 
     def restore(self, state: Any) -> None: ...
 
+
 # region TERMINALS
 
-    # region gnome
+# region gnome
+
 
 def _run_gsettings(*args: str) -> Optional[str]:
     """
@@ -90,19 +95,19 @@ class GnomeTerminalAdapter:
         @brief Detect whether the current terminal is GNOME Terminal.
         @return ``True`` when GNOME Terminal environment markers are found.
         """
-        terminal_emulator = os.environ.get("TERMINAL_EMULATOR", "").lower()
-        term_program = os.environ.get("TERM_PROGRAM", "").lower()
-        return (
-            "gnome-terminal" in terminal_emulator
-            or "gnome-terminal" in term_program
-            or "GNOME_TERMINAL_SCREEN" in os.environ
+        is_gnome = (
+            "GNOME_TERMINAL_SCREEN" in os.environ
+            or "gnome-terminal" in os.environ.get("TERMINAL_EMULATOR", "").lower()
+            or "gnome-terminal" in os.environ.get("TERM_PROGRAM", "").lower()
         )
+        return is_gnome
 
     def apply(self) -> Optional[GnomeState]:
         """
         @brief Hide GNOME scrollbar and return state for later restoration.
         @return ``GnomeState`` when the change is applied/confirmed, else ``None``.
         """
+        # The return value could be None, empty string or string with just single quotes
         profile_id = _run_gsettings("get", "org.gnome.Terminal.ProfilesList", "default")
         if not profile_id:
             return None
@@ -137,16 +142,19 @@ class GnomeTerminalAdapter:
     # endregion
 
     # region TERMINATOR
-# TODO
-    # endregion
 
-    # region ZSH
+
 # TODO
-    # endregion
+# endregion
+
+# region ZSH
+# TODO
+# endregion
 
 # endregion
 
 # region SESSION
+
 
 @dataclass
 class TerminalSessionConfig:
@@ -165,11 +173,8 @@ class TerminalSession:
     Session helper that applies terminal tweaks and safely restores them.
     """
 
-    def __init__(self, adapters: List[TerminalAdapter], config: TerminalSessionConfig):
-        """
-        Build a terminal session with a list of adapters.
-        """
-        self.adapters = adapters
+    def __init__(self, config: TerminalSessionConfig):
+        self.adapters = [GnomeTerminalAdapter()]
         self.config = config
         self._active: list[tuple[TerminalAdapter, Any]] = []
 
@@ -224,5 +229,6 @@ class TerminalSession:
         """
         self.end()
         return False
+
 
 # endregion

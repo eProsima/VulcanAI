@@ -30,19 +30,12 @@ from textual.widgets import Input, Static
 
 from vulcanai.console.logger import VulcanAILogger
 from vulcanai.console.modal_screens import CheckListModal, RadioListModal, ReverseSearchModal
+from vulcanai.console.terminal_session import TerminalSession, TerminalSessionConfig
 from vulcanai.console.utils import (
     SpinnerHook,
     StreamToTextual,
     attach_ros_logger_to_console,
     common_prefix,
-    # disable_gnome_scrollbar,
-    # restore_gnome_scrollbar,
-    # write_terminal_sequence,
-)
-from vulcanai.console.TerminalSession import (
-    GnomeTerminalAdapter,
-    TerminalSession,
-    TerminalSessionConfig,
 )
 from vulcanai.console.widget_custom_log_text_area import CustomLogTextArea
 from vulcanai.console.widget_spinner import SpinnerStatus
@@ -59,79 +52,72 @@ class TextualLogSink:
 
 
 class VulcanConsole(App):
-    _vulcanai_bg_color = "#121212"
-
     # CSS Styles
     # Two panels: left (log + input) and right (history + variables)
     #   Right panel: 48 characters length
     #   Left panel: fills remaining space
-    CSS = f"""
-    Screen {{
+    CSS = """
+    Screen {
         layout: horizontal;
-        background: {_vulcanai_bg_color};
         overflow: hidden hidden;
-    }}
+    }
 
-    #root {{
+    #root {
         width: 100%;
         height: 100%;
-        background: {_vulcanai_bg_color};
         overflow: hidden hidden;
-    }}
+    }
 
-    #left {{
+    #left {
         width: 1fr;
         layout: vertical;
-        background: {_vulcanai_bg_color};
         overflow: hidden hidden;
-    }}
+    }
 
-    #right {{
+    #right {
         width: 48;
         layout: vertical;
         border: tall #56AA08;
         padding: 0;
-        background: {_vulcanai_bg_color};
         overflow: hidden hidden;
-    }}
+    }
 
-    #logcontent {{
+    #logcontent {
         height: auto;
         min-height: 1;
         max-height: 1fr;
         border: tall #333333;
-        background: {_vulcanai_bg_color};
         scrollbar-size-vertical: 0;
         scrollbar-size-horizontal: 0;
-    }}
+    }
 
-    #llm_spinner {{
+    #llm_spinner {
         height: 0;
         display: none;
         content-align: left middle;
         padding-left: 2;
-    }}
+    }
 
-    #cmd {{
+    #cmd {
         dock: bottom;
-    }}
+    }
 
-    #history_title {{
+    #history_title {
         content-align: center middle;
         margin: 0;
         padding: 0;
-    }}
+    }
 
-    #history_scroll {{
+    #history_scroll {
         height: 1fr;
         margin: 1;
         scrollbar-size-vertical: 0;
         scrollbar-size-horizontal: 0;
-    }}
+    }
 
-    #history {{
+    #history {
         width: 100%;
-    }}
+    }
     """
 
     # Bindings for the console
@@ -1113,8 +1099,7 @@ class VulcanConsole(App):
         """
 
         session = TerminalSession(
-            adapters=[GnomeTerminalAdapter()],
-            config=TerminalSessionConfig(bg_color=self._vulcanai_bg_color),
+            config=TerminalSessionConfig(),
         )
         with session:
             self.run()
