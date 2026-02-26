@@ -58,8 +58,6 @@ class VulcanConsole(App):
     # Two panels: left (log + input) and right (history + variables)
     #   Right panel: 48 characters length
     #   Left panel: fills remaining space
-    #_vulcanai_bg_color = "#121212" # TODO. danip
-    _vulcanai_bg_color = "#121212"
     CSS = """
     Screen {
         layout: horizontal;
@@ -83,7 +81,6 @@ class VulcanConsole(App):
         width: 48;
         layout: vertical;
         border: tall #56AA08;
-        background: __VULCANAI_BG__;
         padding: 0;
         overflow: hidden hidden;
     }
@@ -95,6 +92,7 @@ class VulcanConsole(App):
         border: tall #333333;
         scrollbar-size-vertical: 0;
         scrollbar-size-horizontal: 0;
+        color: #ffffff;
     }
 
     #llm_spinner {
@@ -106,36 +104,35 @@ class VulcanConsole(App):
 
     #cmd {
         dock: bottom;
-        background: __VULCANAI_BG__;
-        color: __VULCANAI_BG__;
+        color: #ffffff;
     }
 
     #history_title {
         content-align: center middle;
         margin: 0;
         padding: 0;
+        color: #ffffff;
     }
 
     #history_scroll {
         height: 1fr;
         margin: 1;
         scrollbar-size-vertical: 0;
-        scrollbar-size-horizontal: 0;ach)
+        scrollbar-size-horizontal: 0;
     }
 
     #history {
         width: 100%;
-        background: __VULCANAI_BG__;
     }
 
     #history_title {
-        background: __VULCANAI_BG__;
+        color: #ffffff;
     }
 
     #variables {
-        background: __VULCANAI_BG__;
+        color: #ffffff;
     }
-    """.replace("__VULCANAI_BG__", _vulcanai_bg_color)
+    """
 
     # Bindings for the console
     BINDINGS = [
