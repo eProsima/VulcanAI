@@ -16,10 +16,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 import threading
 
 import pyperclip  # To paste the clipboard into the terminal
+from textual import constants as textual_constants
 from textual import events, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -56,6 +58,8 @@ class VulcanConsole(App):
     # Two panels: left (log + input) and right (history + variables)
     #   Right panel: 48 characters length
     #   Left panel: fills remaining space
+    #_vulcanai_bg_color = "#121212" # TODO. danip
+    _vulcanai_bg_color = "#121212"
     CSS = """
     Screen {
         layout: horizontal;
@@ -66,6 +70,7 @@ class VulcanConsole(App):
         width: 100%;
         height: 100%;
         overflow: hidden hidden;
+        color: #ffffff;
     }
 
     #left {
@@ -78,6 +83,7 @@ class VulcanConsole(App):
         width: 48;
         layout: vertical;
         border: tall #56AA08;
+        background: __VULCANAI_BG__;
         padding: 0;
         overflow: hidden hidden;
     }
@@ -100,6 +106,8 @@ class VulcanConsole(App):
 
     #cmd {
         dock: bottom;
+        background: __VULCANAI_BG__;
+        color: __VULCANAI_BG__;
     }
 
     #history_title {
@@ -112,13 +120,22 @@ class VulcanConsole(App):
         height: 1fr;
         margin: 1;
         scrollbar-size-vertical: 0;
-        scrollbar-size-horizontal: 0;
+        scrollbar-size-horizontal: 0;ach)
     }
 
     #history {
         width: 100%;
+        background: __VULCANAI_BG__;
     }
-    """
+
+    #history_title {
+        background: __VULCANAI_BG__;
+    }
+
+    #variables {
+        background: __VULCANAI_BG__;
+    }
+    """.replace("__VULCANAI_BG__", _vulcanai_bg_color)
 
     # Bindings for the console
     BINDINGS = [
@@ -140,6 +157,8 @@ class VulcanConsole(App):
         user_context: str = "",
         main_node=None,
     ):
+        os.environ.setdefault("COLORTERM", "truecolor")
+        textual_constants.COLOR_SYSTEM = "truecolor"
         super().__init__()  # Textual lib
 
         # -- Main variables --

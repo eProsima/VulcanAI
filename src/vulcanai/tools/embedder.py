@@ -12,7 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+
 import numpy as np
+
+# Keep Hugging Face download progress bars out of redirected Textual stdout/stderr.
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+
 from sentence_transformers import SentenceTransformer
 
 
