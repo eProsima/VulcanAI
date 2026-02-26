@@ -86,7 +86,7 @@ class ToolRegistry:
         # Dictionary of deactivated_tools (name -> tool instance)
         self.deactivated_tools: Dict[str, ITool] = {}
         # Embedding model for tool metadata
-        self.embedder = embedder or SBERTEmbedder()
+        self.embedder = embedder or SBERTEmbedder(logger=self.logger)
         # Simple in-memory index of (name, embedding)
         self._index: list[Tuple[str, np.ndarray]] = []
         # List of modules where tools can be loaded from

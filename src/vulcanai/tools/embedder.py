@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import os
+from typing import Optional
 
 import numpy as np
 
@@ -21,9 +22,29 @@ os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
 
 from sentence_transformers import SentenceTransformer
 
+from vulcanai.console.logger import VulcanAILogger
+
+_HF_DOWNLOAD_INFO_PRINTED = False
+
+
+def info_msg_hf_model_loading(model_name: str, logger: Optional[VulcanAILogger] = None) -> None:
+    global _HF_DOWNLOAD_INFO_PRINTED
+
+    if _HF_DOWNLOAD_INFO_PRINTED:
+        return
+
+    msg = f"Hugging Face is loading '{model_name}'. If the model is not cached yet, files are being downloaded..."
+    if logger is not None:
+        logger.log_console(msg)
+    else:
+        VulcanAILogger.log_console(msg)
+
+    _HF_DOWNLOAD_INFO_PRINTED = True
+
 
 class SBERTEmbedder:
-    def __init__(self, model_name="all-MiniLM-L6-v2"):
+    def __init__(self, model_name="all-MiniLM-L6-v2", logger: Optional[VulcanAILogger] = None):
+        info_msg_hf_model_loading(model_name, logger)
         self.model = SentenceTransformer(model_name)
 
     def embed(self, text: str) -> np.ndarray:
