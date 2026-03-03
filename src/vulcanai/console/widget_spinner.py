@@ -46,9 +46,14 @@ class SpinnerStatus(Static):
         """
         visible = max(1, self.logcontent.size.height)
         lines = getattr(self.logcontent.document, "line_count", 0)
-        return lines > visible
+        return lines >= visible
 
     def start(self, text: str = "Querying LLM...") -> None:
+        # Keep the log anchored at bottom if the user was already following output.
+        if hasattr(self.logcontent, "is_near_vertical_scroll_end"):
+            was_at_bottom = self.logcontent.is_near_vertical_scroll_end()
+        else:
+            was_at_bottom = self.logcontent.is_vertical_scroll_end
         self._spinner.text = Text(text, style="#0d87c0")
         self.display = True
         self.styles.height = 1
@@ -59,10 +64,19 @@ class SpinnerStatus(Static):
         else:
             self._forced_compact = False
         self.refresh(layout=True)
+        if was_at_bottom:
+            self.logcontent.scroll_end(animate=False, immediate=True, x_axis=False)
+            # Re-anchor after layout has settled.
+            self.call_after_refresh(self.logcontent.scroll_end, animate=False, immediate=True, x_axis=False)
 
         self._timer.resume()
 
     def stop(self) -> None:
+        # Keep the log anchored at bottom if the user was already following output.
+        if hasattr(self.logcontent, "is_near_vertical_scroll_end"):
+            was_at_bottom = self.logcontent.is_near_vertical_scroll_end()
+        else:
+            was_at_bottom = self.logcontent.is_vertical_scroll_end
         self._timer.pause()
         self.display = False
         self.styles.height = 0
@@ -71,5 +85,9 @@ class SpinnerStatus(Static):
             self._forced_compact = False
             self.refresh(layout=True)
             self.logcontent.refresh(layout=True)
+        if was_at_bottom:
+            self.logcontent.scroll_end(animate=False, immediate=True, x_axis=False)
+            # Re-anchor after layout has settled.
+            self.call_after_refresh(self.logcontent.scroll_end, animate=False, immediate=True, x_axis=False)
 
         self.update("")

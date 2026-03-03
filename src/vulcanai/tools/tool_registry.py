@@ -78,7 +78,7 @@ class HelpTool(ITool):
 class ToolRegistry:
     """Holds all known tools and performs vector search over metadata."""
 
-    def __init__(self, embedder=None, logger=None):
+    def __init__(self, embedder=None, logger=None, default_tools=True):
         # Logging function from the class VulcanConsole
         self.logger = logger or VulcanAILogger.default()
         # Dictionary of tools (name -> tool instance)
@@ -96,6 +96,14 @@ class ToolRegistry:
         self.tools[self.help_tool.name] = self.help_tool
         # Validation tools list to retrieve validation tools separately
         self.validation_tools: List[str] = []
+
+        # Default tools
+        if default_tools:
+            try:
+                self.discover_tools_from_entry_points("ros2_default_tools")
+            except ImportError as e:
+                self.logger.log_msg(f"[error]{e}[/error]")
+                raise
 
     def register_tool(self, tool: ITool, solve_deps: bool = True):
         """Register a single tool instance."""

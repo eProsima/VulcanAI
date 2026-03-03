@@ -277,9 +277,9 @@ class PlanExecutor:
         msg += "'{"
         for key, value in arg_dict.items():
             if first:
-                msg += f"[validator]'{key}'[/validator]: " + f"[registry]'{value}'[/registry]"
+                msg += f"[tool]'{key}'[/tool]: " + f"[registry]'{value}'[/registry]"
             else:
-                msg += f", [validator]'{key}'[/validator]: " + f"[registry]'{value}'[/registry]"
+                msg += f", [tool]'{key}'[/tool]: " + f"[registry]'{value}'[/registry]"
             first = False
         msg += "}'"
         self.logger.log_executor(msg)
@@ -314,15 +314,6 @@ class PlanExecutor:
                 + f"in [registry]{elapsed:.1f} ms[/registry] "
                 + "with result:"
             )
-
-            if isinstance(result, dict):
-                for key, value in result.items():
-                    if key == "ros2":
-                        continue
-                    self.logger.log_msg(f"<bold>{key}</bold>")
-                    self.logger.log_msg(value)
-            else:
-                self.logger.log_msg(result)
 
             return True, result
         except concurrent.futures.TimeoutError:

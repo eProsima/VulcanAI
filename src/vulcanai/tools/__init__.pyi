@@ -12,13 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from .custom_node import CustomNode
 from .tool_registry import ToolRegistry, vulcanai_tool
 from .tools import AtomicTool, CompositeTool, ValidationTool
 
-__all__ = [
-    "AtomicTool",
-    "CompositeTool",
-    "ToolRegistry",
-    "ValidationTool",
-    "vulcanai_tool",
-]
+__all__ = ["AtomicTool", "CompositeTool", "ToolRegistry", "ValidationTool", "vulcanai_tool", "CustomNode"]

@@ -1,4 +1,4 @@
-# Copyright 2025 Proyectos y Sistemas de Mantenimiento SL (eProsima).
+# Copyright 2026 Proyectos y Sistemas de Mantenimiento SL (eProsima).
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,8 +14,6 @@
 
 
 import asyncio
-import difflib
-import heapq
 import subprocess
 import sys
 import threading
@@ -57,10 +55,18 @@ class SpinnerHook:
         self.spinner_status = spinner_status
 
     def on_request_start(self, text="Querying LLM..."):
-        self.spinner_status.start(text)
+        app = getattr(self.spinner_status, "app", None)
+        if app is not None and threading.current_thread() is not threading.main_thread():
+            app.call_from_thread(self.spinner_status.start, text)
+        else:
+            self.spinner_status.start(text)
 
     def on_request_end(self):
-        self.spinner_status.stop()
+        app = getattr(self.spinner_status, "app", None)
+        if app is not None and threading.current_thread() is not threading.main_thread():
+            app.call_from_thread(self.spinner_status.stop)
+        else:
+            self.spinner_status.stop()
 
 
 def attach_ros_logger_to_console(console):
@@ -178,7 +184,6 @@ async def run_streaming_cmd_async(
             if echo:
                 line_processed = escape(line)
                 console.add_line(line_processed)
-
             # Count the line
             line_count += 1
             if max_lines is not None and line_count >= max_lines:
@@ -205,8 +210,6 @@ async def run_streaming_cmd_async(
     except KeyboardInterrupt:
         # Ctrl+C pressed → stop subprocess
         console.logger.log_tool("[tool]Ctrl+C received:[/tool] terminating subprocess...", tool_name=tool_name)
-        process.terminate()
-
     finally:
         try:
             await asyncio.wait_for(process.wait(), timeout=3.0)
@@ -234,6 +237,8 @@ def execute_subprocess(console, tool_name, base_args, max_duration, max_lines):
                 tool_name=tool_name,  # tool_header_str
             )
         )
+        # Keep the real task reference so Ctrl+C can cancel it.
+        console.set_stream_task(stream_task)
 
         def _on_done(task: asyncio.Task) -> None:
             if task.cancelled():
@@ -251,18 +256,12 @@ def execute_subprocess(console, tool_name, base_args, max_duration, max_lines):
 
         stream_task.add_done_callback(_on_done)
 
-    try:
-        # Are we already in the Textual event loop thread?
-        asyncio.get_running_loop()
-    except RuntimeError:
-        # No loop here → probably ROS thread. Bounce into Textual thread.
-        console.app.call_from_thread(_launcher)
-    else:
-        # We *are* in the loop → just launch directly.
+    # Worker threads may have their own asyncio loop; only run directly on UI thread.
+    if threading.current_thread() is threading.main_thread():
         _launcher()
+    else:
+        console.app.call_from_thread(_launcher)
 
-    # Store the task in the console to be able to cancel it later
-    console.set_stream_task(stream_task)
     console.logger.log_tool("[tool]Subprocess created![tool]", tool_name=tool_name)
 
 
@@ -272,80 +271,3 @@ def run_oneshot_cmd(args: list[str]) -> str:
 
     except subprocess.CalledProcessError as e:
         raise Exception(f"Failed to run '{' '.join(args)}': {e.output}")
-
-
-def suggest_string(console, tool_name, string_name, input_string, real_string_list):
-    ret = None
-
-    def _similarity(a: str, b: str) -> float:
-        """Return a similarity score between 0 and 1."""
-        return difflib.SequenceMatcher(None, a, b).ratio()
-
-    def _get_suggestions(real_string_list_comp: list[str], string_comp: str) -> tuple[str, list[str]]:
-        """
-        Function used to search for the most "similar" string in a list.
-
-        Used in ROS2 cli commands to used the "simmilar" in case
-        the queried topic does not exists.
-
-        Example:
-        real_string_list_comp = [
-            "/parameter_events",
-            "/rosout",
-            "/turtle1/cmd_vel",
-            "/turtle1/color_sensor",
-            "/turtle1/pose",
-        ]
-        string_comp = "trtle1"
-
-        @return
-            str: the most "similar" string
-            list[str] a sorted list by a similitud value
-        """
-
-        topic_list_pq = []
-        n = len(string_comp)
-
-        for string in real_string_list_comp:
-            m = len(string)
-            # Calculate the similitud
-            score = _similarity(string_comp, string)
-            # Give more value for the nearest size comparations.
-            score -= abs(n - m) * 0.005
-            # Max-heap (via negative score)
-            heapq.heappush(topic_list_pq, (-score, string))
-
-        # Pop ordered list
-        ret_list: list[str] = []
-        _, most_topic_similar = heapq.heappop(topic_list_pq)
-
-        ret_list.append(most_topic_similar)
-
-        while topic_list_pq:
-            _, topic = heapq.heappop(topic_list_pq)
-            ret_list.append(topic)
-
-        return most_topic_similar, ret_list
-
-    if input_string not in real_string_list:
-        console.logger.log_tool(f'{string_name}: "{input_string}" does not exists', tool_name=tool_name)
-
-        # Get the suggestions list sorted by similitud value
-        _, topic_sim_list = _get_suggestions(real_string_list, input_string)
-
-        # Open the ModalScreen
-        console.open_radiolist(topic_sim_list, f"{tool_name}")
-
-        # Wait for the user to select and item in the
-        # RadioList ModalScreen
-        console.suggestion_index_changed.wait()
-
-        # Check if the user cancelled the suggestion
-        if console.suggestion_index >= 0:
-            ret = topic_sim_list[console.suggestion_index]
-
-        # Reset suggestion index
-        console.suggestion_index = -1
-        console.suggestion_index_changed.clear()
-
-    return ret

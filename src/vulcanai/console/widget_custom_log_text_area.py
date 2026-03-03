@@ -21,6 +21,8 @@ import pyperclip
 from rich.style import Style
 from textual.widgets import TextArea
 
+from vulcanai.console.logger import VulcanAILogger
+
 
 class CustomLogTextArea(TextArea):
     """
@@ -45,7 +47,10 @@ class CustomLogTextArea(TextArea):
     TAG_TOKEN_RE = re.compile(r"</?[^>]+>")
 
     def __init__(self, **kwargs):
-        super().__init__(read_only=True, **kwargs)
+        # Disable the TextArea cursor in this read-only log panel.
+        # This prevents Textual from auto-scrolling to keep cursor/selection visible
+        # every time new text is inserted.
+        super().__init__(read_only=True, show_cursor=False, **kwargs)
 
         # Lock used to avoid data races in 'self._lines_styles'
         #   when VulcanAI and ROS threads writes at the same time
@@ -67,6 +72,17 @@ class CustomLogTextArea(TextArea):
         self._lines_styles = deque(maxlen=self.MAX_LINES)
 
     # region UTILS
+
+    def is_near_vertical_scroll_end(self, tolerance: int = 1) -> bool:
+        """
+        Return True if the viewport is at, or very close to, the vertical end.
+
+        A small tolerance avoids false negatives after layout changes where
+        scroll position can be off by one line.
+        """
+        if not self.size:
+            return True
+        return (self.max_scroll_y - self.scroll_offset.y) <= max(0, tolerance)
 
     def _trim_highlights(self) -> None:
         """
@@ -279,6 +295,10 @@ class CustomLogTextArea(TextArea):
         # [EXECUTOR] Invoking 'move_turtle' with args: ...
         # [ROS] [INFO] Publishing message 1 to ...
         with self._lock:
+            # Terminal-like behavior:
+            # keep following output only if the user was already at the bottom.
+            should_follow_output = self.is_near_vertical_scroll_end()
+
             # Append via document API to keep row tracking consistent
             # Only add a newline before the new line if there is already content
             insert_text = ("\n" if self.document.text else "") + plain
@@ -301,8 +321,11 @@ class CustomLogTextArea(TextArea):
             # Trim now
             self._trim_highlights()
 
-            # Scroll to end
-            self.scroll_end(animate=False)
+            # Scroll to end only when the user was already at the bottom.
+            if should_follow_output:
+                self.scroll_end(animate=False, immediate=True, x_axis=False)
+                # Ensure we stay anchored after any pending layout updates.
+                self.call_after_refresh(self.scroll_end, animate=False, immediate=True, x_axis=False)
 
             # Rebuild highlights and refresh
             self._rebuild_highlights()
@@ -374,6 +397,12 @@ class CustomLogTextArea(TextArea):
             self.notify("No text selected to copy!")
             return
 
-        # Copy to clipboard, using pyperclip library
-        pyperclip.copy(self.selected_text)
-        self.notify("Selected area copied to clipboard!")
+        try:
+            # Copy to clipboard, using pyperclip library
+            pyperclip.copy(self.selected_text)
+            self.notify("Selected area copied to clipboard!")
+        except Exception as e:
+            error_color = VulcanAILogger.vulcanai_theme["error"]
+            self.append_line(f"<{error_color}>Clipboard error: {e}</{error_color}>")
+            self.notify(f"Clipboard error: {e}")
+            return
