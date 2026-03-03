@@ -648,11 +648,14 @@ class VulcanConsole(App):
         else:
             selected_plan = int(args[0])
             if selected_plan < -1:
-                self.logger.log_console("Usage: /rerun 'int' [int >= -1].")
+                self.logger.log_console("Usage: /rerun 'int' [int > -1].")
                 return
 
         if not self.plans_list:
             self.logger.log_console("No plan to rerun.")
+            return
+        elif selected_plan >= len(self.plans_list):
+            self.logger.log_console("Selected Plan index do not exists. selected_plan >= len(executed_plans).")
             return
 
         self.logger.log_console(f"Rerunning {selected_plan}-th plan...")

@@ -73,6 +73,17 @@ class CustomLogTextArea(TextArea):
 
     # region UTILS
 
+    def is_near_vertical_scroll_end(self, tolerance: int = 1) -> bool:
+        """
+        Return True if the viewport is at, or very close to, the vertical end.
+
+        A small tolerance avoids false negatives after layout changes where
+        scroll position can be off by one line.
+        """
+        if not self.size:
+            return True
+        return (self.max_scroll_y - self.scroll_offset.y) <= max(0, tolerance)
+
     def _trim_highlights(self) -> None:
         """
         Function used to trim the CustomLogTextArea to the maximum number of lines.
@@ -286,7 +297,7 @@ class CustomLogTextArea(TextArea):
         with self._lock:
             # Terminal-like behavior:
             # keep following output only if the user was already at the bottom.
-            should_follow_output = self.is_vertical_scroll_end
+            should_follow_output = self.is_near_vertical_scroll_end()
 
             # Append via document API to keep row tracking consistent
             # Only add a newline before the new line if there is already content
@@ -312,7 +323,9 @@ class CustomLogTextArea(TextArea):
 
             # Scroll to end only when the user was already at the bottom.
             if should_follow_output:
-                self.scroll_end(animate=False, immediate=False, x_axis=False)
+                self.scroll_end(animate=False, immediate=True, x_axis=False)
+                # Ensure we stay anchored after any pending layout updates.
+                self.call_after_refresh(self.scroll_end, animate=False, immediate=True, x_axis=False)
 
             # Rebuild highlights and refresh
             self._rebuild_highlights()
