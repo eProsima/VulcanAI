@@ -17,6 +17,7 @@ import asyncio
 import difflib
 import heapq
 import subprocess
+import threading
 import time
 
 from textual.markup import escape  # To remove potential errors in textual terminal
@@ -28,6 +29,7 @@ async def run_streaming_cmd_async(
     # Unpack the command
     cmd, *cmd_args = args
 
+    captured_lines: list[str] = []
     process = None
     try:
         # Create the subprocess
@@ -49,6 +51,14 @@ async def run_streaming_cmd_async(
 
             # Print the line
             if echo:
+                if args[:3] == ["ros2", "topic", "echo"] and line:
+                    msg = line.strip()
+                    if msg == "---":
+                        continue
+                    msg = msg.strip("'\"")
+                    line = f"[ROS] [INFO] I heard: [{msg}]"
+
+                captured_lines.append(line)
                 line_processed = escape(line)
                 if hasattr(console, "add_subprocess_line"):
                     console.add_subprocess_line(line_processed)
@@ -77,7 +87,7 @@ async def run_streaming_cmd_async(
         console.logger.log_tool("[tool]Cancellation received:[/tool] terminating subprocess...", tool_name=tool_name)
         if process is not None:
             process.terminate()
-        raise
+
     # Not necessary, textual terminal get the keyboard input
     except KeyboardInterrupt:
         # Ctrl+C pressed → stop subprocess
@@ -98,11 +108,13 @@ async def run_streaming_cmd_async(
             if hasattr(console, "hide_subprocess_panel"):
                 console.hide_subprocess_panel()
 
-    return "Process stopped due to Ctrl+C"
+    return "\n".join(captured_lines)
 
 
 def execute_subprocess(console, tool_name, base_args, max_duration, max_lines):
     stream_task = None
+    done_event = threading.Event()
+    result = {"output": ""}
 
     def _launcher() -> None:
         nonlocal stream_task
@@ -120,37 +132,35 @@ def execute_subprocess(console, tool_name, base_args, max_duration, max_lines):
                 tool_name=tool_name,  # tool_header_str
             )
         )
+        # Keep the real task reference so Ctrl+C can cancel it.
+        console.set_stream_task(stream_task)
 
         def _on_done(task: asyncio.Task) -> None:
-            if task.cancelled():
-                # Normal path → don't log as an error
-                # If you want a message, call UI methods directly here,
-                # not via console.write (see Fix 2)
-                return
-
             try:
-                task.result()
+                if not task.cancelled():
+                    result["output"] = task.result() or ""
             except Exception as e:
                 console.logger.log_msg(f"Echo task error: {e!r}\n", error=True)
-                # result["output"] = False
-                return
+            finally:
+                done_event.set()
 
         stream_task.add_done_callback(_on_done)
 
-    try:
-        # Are we already in the Textual event loop thread?
-        asyncio.get_running_loop()
-    except RuntimeError:
-        # No loop here → probably ROS thread. Bounce into Textual thread.
+    # `/rerun` workers can have their own asyncio loop in a non-UI thread.
+    # Route UI/task creation to Textual app thread unless we are already there.
+    if threading.current_thread() is threading.main_thread():
+        _launcher()
+    else:
         # `console.app` is your Textual App instance.
         console.app.call_from_thread(_launcher)
-    else:
-        # We *are* in the loop → just launch directly.
-        _launcher()
 
-    # Store the task in the console to be able to cancel it later
-    console.set_stream_task(stream_task)
     console.logger.log_tool("[tool]Subprocess created![tool]", tool_name=tool_name)
+    # Wait for streaming command to finish and return collected lines.
+    # In UI thread we avoid blocking to prevent deadlocks.
+    if threading.current_thread() is threading.main_thread():
+        return ""
+    done_event.wait()
+    return result["output"]
 
 
 def run_oneshot_cmd(args: list[str]) -> str:
@@ -242,3 +252,16 @@ def suggest_string(console, tool_name, string_name, input_string, real_string_li
         console.suggestion_index_changed.clear()
 
     return ret
+
+
+def last_output_lines(console, tool_name: str, output: str, n_lines: int = 10) -> str:
+    """
+    Keep only the last `max_lines` lines in tool output and log this behavior.
+    """
+    lines = output.splitlines()
+    if console is not None and hasattr(console, "logger"):
+        console.logger.log_tool(
+            f"Returning only the last {n_lines} lines in result['output'].",
+            tool_name=tool_name,
+        )
+    return "\n".join(lines[-n_lines:])

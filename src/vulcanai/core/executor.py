@@ -315,16 +315,6 @@ class PlanExecutor:
                 + "with result:"
             )
 
-            # TODO. danip Extra print of result
-            if isinstance(result, dict):
-                for key, value in result.items():
-                    if key == "ros2":
-                        continue
-                    self.logger.log_msg(f"<bold>{key}</bold>")
-                    self.logger.log_msg(value)
-            else:
-                self.logger.log_msg(result)
-
             return True, result
         except concurrent.futures.TimeoutError:
             self.logger.log_executor(

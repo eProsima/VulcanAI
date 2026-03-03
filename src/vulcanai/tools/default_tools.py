@@ -24,25 +24,13 @@ import time
 from concurrent.futures import Future
 
 from vulcanai import AtomicTool, vulcanai_tool
-from vulcanai.tools.utils import execute_subprocess, run_oneshot_cmd, suggest_string
+from vulcanai.tools.utils import execute_subprocess, last_output_lines, run_oneshot_cmd, suggest_string
 
 # ROS2 imports
 try:
     import rclpy
-    from std_msgs.msg import String
 except ImportError:
     raise ImportError("Unable to load default tools because no ROS 2 installation was found.")
-
-"""topics = topic_name_list_str.splitlines()
-
-# TODO. in all commands
-# Will be updated in the TUI Migration PR.
-# The PR adds a modalscreen to select the most similar string),
-# this applies to all ros cli commands. Though, not implemented
-# in the rest commands from this PR
-if topic_name not in topics:
-    topic_similar = search_similar(topics, topic_name)
-    topic_name = topic_similar"""
 
 """
 - ros2 node
@@ -116,13 +104,12 @@ class Ros2NodeTool(AtomicTool):
         "Run any subcommand: 'list', 'info'"
         "With an optional argument 'node_name' for 'info' subcommand."
     )
-    description = "List ROS2 nodes and optionally get detailed info for a specific node."
     tags = ["ros2", "nodes", "cli", "info", "diagnostics"]
 
+    # - `command` lets you pick a single subcommand (list/info).
     input_schema = [
-        ("node_name", "string?")  # (optional) Name of the ros2 node.
-        # if the node is not provided the command is `ros2 node list`.
-        # otherwise `ros2 node info <node_name>`
+        ("command", "string"),  # Command
+        ("topic_name", "string?"),  # (optional) Topic name. (info/bw/delay/hz/type/pub)
     ]
 
     output_schema = {
@@ -135,26 +122,28 @@ class Ros2NodeTool(AtomicTool):
         if console is None:
             raise Exception("Could not find console, aborting...")
 
-        # Get the node name if provided by the query
-        node_name = kwargs.get("node_name", None)
+        command = kwargs.get("command", None)  # optional explicit subcommand
+        node_name = kwargs.get("node_name", "")
 
         result = {
             "output": "",
         }
+
+        command = command.lower()
 
         # -- Node name suggestions --
         node_name_list_str = run_oneshot_cmd(["ros2", "node", "list"])
         node_name_list = node_name_list_str.splitlines()
 
         # -- Run `ros2 node list` ---------------------------------------------
-        if node_name is None:
+        if command == "list":
             result["output"] = node_name_list_str
 
         # -- Run `ros2 node info <node>` --------------------------------------
         else:
             # Check if the topic is not available ros2 topic list
             # if it is not create a window for the user to choose a correct topic name
-            suggested_topic = suggest_string(console, self.name, "Topic", node_name, node_name_list)
+            suggested_topic = suggest_string(console, self.name, "Node", node_name, node_name_list)
             if suggested_topic is not None:
                 node_name = suggested_topic
 
@@ -172,17 +161,17 @@ class Ros2TopicTool(AtomicTool):
     name = "ros2_topic"
     description = (
         "Wrapper for `ros2 topic` CLI."
-        "Run any subcommand: 'list', 'info', 'find', 'type', 'echo', 'bw', 'delay', 'hz', 'pub'."
+        "Run any subcommand: 'list', 'info', 'find', 'type', 'bw', 'delay', 'hz', 'pub'."
         "With optional arguments like 'topic_name', 'message_type', 'max_duration' or 'max_lines'"
     )
     tags = ["ros2", "topics", "cli", "info"]
 
-    # - `command` lets you pick a single subcommand (echo/bw/hz/delay/find/pub/type).
+    # - `command` lets you pick a single subcommand (bw/hz/delay/find/pub/type).
     input_schema = [
         ("command", "string"),  # Command
-        ("topic_name", "string?"),  # (optional) Topic name. (info/echo/bw/delay/hz/type/pub)
+        ("topic_name", "string?"),  # (optional) Topic name. (info/bw/delay/hz/type/pub)
         ("msg_type", "string?"),  # (optional) Message type (`find` <type>, `pub` <message> <type>)
-        ("max_duration", "number?"),  # (optional) Seconds for streaming commands (echo/bw/hz/delay)
+        ("max_duration", "number?"),  # (optional) Seconds for streaming commands (bw/hz/delay)
         ("max_lines", "int?"),  # (optional) Cap number of lines for streaming commands
     ]
 
@@ -250,47 +239,23 @@ class Ros2TopicTool(AtomicTool):
             type_output = run_oneshot_cmd(["ros2", "topic", "type", topic_name])
             result["output"] = type_output
 
-        # -- ros2 topic echo <topic_name> -------------------------------------
-        elif command == "echo":
-            base_args = ["ros2", "topic", "echo", topic_name]
-            execute_subprocess(console, self.name, base_args, max_duration, max_lines)
-
-            result["output"] = "True"
-
         # -- ros2 topic bw <topic_name> ---------------------------------------
         elif command == "bw":
             base_args = ["ros2", "topic", "bw", topic_name]
-            execute_subprocess(console, self.name, base_args, max_duration, max_lines)
-
-            result["output"] = "True"
+            ret = execute_subprocess(console, self.name, base_args, max_duration, max_lines)
+            result["output"] = last_output_lines(console, self.name, ret, max_lines=10)
 
         # -- ros2 topic delay <topic_name> ------------------------------------
         elif command == "delay":
             base_args = ["ros2", "topic", "delay", topic_name]
-            execute_subprocess(console, self.name, base_args, max_duration, max_lines)
-
-            result["output"] = "True"
+            ret = execute_subprocess(console, self.name, base_args, max_duration, max_lines)
+            result["output"] = last_output_lines(console, self.name, ret, max_lines=10)
 
         # -- ros2 topic hz <topic_name> ---------------------------------------
         elif command == "hz":
             base_args = ["ros2", "topic", "hz", topic_name]
-            execute_subprocess(console, self.name, base_args, max_duration, max_lines)
-
-            result["output"] = "True"
-
-        # -- publisher --------------------------------------------------------
-        elif command == "pub":
-            # One-shot publish using `-1`
-            # ros2 topic pub -1 <topic> <msg_type> "<data>"
-            # ros2 topic pub -1 /rosout2 std_msgs/msg/String "{data: 'Hello'}"
-
-            if not msg_type:
-                raise ValueError("`command='pub'` requires `msg_type`.")
-
-            base_args = ["ros2", "topic", "pub", topic_name, msg_type]
-            execute_subprocess(console, self.name, base_args, max_duration, max_lines)
-
-            result["output"] = "True"
+            ret = execute_subprocess(console, self.name, base_args, max_duration, max_lines)
+            result["output"] = last_output_lines(console, self.name, ret, max_lines=10)
 
         # -- unknown ----------------------------------------------------------
         else:
@@ -403,9 +368,8 @@ class Ros2ServiceTool(AtomicTool):
         # -- ros2 service echo service_name -----------------------------------
         elif command == "echo":
             base_args = ["ros2", "service", "echo", service_name]
-            execute_subprocess(console, self.name, base_args, max_duration, max_lines)
-
-            result["output"] = "True"
+            ret = execute_subprocess(console, self.name, base_args, max_duration, max_lines)
+            result["output"] = last_output_lines(console, self.name, ret, max_lines=10)
 
         # -- unknown ------------------------------------------------------------
         else:
@@ -717,8 +681,35 @@ class Ros2InterfaceTool(AtomicTool):
         interface_name_list_str = run_oneshot_cmd(["ros2", "interface", "list"])
         interface_name_list = interface_name_list_str.splitlines()
 
-        # -- Interface name suggestions --
-        if command in ["package", "show"]:
+        package_name_list_str = run_oneshot_cmd(["ros2", "interface", "packages"])
+        package_name_list = package_name_list_str.splitlines()
+
+        # -- ros2 interface list ----------------------------------------------
+        if interface_name is None:
+            result["output"] = interface_name_list_str
+
+        # -- ros2 interface packages ------------------------------------------
+        elif command == "packages":
+            result["output"] = package_name_list_str
+
+        # -- ros2 interface package <interface_name> --------------------------------
+        elif command == "package":
+            package_name = interface_name
+            # Check if the topic is not available ros2 topic list
+            # if it is not create a window for the user to choose a correct topic name
+            suggested_package_name = suggest_string(console, self.name, "Interface", package_name, package_name_list)
+            if suggested_package_name is not None:
+                package_name = suggested_package_name
+
+            # Check if the interface_name is null (suggest_string() failed)
+            if not interface_name:
+                raise ValueError("`command='{}'` requires `interface_name`.".format(command))
+
+            info_output = run_oneshot_cmd(["ros2", "topic", "package", package_name])
+            result["output"] = info_output
+
+        # -- ros2 interface show <interface_name> --------------------------------
+        elif command == "show":
             # Check if the topic is not available ros2 topic list
             # if it is not create a window for the user to choose a correct topic name
             suggested_interface_name = suggest_string(
@@ -730,28 +721,6 @@ class Ros2InterfaceTool(AtomicTool):
             # Check if the interface_name is null (suggest_string() failed)
             if not interface_name:
                 raise ValueError("`command='{}'` requires `interface_name`.".format(command))
-
-        # -- ros2 interface list ----------------------------------------------
-        if interface_name is None:
-            result["output"] = interface_name_list_str
-
-        # -- ros2 interface packages ------------------------------------------
-        elif command == "packages":
-            interface_pkg_name_list = run_oneshot_cmd(["ros2", "interface", "packages"])
-            result["output"] = interface_pkg_name_list
-
-        # -- ros2 interface package <interface_name> --------------------------------
-        elif command == "package":
-            if not interface_name:
-                raise ValueError("`command='package'` requires `interface_name`.")
-
-            info_output = run_oneshot_cmd(["ros2", "topic", "package", interface_name])
-            result["output"] = info_output
-
-        # -- ros2 interface show <interface_name> --------------------------------
-        elif command == "show":
-            if not interface_name:
-                raise ValueError("`command='package'` requires `interface_name`.")
 
             info_output = run_oneshot_cmd(["ros2", "topic", "show", interface_name])
             result["output"] = info_output
@@ -793,7 +762,8 @@ def import_msg_type(type_str: str, node):
 class Ros2PublishTool(AtomicTool):
     name = "ros_publish"
     description = (
-        "Publish one or more messages to a given ROS 2 topic. "
+        "Publish one or more messages to a given ROS 2 topic <topic_name>. "
+        "Or execute 'ros2 topic pub <topic_name>'. "
         "Supports both simple string messages (for std_msgs/msg/String) and custom message types. "
         "For custom types, pass message_data as a JSON object with field names and values. "
         "By default 10 messages 'Hello from VulcanAI PublishTool!' "
@@ -807,12 +777,18 @@ class Ros2PublishTool(AtomicTool):
         ("topic", "string"),  # e.g. "/chatter"
         ("message_data", "string?"),  # (optional) payload - string for std_msgs/String or JSON for custom types
         ("msg_type", "string?"),  # (optional) e.g. "std_msgs/msg/String" or "my_pkg/msg/CustomMsg"
-        ("count", "int?"),  # (optional) number of messages to publish
+        ("max_lines", "int?"),  # (optional) number of messages to publish
+        ("max_duration", "int?"),  # (optional) stop after this seconds
         ("period_sec", "float?"),  # (optional) delay between publishes (in seconds)
         ("message", "string?"),  # (deprecated) use message_data instead
     ]
 
-    output_schema = {"published": "bool", "count": "int", "topic": "string"}
+    output_schema = {
+        "published": "bool",
+        "count": "int",
+        "topic": "string",
+        "output": "string",
+    }
 
     def msg_from_dict(self, msg, values: dict):
         """
@@ -843,9 +819,9 @@ class Ros2PublishTool(AtomicTool):
 
         result = {
             "published": "False",
-            "published_msgs": "",
             "count": "0",
             "topic": "",
+            "output": "",
         }
 
         panel_enabled = console is not None and hasattr(console, "show_subprocess_panel")
@@ -859,8 +835,13 @@ class Ros2PublishTool(AtomicTool):
         message_data = kwargs.get("message_data", kwargs.get("message", "Hello from VulcanAI PublishTool!"))
         msg_type_str = kwargs.get("msg_type", "std_msgs/msg/String")
 
-        # Number of messages the publisher is going to write.
-        count = kwargs.get("count", 10)
+        max_duration = kwargs.get("max_duration", 60)
+        if not isinstance(max_duration, int):
+            max_duration = 60
+
+        max_lines = kwargs.get("max_lines", 200)
+        if not isinstance(max_lines, int):
+            max_lines = 200
 
         period_sec = kwargs.get("period_sec", 0.1)
 
@@ -880,23 +861,12 @@ class Ros2PublishTool(AtomicTool):
                 console.call_from_thread(console.logger.log_msg, "<gray>[ROS] [ERROR] No topic provided.</gray>")
                 return result
 
-            if count is None or count == "":
-                count = 10
-            else:
-                try:
-                    count = int(count)
-                except (TypeError, ValueError):
-                    console.call_from_thread(
-                        console.logger.log_msg, "<gray>[ROS] [ERROR] 'count' must be an integer.</gray>"
-                    )
-                    return result
-
             result["topic"] = topic_name
 
-            if count <= 0:
+            if max_lines <= 0:
                 # No messages to publish
                 console.call_from_thread(
-                    console.logger.log_msg, "<gray>[ROS] [WARN] Count <= 0, nothing to publish.</gray>"
+                    console.logger.log_msg, "<gray>[ROS] [WARN] max_lines <= 0, nothing to publish.</gray>"
                 )
                 return result
 
@@ -906,7 +876,7 @@ class Ros2PublishTool(AtomicTool):
             console.set_stream_task(cancel_token)
             console.logger.log_tool("[tool]Publisher created![tool]", tool_name=self.name)
 
-            for _ in range(count):
+            for _ in range(max_lines):
                 if cancel_token.cancelled():
                     console.logger.log_tool("[tool]Ctrl+C received:[/tool] stopping publish...", tool_name=self.name)
                     break
@@ -959,6 +929,7 @@ class Ros2PublishTool(AtomicTool):
                 except Exception:
                     pass
 
+        result["subscribed"] = "True"
         result["published_msgs"] = published_msgs
         result["count"] = len(published_msgs)
         return result
@@ -967,50 +938,24 @@ class Ros2PublishTool(AtomicTool):
 @vulcanai_tool
 class Ros2SubscribeTool(AtomicTool):
     name = "ros_subscribe"
-    description = "Subscribe to a topic and stop after receiving N messages or a timeout."
     description = (
-        "Subscribe to a given ROS 2 topic and stop after receiving N messages or a timeout."
-        "By default 100 messages and 300 seconds duration"
+        "Subscribe to a topic <topic> or execute 'ros2 topic echo <topic>' "
+        "and stop after receiving N messages or max duration."
     )
     tags = ["ros2", "subscribe", "topic", "std_msgs"]
 
     input_schema = [
         ("topic", "string"),  # topic name
-        ("msg_type", "string"),  # e.g. "std_msgs/msg/String"
-        ("output_format", "string"),  # "data" | "dict"
-        ("count", "int?"),  # (optional) stop after this number of messages
-        ("timeout_sec", "int?"),  # (optional) stop after this seconds
+        ("max_lines", "int?"),  # (optional) stop after this number of messages
+        ("max_duration", "int?"),  # (optional) stop after this seconds
     ]
 
     output_schema = {
-        "subscribed": "False",
-        "received_msgs": "",
-        "count": "0",
-        "topic": "",
+        "subscribed": "bool",
+        "count": "int",
+        "topic": "string",
+        "output": "string",
     }
-
-    def msg_to_dict(self, msg):
-        """
-        Convert a ROS 2 message instance into a Python dictionary.
-
-        This function recursively converts a ROS 2 message into a dictionary
-        using ROS 2 Python introspection (`__slots__`).
-
-        Supports:
-        - Primitive fields
-        - Nested ROS 2 messages
-        """
-        out = {}
-        for field in getattr(msg, "__slots__", []):
-            key = field.lstrip("_")
-            val = getattr(msg, field)
-            if hasattr(val, "__slots__"):
-                out[key] = self.msg_to_dict(val)
-            elif isinstance(val, (list, tuple)):
-                out[key] = [self.msg_to_dict(v) if hasattr(v, "__slots__") else v for v in val]
-            else:
-                out[key] = val
-        return out
 
     def run(self, **kwargs):
         # Ros2 node to create the Publisher and print the log information
@@ -1021,134 +966,31 @@ class Ros2SubscribeTool(AtomicTool):
         console = self.bb.get("console", None)
 
         result = {
-            "published": "False",
-            "published_msgs": "",
+            "subscribed": "False",
+            "subscribed_msgs": "",
             "count": "0",
             "topic": "",
         }
 
-        # Check if the console have the function show_subprocess_panel() to open
-        panel_enabled = console is not None and hasattr(console, "show_subprocess_panel")
-        if panel_enabled:
-            console.call_from_thread(console.show_subprocess_panel)
-            if hasattr(console, "change_route_logs"):
-                console.call_from_thread(console.change_route_logs, True)
-
         topic_name = kwargs.get("topic", None)
+        max_duration = kwargs.get("max_duration", 60)
+        if not isinstance(max_duration, int):
+            max_duration = 60
 
-        msg_type_str = kwargs.get("msg_type", "std_msgs/msg/String")
-        # Ensure "msg_type_str" is not null or empty to avoid errors
-        if msg_type_str is None or msg_type_str == "":
-            msg_type_str = "std_msgs/msg/String"
+        max_lines = kwargs.get("max_lines", 200)
+        if not isinstance(max_lines, int):
+            max_lines = 200
 
-        count = kwargs.get("count", 100)
-        timeout_sec = kwargs.get("timeout_sec", 60)
+        # "--field data" prints only the data field from each message
+        # instead of the full YAML message
+        # "--no-arr" do not print array fields of messages
+        base_args = ["ros2", "topic", "echo", topic_name, "--field", "data", "--no-arr"]
+        ret = execute_subprocess(console, self.name, base_args, max_duration, max_lines)
+        result["output"] = last_output_lines(console, self.name, ret, n_lines=10)
 
-        qos_depth = 10
-
-        output_format = kwargs.get("output_format", "data")
-
-        def callback(msg: String):
-            # received_msgs.append(msg.data)
-            if output_format == "data" and hasattr(msg, "data"):
-                received_msgs.append(msg.data)
-                console.call_from_thread(console.logger.log_msg, f"<gray>[ROS] [INFO] I heard: [{msg.data}]</gray>")
-            else:
-                d = self.msg_to_dict(msg)
-                received_msgs.append(d["data"] if "data" in d else d)
-                console.call_from_thread(console.logger.log_msg, f"<gray>[ROS] [INFO] I heard: [{d['data']}]</gray>")
-
-        if console is None:
-            print("[ERROR] Console not is None")
-            return result
-
-        try:
-            if not topic_name:
-                console.call_from_thread(console.logger.log_msg, "<gray>[ROS] [ERROR] No topic provided.</gray>")
-                return result
-
-            if count is None or count == "":
-                count = 10
-            else:
-                try:
-                    count = int(count)
-                except (TypeError, ValueError):
-                    console.call_from_thread(
-                        console.logger.log_msg, "<gray>[ROS] [ERROR] 'count' must be an integer.</gray>"
-                    )
-                    return result
-
-            if timeout_sec is None or timeout_sec == "":
-                timeout_sec = 60
-            else:
-                try:
-                    timeout_sec = int(timeout_sec)
-                except (TypeError, ValueError):
-                    console.call_from_thread(
-                        console.logger.log_msg, "<gray>[ROS] [ERROR] 'timeout_sec' must be an integer.</gray>"
-                    )
-                    return result
-
+        if ret is not None:
+            result["subscribed"] = "True"
+            result["count"] = len(ret)
             result["topic"] = topic_name
-
-            if count <= 0:
-                # No messages to publish
-                console.call_from_thread(
-                    console.logger.log_msg, "<gray>[ROS] [WARN] Count <= 0, nothing to publish.</gray>"
-                )
-                return result
-
-            topic_name_list_str = run_oneshot_cmd(["ros2", "topic", "list"])
-            topic_name_list = topic_name_list_str.splitlines()
-            # Check if the topic is not available ros2 topic list
-            # if it is not create a window for the user to choose a correct topic name
-            suggested_topic_name = suggest_string(console, self.name, "Topic", topic_name, topic_name_list)
-            if suggested_topic_name is not None:
-                topic_name = suggested_topic_name
-
-            received_msgs = []
-
-            MsgType = import_msg_type(msg_type_str, node)
-            sub = node.create_subscription(MsgType, topic_name, callback, qos_depth)
-
-            start = time.monotonic()
-            cancel_token = None
-
-            # Console Ctrl+C signal
-            cancel_token = Future()
-            console.set_stream_task(cancel_token)
-            console.logger.log_tool("[tool]Subscription created![tool]", tool_name=self.name)
-
-            while rclpy.ok():
-                if cancel_token is not None and cancel_token.cancelled():
-                    console.logger.log_tool(
-                        "[tool]Ctrl+C received:[/tool] stopping subscription...", tool_name=self.name
-                    )
-                    break
-
-                # Stop conditions
-                if len(received_msgs) >= count:
-                    break
-                if (time.monotonic() - start) >= timeout_sec:
-                    break
-
-                rclpy.spin_once(node, timeout_sec=0.1)
-
-        except KeyboardInterrupt:
-            console.logger.log_tool("[tool]Ctrl+C received:[/tool] stopping subscription...", tool_name=self.name)
-
-        finally:
-            console.set_stream_task(None)
-            if panel_enabled:
-                if hasattr(console, "change_route_logs"):
-                    console.call_from_thread(console.change_route_logs, False)
-                console.call_from_thread(console.hide_subprocess_panel)
-            try:
-                node.destroy_subscription(sub)
-            except Exception:
-                pass
-
-        result["received_msgs"] = received_msgs
-        result["count"] = len(received_msgs)
 
         return result
