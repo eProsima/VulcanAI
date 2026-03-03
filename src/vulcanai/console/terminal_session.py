@@ -139,19 +139,11 @@ class GnomeTerminalAdapter:
         if restore_value:
             _run_gsettings("set", state.schema, "scrollbar-policy", restore_value)
 
-    # endregion
 
-    # region TERMINATOR
-
-
-# TODO
-# endregion
-
-# region ZSH
-# TODO
 # endregion
 
 # endregion
+
 
 # region SESSION
 
@@ -173,9 +165,13 @@ class TerminalSession:
     Session helper that applies terminal tweaks and safely restores them.
     """
 
-    def __init__(self, config: TerminalSessionConfig):
-        self.adapters = [GnomeTerminalAdapter()]
-        self.config = config
+    def __init__(
+        self,
+        config: Optional[TerminalSessionConfig] = None,
+        adapters: Optional[list[TerminalAdapter]] = None,
+    ):
+        self.config = config if config is not None else TerminalSessionConfig()
+        self.adapters = adapters if adapters is not None else [GnomeTerminalAdapter()]
         self._active: list[tuple[TerminalAdapter, Any]] = []
 
     def start(self) -> None:

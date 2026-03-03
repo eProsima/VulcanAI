@@ -30,7 +30,7 @@ from textual.widgets import Input, Static
 
 from vulcanai.console.logger import VulcanAILogger
 from vulcanai.console.modal_screens import CheckListModal, RadioListModal, ReverseSearchModal
-from vulcanai.console.terminal_session import TerminalSession, TerminalSessionConfig
+from vulcanai.console.terminal_session import TerminalSession
 from vulcanai.console.utils import (
     SpinnerHook,
     StreamToTextual,
@@ -1098,9 +1098,7 @@ class VulcanConsole(App):
         Function used to run VulcanAI.
         """
 
-        session = TerminalSession(
-            config=TerminalSessionConfig(),
-        )
+        session = TerminalSession()
         with session:
             self.run()
 
