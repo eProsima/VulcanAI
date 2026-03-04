@@ -30,7 +30,13 @@ from textual.widgets import Input, Static
 
 from vulcanai.console.logger import VulcanAILogger
 from vulcanai.console.modal_screens import CheckListModal, RadioListModal, ReverseSearchModal
-from vulcanai.console.utils import SpinnerHook, StreamToTextual, attach_ros_logger_to_console, common_prefix
+from vulcanai.console.terminal_session import TerminalSession
+from vulcanai.console.utils import (
+    SpinnerHook,
+    StreamToTextual,
+    attach_ros_logger_to_console,
+    common_prefix,
+)
 from vulcanai.console.widget_custom_log_text_area import CustomLogTextArea
 from vulcanai.console.widget_spinner import SpinnerStatus
 
@@ -53,11 +59,19 @@ class VulcanConsole(App):
     CSS = """
     Screen {
         layout: horizontal;
+        overflow: hidden hidden;
+    }
+
+    #root {
+        width: 100%;
+        height: 100%;
+        overflow: hidden hidden;
     }
 
     #left {
         width: 1fr;
         layout: vertical;
+        overflow: hidden hidden;
     }
 
     #right {
@@ -65,6 +79,7 @@ class VulcanConsole(App):
         layout: vertical;
         border: tall #56AA08;
         padding: 0;
+        overflow: hidden hidden;
     }
 
     #logcontent {
@@ -72,6 +87,8 @@ class VulcanConsole(App):
         min-height: 1;
         max-height: 1fr;
         border: tall #333333;
+        scrollbar-size-vertical: 0;
+        scrollbar-size-horizontal: 0;
     }
 
     #llm_spinner {
@@ -94,6 +111,8 @@ class VulcanConsole(App):
     #history_scroll {
         height: 1fr;
         margin: 1;
+        scrollbar-size-vertical: 0;
+        scrollbar-size-horizontal: 0;
     }
 
     #history {
@@ -169,6 +188,9 @@ class VulcanConsole(App):
         # Suggestion index for RadioListModal
         self.suggestion_index = -1
         self.suggestion_index_changed = threading.Event()
+
+        self._gnome_profile_schema: str | None = None
+        self._gnome_scrollbar_policy_backup: str | None = None
 
     async def on_mouse_down(self, event: MouseEvent) -> None:
         """
@@ -1075,7 +1097,10 @@ class VulcanConsole(App):
         """
         Function used to run VulcanAI.
         """
-        self.run()
+
+        session = TerminalSession()
+        with session:
+            self.run()
 
     def init_manager(self) -> None:
         """

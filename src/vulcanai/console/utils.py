@@ -24,6 +24,26 @@ import time
 from textual.markup import escape  # To remove potential errors in textual terminal
 
 
+class SpinnerHook:
+    """
+    Single entrant spinner controller for console.
+    - Starts the spinner on the LLM request.
+    - Stops the spinner when LLM request is over.
+    """
+
+    def __init__(self, spinner_status):
+        self.spinner_status = spinner_status
+
+    def on_request_start(self, text="Querying LLM..."):
+        self.spinner_status.start(text)
+
+    def on_request_end(self):
+        self.spinner_status.stop()
+
+
+# region CONSOLE_REDIRECT
+
+
 class StreamToTextual:
     """
     Class used to redirect the stdout/stderr streams in the textual terminal
@@ -44,23 +64,6 @@ class StreamToTextual:
 
     def flush(self):
         self.real_stream.flush()
-
-
-class SpinnerHook:
-    """
-    Single entrant spinner controller for console.
-    - Starts the spinner on the LLM request.
-    - Stops the spinner when LLM request is over.
-    """
-
-    def __init__(self, spinner_status):
-        self.spinner_status = spinner_status
-
-    def on_request_start(self, text="Querying LLM..."):
-        self.spinner_status.start(text)
-
-    def on_request_end(self):
-        self.spinner_status.stop()
 
 
 def attach_ros_logger_to_console(console):
@@ -121,6 +124,11 @@ def attach_ros_logger_to_console(console):
 
     RcutilsLogger.log = patched_log
     RcutilsLogger._textual_patched = True
+
+
+# endregion
+
+# region TEXTUAL
 
 
 def common_prefix(strings: str) -> str:
@@ -349,3 +357,6 @@ def suggest_string(console, tool_name, string_name, input_string, real_string_li
         console.suggestion_index_changed.clear()
 
     return ret
+
+
+# endregion
