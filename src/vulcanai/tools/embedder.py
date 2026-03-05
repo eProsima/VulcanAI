@@ -12,34 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
 from typing import Optional
 
 import numpy as np
-
-# Keep Hugging Face download progress bars out of redirected Textual stdout/stderr.
-os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
-
 from sentence_transformers import SentenceTransformer
 
 from vulcanai.console.logger import VulcanAILogger
 
-_HF_DOWNLOAD_INFO_PRINTED = False
-
 
 def info_msg_hf_model_loading(model_name: str, logger: Optional[VulcanAILogger] = None) -> None:
-    global _HF_DOWNLOAD_INFO_PRINTED
-
-    if _HF_DOWNLOAD_INFO_PRINTED:
-        return
-
     msg = f"Hugging Face is loading '{model_name}'. If the model is not cached yet, files are being downloaded..."
     if logger is not None:
         logger.log_console(msg)
     else:
-        VulcanAILogger.log_console(msg)
-
-    _HF_DOWNLOAD_INFO_PRINTED = True
+        VulcanAILogger.default().log_console(msg)
 
 
 class SBERTEmbedder:

@@ -68,7 +68,6 @@ class VulcanConsole(App):
         width: 100%;
         height: 100%;
         overflow: hidden hidden;
-        color: #ffffff;
     }
 
     #left {
@@ -125,10 +124,6 @@ class VulcanConsole(App):
         width: 100%;
     }
 
-    #history_title {
-        color: #ffffff;
-    }
-
     #variables {
         color: #ffffff;
     }
@@ -154,8 +149,13 @@ class VulcanConsole(App):
         user_context: str = "",
         main_node=None,
     ):
+        # Used to set the same textual colors in a docker container
         os.environ.setdefault("COLORTERM", "truecolor")
         textual_constants.COLOR_SYSTEM = "truecolor"
+
+        # Keep Hugging Face download progress bars out of redirected Textual stdout/stderr.
+        os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+
         super().__init__()  # Textual lib
 
         # -- Main variables --
