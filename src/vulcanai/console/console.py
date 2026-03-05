@@ -16,10 +16,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 import threading
 
 import pyperclip  # To paste the clipboard into the terminal
+from textual import constants as textual_constants
 from textual import events, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -89,6 +91,7 @@ class VulcanConsole(App):
         border: tall #333333;
         scrollbar-size-vertical: 0;
         scrollbar-size-horizontal: 0;
+        color: #ffffff;
     }
 
     #llm_spinner {
@@ -100,12 +103,14 @@ class VulcanConsole(App):
 
     #cmd {
         dock: bottom;
+        color: #ffffff;
     }
 
     #history_title {
         content-align: center middle;
         margin: 0;
         padding: 0;
+        color: #ffffff;
     }
 
     #history_scroll {
@@ -117,6 +122,10 @@ class VulcanConsole(App):
 
     #history {
         width: 100%;
+    }
+
+    #variables {
+        color: #ffffff;
     }
     """
 
@@ -140,6 +149,13 @@ class VulcanConsole(App):
         user_context: str = "",
         main_node=None,
     ):
+        # Used to set the same textual colors in a docker container
+        os.environ.setdefault("COLORTERM", "truecolor")
+        textual_constants.COLOR_SYSTEM = "truecolor"
+
+        # Keep Hugging Face download progress bars out of redirected Textual stdout/stderr.
+        os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+
         super().__init__()  # Textual lib
 
         # -- Main variables --
