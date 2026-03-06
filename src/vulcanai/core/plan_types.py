@@ -117,7 +117,7 @@ class GlobalPlan(BaseModel):
             if node.success_criteria:
                 #     Succes Criteria: <node.success_criteria>
                 lines.append(
-                    f"\<{color_tool}>tSuccess Criteria</{color_tool}>: "
+                    f"\t<{color_tool}>Success Criteria</{color_tool}>: "
                     + f"<{color_value}>{node.success_criteria}</{color_value}>"
                 )
             if node.on_fail:
