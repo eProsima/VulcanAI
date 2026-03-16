@@ -147,6 +147,11 @@ class GnomeTerminalAdapter:
 
 # region terminator
 
+@dataclass
+class TerminatorState:
+    terminal_uuid: str
+    previous_profile: str
+
 
 class TerminatorTerminalAdapter:
     """@brief Terminator adapter that switches to a hidden-scroll profile temporarily."""
@@ -187,7 +192,6 @@ class TerminatorTerminalAdapter:
             )
         except Exception:
             return False
-
         return completed.returncode == 0
 
     @staticmethod
@@ -295,7 +299,7 @@ class TerminatorTerminalAdapter:
             or "terminator" in os.environ.get("TERM_PROGRAM", "").lower()
         )
 
-    def apply(self) -> Optional[tuple[str, str]]:
+    def apply(self) -> Optional[TerminatorState]:
         """
         @brief Switch current Terminator tab to hidden-scroll profile.
         @return ``(uuid, base_profile)`` when switching succeeds, else ``None``.
@@ -307,13 +311,17 @@ class TerminatorTerminalAdapter:
         if not shutil.which("remotinator"):
             return None
 
+        previous_profile = self._resolve_previous_profile()
+        if not previous_profile:
+            return None
+
         config_path = self._config_path()
         if not config_path.is_file():
             return None
 
         if not self._ensure_hidden_profile(
             config_path=config_path,
-            base_profile=self._config.terminator_profile_base,
+            base_profile=previous_profile,
             hidden_profile=self._config.terminator_profile_hidden,
         ):
             return None
@@ -329,9 +337,26 @@ class TerminatorTerminalAdapter:
         if not switched:
             return None
 
-        return (terminal_uuid, self._config.terminator_profile_base)
+        return TerminatorState(
+            terminal_uuid=terminal_uuid,
+            previous_profile=previous_profile,
+        )
 
-    def restore(self, state: Optional[tuple[str, str]]) -> None:
+    def _resolve_previous_profile(self) -> Optional[str]:
+        candidates = (
+            self._config.terminator_profile_current,
+            os.environ.get("VULCANAI_TERMINATOR_PROFILE"),
+            self._config.terminator_profile_base,
+        )
+        for profile in candidates:
+            if profile is None:
+                continue
+            normalized = profile.strip()
+            if normalized:
+                return normalized
+        return None
+
+    def restore(self, state: Optional[TerminatorState]) -> None:
         """
         @brief Restore previous Terminator profile.
         @param state Previously saved state; no-op when ``None``.
@@ -342,8 +367,14 @@ class TerminatorTerminalAdapter:
         if not shutil.which("remotinator"):
             return
 
-        terminal_uuid, base_profile = state
-        self._run("remotinator", "switch_profile", "-u", terminal_uuid, "-p", base_profile)
+        self._run(
+            "remotinator",
+            "switch_profile",
+            "-u",
+            state.terminal_uuid,
+            "-p",
+            state.previous_profile,
+        )
 
 
 # endregion
@@ -368,6 +399,8 @@ class TerminalSessionConfig:
     terminator_profile_base: str = "default"
     # Terminator profile used while session is running.
     terminator_profile_hidden: str = "vulcanai-no-scroll"
+
+    terminator_profile_current: Optional[str] = None
 
 
 class TerminalSession:
