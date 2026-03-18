@@ -311,19 +311,19 @@ class Ros2TopicTool(AtomicTool):
         elif command == "bw":
             base_args = ["ros2", "topic", "bw", topic_name]
             ret = execute_subprocess(console, self.name, base_args, max_duration, max_lines)
-            result["output"] = last_output_lines(console, self.name, ret, max_lines=10)
+            result["output"] = last_output_lines(console, self.name, ret, n_lines=10)
 
         # -- ros2 topic delay <topic_name> ------------------------------------
         elif command == "delay":
             base_args = ["ros2", "topic", "delay", topic_name]
             ret = execute_subprocess(console, self.name, base_args, max_duration, max_lines)
-            result["output"] = last_output_lines(console, self.name, ret, max_lines=10)
+            result["output"] = last_output_lines(console, self.name, ret, n_lines=10)
 
         # -- ros2 topic hz <topic_name> ---------------------------------------
         elif command == "hz":
             base_args = ["ros2", "topic", "hz", topic_name]
             ret = execute_subprocess(console, self.name, base_args, max_duration, max_lines)
-            result["output"] = last_output_lines(console, self.name, ret, max_lines=10)
+            result["output"] = last_output_lines(console, self.name, ret, n_lines=10)
 
         # -- unknown ----------------------------------------------------------
         else:
@@ -437,7 +437,7 @@ class Ros2ServiceTool(AtomicTool):
         elif command == "echo":
             base_args = ["ros2", "service", "echo", service_name]
             ret = execute_subprocess(console, self.name, base_args, max_duration, max_lines)
-            result["output"] = last_output_lines(console, self.name, ret, max_lines=10)
+            result["output"] = last_output_lines(console, self.name, ret, n_lines=10)
 
         # -- unknown ------------------------------------------------------------
         else:
