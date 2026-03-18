@@ -229,7 +229,7 @@ class Ros2TopicTool(AtomicTool):
     name = "ros2_topic"
     description = (
         "Wrapper for `ros2 topic` CLI."
-        "Run any subcommand: 'list', 'info', 'find', 'type', 'bw', 'delay', 'hz', 'pub'."
+        "Run a subcommand from: 'list', 'info', 'find', 'type', 'bw', 'delay', 'hz'."
         "With optional arguments like 'topic_name', 'message_type', 'max_duration' or 'max_lines'"
     )
     tags = ["ros2", "topics", "cli", "info"]
