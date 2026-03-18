@@ -517,7 +517,7 @@ class VulcanConsole(App):
                 "/<bold>show_history</bold>   - Show the current history\n"
                 "/<bold>clear_history</bold>  - Clear the history\n"
                 "/<bold>plan</bold>           - Show the last generated plan\n"
-                "/<bold>rerun</bold>          - Rerun the last plan\n"
+                "/<bold>rerun 'int'</bold>    - Rerun the last plan or the specified plan by index\n"
                 "/<bold>bb</bold>             - Show the last blackboard state\n"
                 "/<bold>clear</bold>          - Clears the console screen\n"
                 "/<bold>exit</bold>           - Exit the console\n"
@@ -1051,7 +1051,7 @@ class VulcanConsole(App):
     def set_stream_task(self, input_stream):
         """
         Function used in the tools to set the current streaming task.
-        with this variable the user can finish the execution of the
+        With this variable the user can finish the execution of the
         task by using the signal "Ctrl + C"
         """
         self.stream_task = input_stream
