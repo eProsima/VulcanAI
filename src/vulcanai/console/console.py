@@ -213,7 +213,7 @@ class VulcanConsole(App):
         sys.stdout = StreamToTextual(self, "stdout")
         sys.stderr = StreamToTextual(self, "stderr")
 
-        if self.main_node is not None:
+        if self.main_node is not None or self.default_tools:
             attach_ros_logger_to_console(self)
 
         self.loop = asyncio.get_running_loop()
@@ -295,6 +295,15 @@ class VulcanConsole(App):
             self.manager.llm.set_hooks(self.hooks)
         except Exception:
             pass
+
+        # Load a default ROS 2 node if default tools are enabled but no node is provided
+        if self.default_tools and self.main_node is None:
+            try:
+                from vulcanai.tools.default_tools import ROS2DefaultToolNode
+
+                self.main_node = ROS2DefaultToolNode()
+            except ImportError:
+                self.logger.log_console("Unable to load ROS 2 default node for default tools.")
 
         # -- Register tools (file I/O - run in executor) --
         # File paths tools
