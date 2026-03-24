@@ -12,14 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
-import asyncio
-import subprocess
 import sys
 import threading
-import time
-
-from textual.markup import escape  # To remove potential errors in textual terminal
 
 class SpinnerHook:
     """

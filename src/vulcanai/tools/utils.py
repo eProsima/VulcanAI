@@ -24,7 +24,12 @@ from textual.markup import escape  # To remove potential errors in textual termi
 
 
 async def run_streaming_cmd_async(
-    console, args: list[str], max_duration: float = 60, max_lines: int = 1000, echo: bool = True, tool_name=""
+    console,
+    args: list[str],
+    max_duration: float | None = None,
+    max_lines: int | None = None,
+    echo: bool = True,
+    tool_name="",
 ) -> str:
     # Unpack the command
     cmd, *cmd_args = args
@@ -48,6 +53,8 @@ async def run_streaming_cmd_async(
         # Subprocess main loop. Read line by line
         async for raw_line in process.stdout:
             line = raw_line.decode(errors="ignore").rstrip("\n")
+            captured_line = line
+            display_line = line
 
             # Print the line
             if echo:
@@ -56,10 +63,11 @@ async def run_streaming_cmd_async(
                     if msg == "---":
                         continue
                     msg = msg.strip("'\"")
-                    line = f"[ROS] [INFO] I heard: [{msg}]"
+                    captured_line = f"[ROS] [INFO] I heard: '{msg}'"
+                    display_line = f"<gray>{captured_line}</gray>"
 
-                captured_lines.append(line)
-                line_processed = escape(line)
+                captured_lines.append(captured_line)
+                line_processed = display_line if display_line != captured_line else escape(display_line)
                 if hasattr(console, "add_subprocess_line"):
                     console.add_subprocess_line(line_processed)
                 else:
@@ -68,14 +76,19 @@ async def run_streaming_cmd_async(
             # Count the line
             line_count += 1
             if max_lines is not None and line_count >= max_lines:
-                console.logger.log_tool(f"[tool]Stopping:[/tool] Reached max_lines = {max_lines}", tool_name=tool_name)
+                log_tool_in_stream_and_main(
+                    console,
+                    f"[tool]Stopping:[/tool] Reached max_lines = {max_lines}",
+                    tool_name=tool_name,
+                )
                 console.set_stream_task(None)
                 process.terminate()
                 break
 
             # Check duration
-            if max_duration and (time.monotonic() - start_time) >= max_duration:
-                console.logger.log_tool(
+            if max_duration is not None and (time.monotonic() - start_time) >= max_duration:
+                log_tool_in_stream_and_main(
+                    console,
                     f"[tool]Stopping:[/tool] Exceeded max_duration = {max_duration}s", tool_name=tool_name
                 )
                 console.set_stream_task(None)
@@ -84,14 +97,22 @@ async def run_streaming_cmd_async(
 
     except asyncio.CancelledError:
         # Task was cancelled → stop the subprocess
-        console.logger.log_tool("[tool]Cancellation received:[/tool] terminating subprocess...", tool_name=tool_name)
+        log_tool_in_stream_and_main(
+            console,
+            "[tool]Cancellation received:[/tool] terminating subprocess...",
+            tool_name=tool_name,
+        )
         if process is not None:
             process.terminate()
 
     # Not necessary, textual terminal get the keyboard input
     except KeyboardInterrupt:
         # Ctrl+C pressed → stop subprocess
-        console.logger.log_tool("[tool]Ctrl+C received:[/tool] terminating subprocess...", tool_name=tool_name)
+        log_tool_in_stream_and_main(
+            console,
+            "[tool]Ctrl+C received:[/tool] terminating subprocess...",
+            tool_name=tool_name,
+        )
         if process is not None:
             process.terminate()
 
@@ -100,18 +121,26 @@ async def run_streaming_cmd_async(
             if process is not None:
                 await asyncio.wait_for(process.wait(), timeout=3.0)
         except asyncio.TimeoutError:
-            console.logger.log_tool("Subprocess didn't exit in time → killing it.", tool_name=tool_name, error=True)
+            log_tool_in_stream_and_main(
+                console,
+                "Subprocess didn't exit in time → killing it.",
+                tool_name=tool_name,
+                error=True,
+            )
             if process is not None:
                 process.kill()
                 await process.wait()
         finally:
-            if hasattr(console, "hide_subprocess_panel"):
-                console.hide_subprocess_panel()
-
+            # Always restore default logging route and close the popup panel
+            # when a streaming subprocess ends. The popup stays visible and is
+            # closed explicitly by user Ctrl+C in console actions.
+            if hasattr(console, "change_route_logs"):
+                console.change_route_logs(False)
+            console.set_stream_task(None)
     return "\n".join(captured_lines)
 
 
-def execute_subprocess(console, tool_name, base_args, max_duration, max_lines):
+def execute_subprocess(console, tool_name, base_args, max_duration, max_lines, log_created: bool = True):
     stream_task = None
     done_event = threading.Event()
     result = {"output": ""}
@@ -154,7 +183,8 @@ def execute_subprocess(console, tool_name, base_args, max_duration, max_lines):
         # `console.app` is your Textual App instance.
         console.app.call_from_thread(_launcher)
 
-    console.logger.log_tool("[tool]Subprocess created![tool]", tool_name=tool_name)
+    if log_created:
+        console.logger.log_tool("[tool]Subprocess created![tool]", tool_name=tool_name)
     # Wait for streaming command to finish and return collected lines.
     # In UI thread we avoid blocking to prevent deadlocks.
     if threading.current_thread() is threading.main_thread():
@@ -265,3 +295,24 @@ def last_output_lines(console, tool_name: str, output: str, n_lines: int = 10) -
             tool_name=tool_name,
         )
     return "\n".join(lines[-n_lines:])
+
+def print_tool_output(console, result, name):
+    console.logger.log_tool("[tool]<bold>Output:</bold>[tool]", tool_name=name)
+    console.logger.log_msg(result, color="gray")
+    console.logger.log_msg("\n")
+
+def log_tool_in_stream_and_main(console, msg: str, tool_name: str = "", error: bool = False, color: str = "") -> None:
+    """
+    Log a tool message in both Logs (streaming and main)
+    """
+    processed_msg = console.logger.log_tool(msg, tool_name=tool_name, error=error, color=color)
+
+    if not getattr(console, "_route_logs_to_stream_panel", False):
+        return
+
+    main_panel = getattr(console, "main_pannel", None)
+    if main_panel is None:
+        return
+
+    for line in processed_msg.splitlines():
+        main_panel.append_line(line)

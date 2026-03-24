@@ -107,6 +107,20 @@ class VulcanAILogger:
             msg = re.sub(r"<(/?)(#[0-9a-fA-F]{6})>", r"[\1\2]", msg)
         return msg
 
+    def _apply_color_to_each_line(self, msg: str, color_begin: str, color_end: str) -> str:
+        """Wrap each logical line with color tags, preserving original line breaks."""
+        if msg == "":
+            return f"{color_begin}{msg}{color_end}"
+
+        colored_lines = []
+        for line in msg.splitlines(keepends=True):
+            # Keep newlines outside style tags so each line has a complete <color>...</color> pair.
+            line_content = line.rstrip("\r\n")
+            line_break = line[len(line_content) :]
+            colored_lines.append(f"{color_begin}{line_content}{color_end}{line_break}")
+
+        return "".join(colored_lines)
+
     def process_msg(self, msg: str, prefix: str = "", color: str = "") -> str:
         """Process the message by adding prefix, applying color formatting and rich markup if enabled."""
         color_begin = color_end = color
@@ -116,7 +130,9 @@ class VulcanAILogger:
             color_begin = f"<{color}>"
             color_end = f"</{color}>"
 
-        msg = f"{prefix}{color_begin}{msg}{color_end}"
+            msg = self._apply_color_to_each_line(msg, color_begin, color_end)
+
+        msg = f"{prefix}{msg}"
 
         return self.parse_rich_markup((self.parse_color(msg)))
 
@@ -157,6 +173,8 @@ class VulcanAILogger:
 
         processed_msg = self.process_msg(msg, prefix=prefix, color=color)
         self.sink.write(processed_msg)
+
+        return processed_msg
 
     def log_registry(self, msg: str, error: bool = False, color: str = ""):
         if error:

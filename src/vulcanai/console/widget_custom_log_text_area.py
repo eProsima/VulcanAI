@@ -35,7 +35,7 @@ class CustomLogTextArea(TextArea):
     """
 
     BINDINGS = [
-        ("f3", "copy_selection", "Copy selection"),
+        ("f4", "copy_selection", "Copy selection"),
     ]
 
     # Maximum number of lines to keep in the log
@@ -214,7 +214,7 @@ class CustomLogTextArea(TextArea):
 
                 # Gray color is not supported
                 if st == "gray":
-                    color = "#8D8D8D"
+                    color = "#A5A2A2"
                     token_parts.append("hex_" + color[1:])
                 else:
                     # Assume named color like "red", "yellow"

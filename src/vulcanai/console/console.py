@@ -157,6 +157,7 @@ class VulcanConsole(App):
         user_context: str = "",
         main_node=None,
         default_tools: bool = True,
+        debug: bool = False,
     ):
         # Used to set the same textual colors in a docker container
         os.environ.setdefault("COLORTERM", "truecolor")
@@ -185,6 +186,8 @@ class VulcanConsole(App):
         self.default_tools = default_tools
         # Iterative mode
         self.iterative = iterative
+        # Enable debug-only logs
+        self.debug_flag = debug
         # CustomLogTextArea instance
         self.main_pannel = None
         # Subprocess output panel
@@ -315,6 +318,7 @@ class VulcanConsole(App):
             "/edit_tools": self.cmd_edit_tools,
             "/change_k": self.cmd_change_k,
             "/history": self.cmd_history_index,
+            "/debug": self.cmd_debug,
             "/show_history": self.cmd_show_history,
             "/clear_history": self.cmd_clear_history,
             "/plan": self.cmd_plan,
@@ -363,6 +367,7 @@ class VulcanConsole(App):
 
         self.is_ready = True
         self.logger.log_console("VulcanAI Interactive Console")
+        self.logger.log_console("Clipboard: select text and press F4 to copy. Use Ctrl+V or middle-click to paste.")
         self.logger.log_console("Use <bold>'/exit'</bold> or press <bold>'Ctrl+Q'</bold> to quit.")
 
         # Activate the terminal input
@@ -385,6 +390,7 @@ class VulcanConsole(App):
             self.set_input_enabled(False)
 
             try:
+                bb_before_ids = {k: id(v) for k, v in self.manager.bb.items()}
                 images = []
 
                 # Add the images
@@ -405,9 +411,13 @@ class VulcanConsole(App):
 
                 # Print the backboard state
                 bb_ret = result.get("blackboard", None)
-                if bb_ret:
-                    bb_ret = bb_ret.text_snapshot().replace("<", "'").replace(">", "'")
-                    self.logger.log_console(f"Output of plan: {bb_ret}")
+                if bb_ret and self.debug_flag:
+                    plan_ret = result.get("plan", None)
+                    updated_keys = self._updated_blackboard_keys(bb_before_ids, bb_ret)
+                    if not updated_keys:
+                        updated_keys = self._plan_tool_keys(plan_ret)
+                    bb_ret_str = self._format_blackboard_subset(bb_ret, updated_keys)
+                    self.logger.log_console(f"Output of plan: {bb_ret_str}")
 
             except KeyboardInterrupt:
                 if self.stream_task is None:
@@ -426,6 +436,47 @@ class VulcanConsole(App):
         self.set_input_enabled(True)
 
     # region Utilities
+
+    def _updated_blackboard_keys(self, before_ids: dict[str, int], bb_after) -> list[str]:
+        """
+        Return blackboard keys that were created or replaced during the latest execution.
+        """
+        updated_keys = []
+        for key, value in bb_after.items():
+            if key not in before_ids or before_ids[key] != id(value):
+                updated_keys.append(key)
+        return updated_keys
+
+    def _plan_tool_keys(self, plan) -> list[str]:
+        """
+        Return ordered unique tool names declared in the main plan path.
+        """
+        if plan is None or not hasattr(plan, "plan"):
+            return []
+
+        seen = set()
+        keys = []
+        for node in getattr(plan, "plan", []):
+            for step in getattr(node, "steps", []):
+                tool_name = getattr(step, "tool", None)
+                if tool_name and tool_name not in seen:
+                    seen.add(tool_name)
+                    keys.append(tool_name)
+        return keys
+
+    def _format_blackboard_subset(self, bb, keys: list[str]) -> str:
+        """
+        Format a subset of blackboard keys for debug logging in Textual console.
+        """
+        if not keys:
+            return "{}"
+
+        subset = {k: bb.get(k) for k in keys if k in bb}
+        if not subset:
+            return "{}"
+
+        # Keep output on a single line while avoiding Textual tag parsing issues.
+        return repr(subset).replace("<", "'").replace(">", "'")
 
     def _apply_history_to_input(self) -> None:
         """
@@ -552,6 +603,8 @@ class VulcanConsole(App):
                 " or show the current value if no 'int' is provided\n"
                 "/<bold>history 'int'</bold>  - Change the history depth or show the current value if no"
                 " 'int' is provided\n"
+                "/<bold>debug 'bool'</bold>   - Set debug mode to true/false, or show current value if no"
+                " bool is provided\n"
                 "/<bold>show_history</bold>   - Show the current history\n"
                 "/<bold>clear_history</bold>  - Clear the history\n"
                 "/<bold>plan</bold>           - Show the last generated plan\n"
@@ -567,7 +620,7 @@ class VulcanConsole(App):
                 "<bold>Available keybinds:</bold>\n"
                 "‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾\n"
                 "<bold>F2</bold>                - Show this help message\n"
-                "<bold>F3</bold>                - Copy selection area\n"
+                "<bold>F4</bold>                - Copy selection area\n"
                 "<bold>Ctrl+Q</bold>            - Exit the console\n"
                 "<bold>Ctrl+L</bold>            - Clears the console screen\n"
                 "<bold>Ctrl+U</bold>            - Clears the entire command line input\n"
@@ -628,6 +681,23 @@ class VulcanConsole(App):
         self.manager.update_history_depth(new_hist)
         # Update right panel info
         self._update_variables_panel()
+
+    def cmd_debug(self, args) -> None:
+        if len(args) == 0:
+            self.logger.log_console(f"Current 'debug' is {self.debug_flag}")
+            return
+
+        if len(args) != 1:
+            self.logger.log_console(f"Usage: /debug 'bool' - Actual 'debug' is {self.debug_flag}")
+            return
+
+        value = args[0].strip().lower()
+        if value not in ("true", "false"):
+            self.logger.log_console(f"Usage: /debug 'bool' - Actual 'debug' is {self.debug_flag}")
+            return
+
+        self.debug_flag = value == "true"
+        self.logger.log_console(f"Set 'debug' to {self.debug_flag}")
 
     def cmd_show_history(self, _) -> None:
         if not self.manager.history:
@@ -716,7 +786,8 @@ class VulcanConsole(App):
         # UI updates must happen on the app thread:
         def apply_result():
             self.last_bb = last_bb
-            self.logger.log_console(f"Output of rerun: {last_bb_parsed}")
+            if self.debug_flag:
+                self.logger.log_console(f"Output of rerun: {last_bb_parsed}")
 
         self.call_from_thread(apply_result)
 
@@ -748,6 +819,8 @@ class VulcanConsole(App):
         """
         if self.stream_pannel is None:
             return
+
+        self.logger.log_tool("Streaming terminal opened. <bold>Press Ctrl+C to stop</bold> the running process.", color="tool")
 
         self.stream_pannel.clear_console()
         self.stream_pannel.display = True
@@ -1151,6 +1224,15 @@ class VulcanConsole(App):
             # Cancel the streaming task
             self.stream_task.cancel()  # Triggers CancelledError in the task
             self.stream_task = None
+            # Close popup terminal explicitly on user Ctrl+C.
+            self.change_route_logs(False)
+            self.hide_subprocess_panel()
+
+        elif self.stream_pannel is not None and self.stream_pannel.display:
+            # No active stream, but popup is still visible (e.g. stopped by limits).
+            # Let Ctrl+C close it explicitly.
+            self.change_route_logs(False)
+            self.hide_subprocess_panel()
 
         else:
             # No streaming task running, just notify the user
@@ -1264,6 +1346,7 @@ def main() -> None:
     parser.add_argument(
         "-i", "--iterative", action="store_true", default=False, help="Enable Iterative Manager (default: off)"
     )
+    parser.add_argument("--debug", action="store_true", default=False, help="Enable debug logs (default: off)")
 
     args = parser.parse_args()
 
@@ -1273,6 +1356,7 @@ def main() -> None:
         model=args.model,
         k=args.k,
         iterative=args.iterative,
+        debug=args.debug,
     )
     console.run_console()
 

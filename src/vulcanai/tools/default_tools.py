@@ -25,7 +25,7 @@ import time
 from concurrent.futures import Future
 
 from vulcanai import AtomicTool, vulcanai_tool
-from vulcanai.tools.utils import execute_subprocess, last_output_lines, run_oneshot_cmd, suggest_string
+from vulcanai.tools.utils import execute_subprocess, run_oneshot_cmd, suggest_string, print_tool_output, log_tool_in_stream_and_main
 
 # ROS2 imports
 try:
@@ -221,6 +221,7 @@ class Ros2NodeTool(AtomicTool):
             info_output = run_oneshot_cmd(["ros2", "node", "info", node_name])
             result["output"] = info_output
 
+        print_tool_output(console, result["output"], self.name)
         return result
 
 
@@ -257,8 +258,8 @@ class Ros2TopicTool(AtomicTool):
         topic_name = kwargs.get("topic_name", None)
         msg_type = kwargs.get("msg_type", None)
         # Streaming commands variables
-        max_duration = kwargs.get("max_duration", 60.0)
-        max_lines = kwargs.get("max_lines", 1000)
+        max_duration = kwargs.get("max_duration", None)
+        max_lines = kwargs.get("max_lines", None)
 
         result = {
             "output": "",
@@ -311,19 +312,19 @@ class Ros2TopicTool(AtomicTool):
         elif command == "bw":
             base_args = ["ros2", "topic", "bw", topic_name]
             ret = execute_subprocess(console, self.name, base_args, max_duration, max_lines)
-            result["output"] = last_output_lines(console, self.name, ret, n_lines=10)
+            result["output"] = ret#last_output_lines(console, self.name, ret, n_lines=10)
 
         # -- ros2 topic delay <topic_name> ------------------------------------
         elif command == "delay":
             base_args = ["ros2", "topic", "delay", topic_name]
             ret = execute_subprocess(console, self.name, base_args, max_duration, max_lines)
-            result["output"] = last_output_lines(console, self.name, ret, n_lines=10)
+            result["output"] = ret#last_output_lines(console, self.name, ret, n_lines=10)
 
         # -- ros2 topic hz <topic_name> ---------------------------------------
         elif command == "hz":
             base_args = ["ros2", "topic", "hz", topic_name]
             ret = execute_subprocess(console, self.name, base_args, max_duration, max_lines)
-            result["output"] = last_output_lines(console, self.name, ret, n_lines=10)
+            result["output"] = ret#last_output_lines(console, self.name, ret, n_lines=10)
 
         # -- unknown ----------------------------------------------------------
         else:
@@ -331,6 +332,7 @@ class Ros2TopicTool(AtomicTool):
                 f"Unknown command '{command}'. Expected one of: list, info, echo, bw, delay, hz, find, pub, type."
             )
 
+        print_tool_output(console, result["output"], self.name)
         return result
 
 
@@ -371,8 +373,8 @@ class Ros2ServiceTool(AtomicTool):
         service_type = kwargs.get("service_type", None)
         call_args = kwargs.get("args", None)
         # Streaming commands variables
-        max_duration = kwargs.get("max_duration", 2.0)  # default for echo
-        max_lines = kwargs.get("max_lines", 50)
+        max_duration = kwargs.get("max_duration", None)
+        max_lines = kwargs.get("max_lines", None)
 
         result = {
             "output": "",
@@ -437,12 +439,13 @@ class Ros2ServiceTool(AtomicTool):
         elif command == "echo":
             base_args = ["ros2", "service", "echo", service_name]
             ret = execute_subprocess(console, self.name, base_args, max_duration, max_lines)
-            result["output"] = last_output_lines(console, self.name, ret, n_lines=10)
+            result["output"] = ret#last_output_lines(console, self.name, ret, n_lines=10)
 
         # -- unknown ------------------------------------------------------------
         else:
             raise ValueError(f"Unknown command '{command}'. Expected one of: list, info, type, call, echo, find.")
 
+        print_tool_output(console, result["output"], self.name)
         return result
 
 
@@ -533,6 +536,7 @@ class Ros2ActionTool(AtomicTool):
         else:
             raise ValueError(f"Unknown command '{command}'. Expected one of: list, info, type, send_goal.")
 
+        print_tool_output(console, result["output"], self.name)
         return result
 
 
@@ -663,6 +667,7 @@ class Ros2ParamTool(AtomicTool):
                 f"Unknown command '{command}'. Expected one of: list, get, describe, set, delete, dump, load."
             )
 
+        print_tool_output(console, result["output"], self.name)
         return result
 
 
@@ -683,6 +688,11 @@ class Ros2PkgTool(AtomicTool):
     }
 
     def run(self, **kwargs):
+        # Used in the suggestion string
+        console = self.bb.get("console", None)
+        if console is None:
+            raise Exception("Could not find console, aborting...")
+
         # Get the package name if provided by the query
         command = kwargs.get("command", None)
         result = {
@@ -705,6 +715,7 @@ class Ros2PkgTool(AtomicTool):
         else:
             raise ValueError(f"Unknown command '{command}'. Expected one of: list, executables, prefix, xml")
 
+        print_tool_output(console, result["output"], self.name)
         return result
 
 
@@ -799,6 +810,7 @@ class Ros2InterfaceTool(AtomicTool):
                 f"Unknown command '{command}'. Expected one of: list, info, echo, bw, delay, hz, find, pub, type."
             )
 
+        print_tool_output(console, result["output"], self.name)
         return result
 
 
@@ -830,11 +842,11 @@ def import_msg_type(type_str: str, node):
 class Ros2PublishTool(AtomicTool):
     name = "ros_publish"
     description = (
-        "Publish one or more messages to a given ROS 2 topic <topic_name>. "
-        "Or execute 'ros2 topic pub <topic_name>'. "
+        "Publish one or more messages to a given ROS 2 topic [topic_name]. "
+        "Or execute 'ros2 topic pub [topic_name]'. "
         "Supports both simple string messages (for std_msgs/msg/String) and custom message types. "
         "For custom types, pass message_data as a JSON object with field names and values. "
-        "By default 10 messages 'Hello from VulcanAI PublishTool!' "
+        "By default it keeps publishing messages until Ctrl+C is pressed. "
         "with type 'std_msgs/msg/String' in topic '/chatter' "
         "with 0.1 seconds of delay between messages to publish"
         'Example for custom type: msg_type=\'my_pkg/msg/MyMessage\', message_data=\'{"index": 1, "message": "Hello"}\''
@@ -903,13 +915,15 @@ class Ros2PublishTool(AtomicTool):
         message_data = kwargs.get("message_data", kwargs.get("message", "Hello from VulcanAI PublishTool!"))
         msg_type_str = kwargs.get("msg_type", "std_msgs/msg/String")
 
-        max_duration = kwargs.get("max_duration", 60)
-        if not isinstance(max_duration, int):
-            max_duration = 60
+        max_duration = kwargs.get("max_duration", None)
+        if max_duration is not None and not isinstance(max_duration, (int, float)):
+            max_duration = None
+        if max_duration is not None and max_duration <= 0:
+            max_duration = None
 
-        max_lines = kwargs.get("max_lines", 200)
-        if not isinstance(max_lines, int):
-            max_lines = 200
+        max_lines = kwargs.get("max_lines", None)
+        if max_lines is not None and not isinstance(max_lines, int):
+            max_lines = None
 
         period_sec = kwargs.get("period_sec", 0.1)
 
@@ -921,6 +935,7 @@ class Ros2PublishTool(AtomicTool):
             return result
 
         published_msgs = []
+        output_lines = []
         publisher = None
         cancel_token = None
 
@@ -931,7 +946,7 @@ class Ros2PublishTool(AtomicTool):
 
             result["topic"] = topic_name
 
-            if max_lines <= 0:
+            if max_lines is not None and max_lines <= 0:
                 # No messages to publish
                 console.call_from_thread(
                     console.logger.log_msg, "<gray>[ROS] [WARN] max_lines <= 0, nothing to publish.</gray>"
@@ -943,10 +958,37 @@ class Ros2PublishTool(AtomicTool):
             cancel_token = Future()
             console.set_stream_task(cancel_token)
             console.logger.log_tool("[tool]Publisher created![tool]", tool_name=self.name)
+            #output_lines.append(f"[TOOL {self.name}] Publisher created!")
+            log_tool_in_stream_and_main(
+                console,
+                "[tool]Publisher created![tool]",
+                tool_name=self.name,
+            )
 
-            for _ in range(max_lines):
+            start_time = time.monotonic()
+            published_count = 0
+
+            while True:
                 if cancel_token.cancelled():
-                    console.logger.log_tool("[tool]Ctrl+C received:[/tool] stopping publish...", tool_name=self.name)
+                    log_tool_in_stream_and_main(
+                        console,
+                        "[tool]Ctrl+C received:[/tool] stopping publish...",
+                        tool_name=self.name,
+                    )
+                    break
+                if max_lines is not None and published_count >= max_lines:
+                    log_tool_in_stream_and_main(
+                        console,
+                        f"[tool]Stopping:[/tool] Reached max_lines = {max_lines}",
+                        tool_name=self.name,
+                    )
+                    break
+                if max_duration is not None and (time.monotonic() - start_time) >= max_duration:
+                    log_tool_in_stream_and_main(
+                        console,
+                        f"[tool]Stopping:[/tool] Exceeded max_duration = {max_duration}s",
+                        tool_name=self.name,
+                    )
                     break
 
                 msg = MsgType()
@@ -969,16 +1011,20 @@ class Ros2PublishTool(AtomicTool):
                         return result
 
                 if hasattr(msg, "data"):
+                    publish_line = f"[ROS] [INFO] Publishing: '{msg.data}'"
                     console.call_from_thread(
-                        console.logger.log_msg, f"<gray>[ROS] [INFO] Publishing: '{msg.data}'</gray>"
+                        console.logger.log_msg, f"<gray>{publish_line}</gray>"
                     )
                 else:
+                    publish_line = f"[ROS] [INFO] Publishing custom message to '{topic_name}'"
                     console.call_from_thread(
                         console.logger.log_msg,
-                        f"<gray>[ROS] [INFO] Publishing custom message to '{topic_name}'</gray>",
+                        f"<gray>{publish_line}</gray>",
                     )
+                output_lines.append(publish_line)
                 publisher.publish(msg)
                 published_msgs.append(msg.data if hasattr(msg, "data") else str(msg))
+                published_count += 1
 
                 rclpy.spin_once(node, timeout_sec=0.05)
 
@@ -990,16 +1036,25 @@ class Ros2PublishTool(AtomicTool):
             if panel_enabled:
                 if hasattr(console, "change_route_logs"):
                     console.call_from_thread(console.change_route_logs, False)
-                console.call_from_thread(console.hide_subprocess_panel)
             if publisher is not None:
                 try:
                     node.destroy_publisher(publisher)
                 except Exception:
                     pass
 
-        result["subscribed"] = "True"
-        result["published_msgs"] = published_msgs
-        result["count"] = len(published_msgs)
+        result["output"] = "\n".join(output_lines)
+
+        if published_msgs is not None:
+            result["published"] = "True"
+            result["count"] = len(published_msgs)
+
+        print_tool_output(console, result["output"], self.name)
+
+        # if panel_enabled:
+        #     console.logger.log_msg(result["output"], color="gray")
+        #     console.logger.log_msg("\n")
+        # else:
+        #     print_tool_output(console, result["output"], self.name)
         return result
 
 
@@ -1007,7 +1062,7 @@ class Ros2PublishTool(AtomicTool):
 class Ros2SubscribeTool(AtomicTool):
     name = "ros_subscribe"
     description = (
-        "Subscribe to a topic <topic> or execute 'ros2 topic echo <topic>' "
+        "Subscribe to a topic [topic] or execute 'ros2 topic echo [topic]' "
         "and stop after receiving N messages or max duration."
     )
     tags = ["ros2", "subscribe", "topic", "std_msgs"]
@@ -1035,30 +1090,62 @@ class Ros2SubscribeTool(AtomicTool):
 
         result = {
             "subscribed": "False",
-            "subscribed_msgs": "",
             "count": "0",
             "topic": "",
+            "output": "",
         }
 
         topic_name = kwargs.get("topic", None)
-        max_duration = kwargs.get("max_duration", 60)
-        if not isinstance(max_duration, int):
-            max_duration = 60
+        max_duration = kwargs.get("max_duration", None)
+        if max_duration is not None and not isinstance(max_duration, (int, float)):
+            max_duration = None
 
-        max_lines = kwargs.get("max_lines", 200)
-        if not isinstance(max_lines, int):
-            max_lines = 200
+        max_lines = kwargs.get("max_lines", None)
+        if max_lines is not None and not isinstance(max_lines, int):
+            max_lines = None
+
+        output_lines = []
+        panel_enabled = console is not None and hasattr(console, "change_route_logs")
+        if panel_enabled:
+            console.call_from_thread(console.change_route_logs, True)
+
+        # Start line (stream panel/main panel with tool color)
+        console.logger.log_tool("[tool]Subscriber created![/tool]", tool_name=self.name)
 
         # "--field data" prints only the data field from each message
         # instead of the full YAML message
         # "--no-arr" do not print array fields of messages
         base_args = ["ros2", "topic", "echo", topic_name, "--field", "data", "--no-arr"]
-        ret = execute_subprocess(console, self.name, base_args, max_duration, max_lines)
-        result["output"] = last_output_lines(console, self.name, ret, n_lines=10)
+        ret = execute_subprocess(console, self.name, base_args, max_duration, max_lines, log_created=False)
+
+        ret_lines = ret.splitlines() if isinstance(ret, str) and ret else []
+        
+
+        result["output"] = "\n".join(ret_lines)
 
         if ret is not None:
             result["subscribed"] = "True"
-            result["count"] = len(ret)
+            result["count"] = len(ret_lines)
             result["topic"] = topic_name
 
+        print_tool_output(console, result["output"], self.name)
+
+        # if panel_enabled:
+        #     console.call_from_thread(console.change_route_logs, False)
+        #     if ret_lines:
+        #         console.logger.log_msg("\n".join(f"<gray>{line}</gray>" for line in ret_lines))
+        #     # if stop_reason:
+        #     #     if max_lines is not None and len(ret_lines) >= max_lines:
+        #     #         console.logger.log_tool(
+        #     #             f"[tool]Stopping:[/tool] Reached max_lines = {max_lines}",
+        #     #             tool_name=self.name,
+        #     #         )
+        #     #     elif max_duration is not None:
+        #     #         console.logger.log_tool(
+        #     #             f"[tool]Stopping:[/tool] Exceeded max_duration = {max_duration}s",
+        #     #             tool_name=self.name,
+        #     #         )
+        #     console.logger.log_msg("\n")
+        # else:
+        #     print_tool_output(console, result["output"], self.name)
         return result
