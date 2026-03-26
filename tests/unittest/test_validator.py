@@ -46,6 +46,11 @@ if SRC_DIR not in sys.path:
 
 class TestPlanValidator(unittest.TestCase):
     def setUp(self):
+        logger_mod = importlib.import_module("vulcanai.console.logger")
+        # Avoid cross-test default logger contamination from Textual-bound sinks.
+        logger_mod.VulcanAILogger._default_instance = None
+        logger_mod.VulcanAILogger._rich_markup = True
+
         # Import package modules dynamically
         tools_mod = importlib.import_module("vulcanai.tools.tools")
         registry_mod = importlib.import_module("vulcanai.tools.tool_registry")
