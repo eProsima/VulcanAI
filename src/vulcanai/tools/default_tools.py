@@ -177,7 +177,7 @@ class Ros2NodeTool(AtomicTool):
     # - `command` lets you pick a single subcommand (list/info).
     input_schema = [
         ("command", "string"),  # Command
-        ("topic_name", "string?"),  # (optional) Topic name. (info/bw/delay/hz/type/pub)
+        ("node_name", "string?"),  # (optional) Topic name. (info/bw/delay/hz/type/pub)
     ]
 
     output_schema = {
@@ -619,6 +619,11 @@ class Ros2ParamTool(AtomicTool):
         # -- ros2 param get <node> <param> ------------------------------------
         elif command == "get":
             get_output = run_oneshot_cmd(["ros2", "param", "get", node_name, param_name])
+            # In newer ROS 2 releases this case can return exit code 0 while
+            # still reporting an unset parameter. Surface it as an error so
+            # callers can reliably detect deleted/missing values.
+            if "parameter not set" in get_output.lower():
+                raise Exception(f"Parameter '{param_name}' is not set on node '{node_name}'.")
             result["output"] = get_output
 
         # -- ros2 param describe <node> <param> -------------------------------
@@ -764,7 +769,7 @@ class Ros2InterfaceTool(AtomicTool):
         package_name_list = package_name_list_str.splitlines()
 
         # -- ros2 interface list ----------------------------------------------
-        if interface_name is None:
+        if command == "list":
             result["output"] = interface_name_list_str
 
         # -- ros2 interface packages ------------------------------------------
