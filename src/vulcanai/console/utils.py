@@ -95,6 +95,11 @@ def attach_ros_logger_to_console(console):
         console.logger.log_msg(markup)
 
     def patched_log(self, msg, level, *args, **kwargs):
+        # Respect per-node log severity
+        severity = level
+        if not self.is_enabled_for(severity):
+            return
+
         # Format message similarly to printf-style logger
         try:
             level = (level % args) if args else str(level)
