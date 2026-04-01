@@ -217,8 +217,8 @@ class VulcanConsole(App):
 
         # Streaming task control
         self.stream_task = None
-        # Route logger output to subprocess panel when needed.
-        self._route_logs_to_stream_panel = False
+        # Number of active streaming processes routing logs to subprocess panel
+        self._route_logs_to_stream_panel = 0
         # Suggestion index for RadioListModal
         self.suggestion_index = -1
         self.suggestion_index_changed = threading.Event()
@@ -832,13 +832,15 @@ class VulcanConsole(App):
 
     def change_route_logs(self, value: bool = False) -> None:
         """
-        Route logger sink output to stream panel.
+        Manage logger sink output routing to stream panel.
 
-        value = True -> Stream panel
-        value = False -> Main panel
+        value = True  -> Increment active streaming routes.
+        value = False -> Decrement active streaming routes.
         """
-
-        self._route_logs_to_stream_panel = value
+        if value:
+            self._route_logs_to_stream_panel += 1
+        else:
+            self._route_logs_to_stream_panel = max(0, self._route_logs_to_stream_panel - 1)
 
     def hide_subprocess_panel(self) -> None:
         """
@@ -879,7 +881,7 @@ class VulcanConsole(App):
             color_end = f"</{color}>"
 
         target_panel = self.main_pannel
-        if self._route_logs_to_stream_panel and self.stream_pannel is not None and self.stream_pannel.display:
+        if self._route_logs_to_stream_panel > 0 and self.stream_pannel is not None and self.stream_pannel.display:
             target_panel = self.stream_pannel
 
         # Append each line; deque automatically truncates old ones

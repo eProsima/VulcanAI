@@ -1113,10 +1113,6 @@ class Ros2SubscribeTool(AtomicTool):
         if max_lines is not None and not isinstance(max_lines, int):
             max_lines = None
 
-        panel_enabled = console is not None and hasattr(console, "change_route_logs")
-        if panel_enabled:
-            console.call_from_thread(console.change_route_logs, True)
-
         # Start line (stream panel/main panel with tool color)
         console.logger.log_tool("[tool]Subscriber created![/tool]", tool_name=self.name)
 

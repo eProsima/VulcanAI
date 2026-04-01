@@ -130,49 +130,62 @@ async def run_streaming_cmd_async(
                 process.kill()
                 await process.wait()
         finally:
-            # Always restore default logging route and close the popup panel
-            # when a streaming subprocess ends. The popup stays visible and is
-            # closed explicitly by user Ctrl+C in console actions.
-            if hasattr(console, "change_route_logs"):
-                console.change_route_logs(False)
+            # Keep Ctrl+C target in sync with subprocess lifecycle.
             console.set_stream_task(None)
     return "\n".join(captured_lines)
 
 
 def execute_subprocess(console, tool_name, base_args, max_duration, max_lines, log_created: bool = True):
     stream_task = None
+    route_enabled = False
     done_event = threading.Event()
     result = {"output": ""}
 
     def _launcher() -> None:
-        nonlocal stream_task
+        nonlocal stream_task, route_enabled
         if hasattr(console, "show_subprocess_panel"):
             console.show_subprocess_panel()
 
+        if hasattr(console, "change_route_logs"):
+            console.change_route_logs(True)
+            route_enabled = True
+
         # This always runs in the Textual event-loop thread
-        loop = asyncio.get_running_loop()
-        stream_task = loop.create_task(
-            run_streaming_cmd_async(
-                console,
-                base_args,
-                max_duration=max_duration,
-                max_lines=max_lines,
-                tool_name=tool_name,  # tool_header_str
+        try:
+            loop = asyncio.get_running_loop()
+            stream_task = loop.create_task(
+                run_streaming_cmd_async(
+                    console,
+                    base_args,
+                    max_duration=max_duration,
+                    max_lines=max_lines,
+                    tool_name=tool_name,  # tool_header_str
+                )
             )
-        )
-        # Keep the real task reference so Ctrl+C can cancel it.
-        console.set_stream_task(stream_task)
+            # Keep the real task reference so Ctrl+C can cancel it.
+            console.set_stream_task(stream_task)
 
-        def _on_done(task: asyncio.Task) -> None:
-            try:
-                if not task.cancelled():
-                    result["output"] = task.result() or ""
-            except Exception as e:
-                console.logger.log_msg(f"Echo task error: {e!r}\n", error=True)
-            finally:
-                done_event.set()
+            def _on_done(task: asyncio.Task) -> None:
+                nonlocal route_enabled
+                try:
+                    if not task.cancelled():
+                        result["output"] = task.result() or ""
+                except Exception as e:
+                    console.logger.log_msg(f"Echo task error: {e!r}\n", error=True)
+                finally:
+                    if route_enabled and hasattr(console, "change_route_logs"):
+                        console.change_route_logs(False)
+                        route_enabled = False
+                    done_event.set()
 
-        stream_task.add_done_callback(_on_done)
+            stream_task.add_done_callback(_on_done)
+
+        except Exception:
+            if route_enabled and hasattr(console, "change_route_logs"):
+                console.change_route_logs(False)
+                route_enabled = False
+            done_event.set()
+            raise
 
     # `/rerun` workers can have their own asyncio loop in a non-UI thread.
     # Route UI/task creation to Textual app thread unless we are already there.
@@ -308,7 +321,13 @@ def log_tool_in_stream_and_main(console, msg: str, tool_name: str = "", error: b
     """
     processed_msg = console.logger.log_tool(msg, tool_name=tool_name, error=error, color=color)
 
-    if not getattr(console, "_route_logs_to_stream_panel", False):
+    route_state = getattr(console, "_route_logs_to_stream_panel", 0)
+    if isinstance(route_state, bool):
+        route_enabled = route_state
+    else:
+        route_enabled = route_state > 0
+
+    if not route_enabled:
         return
 
     main_panel = getattr(console, "main_pannel", None)
