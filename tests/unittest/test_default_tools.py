@@ -1200,7 +1200,8 @@ class TestRos2PkgTool(unittest.TestCase):
     def test_pkg_executables(self):
         """`executables` should pass through ros2 pkg executables output."""
         result = self._run_pkg(command="executables")
-        self.assertIn("examples_rclpy_minimal_publisher", result["output"])
+        self.assertIn("demo_nodes_cpp talker", result["output"])
+        self.assertIn("demo_nodes_cpp listener", result["output"])
 
     # -------------------------------------------------------------------------
     # Tests — Error

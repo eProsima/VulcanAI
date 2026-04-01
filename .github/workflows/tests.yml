@@ -47,6 +47,12 @@ jobs:
       - name: Sync repository
         uses: eProsima/eProsima-CI/external/checkout@v0
 
+      - name: Install ROS 2 auxiliary test dependencies
+        run: |
+          apt-get update && apt-get install -y --no-install-recommends \
+            ros-kilted-examples-rclpy-minimal-service \
+            ros-kilted-examples-rclpy-minimal-action-server
+
       - name: Install VulcanAI library
         run: |
           python3 -m pip install -U pip --break-system-packages
