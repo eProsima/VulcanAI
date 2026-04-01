@@ -25,7 +25,13 @@ import time
 from concurrent.futures import Future
 
 from vulcanai import AtomicTool, vulcanai_tool
-from vulcanai.tools.utils import execute_subprocess, run_oneshot_cmd, suggest_string, print_tool_output, log_tool_in_stream_and_main
+from vulcanai.tools.utils import (
+    execute_subprocess,
+    log_tool_in_stream_and_main,
+    print_tool_output,
+    run_oneshot_cmd,
+    suggest_string,
+)
 
 # ROS2 imports
 try:
@@ -312,19 +318,19 @@ class Ros2TopicTool(AtomicTool):
         elif command == "bw":
             base_args = ["ros2", "topic", "bw", topic_name]
             ret = execute_subprocess(console, self.name, base_args, max_duration, max_lines)
-            result["output"] = ret#last_output_lines(console, self.name, ret, n_lines=10)
+            result["output"] = ret  # last_output_lines(console, self.name, ret, n_lines=10)
 
         # -- ros2 topic delay <topic_name> ------------------------------------
         elif command == "delay":
             base_args = ["ros2", "topic", "delay", topic_name]
             ret = execute_subprocess(console, self.name, base_args, max_duration, max_lines)
-            result["output"] = ret#last_output_lines(console, self.name, ret, n_lines=10)
+            result["output"] = ret  # last_output_lines(console, self.name, ret, n_lines=10)
 
         # -- ros2 topic hz <topic_name> ---------------------------------------
         elif command == "hz":
             base_args = ["ros2", "topic", "hz", topic_name]
             ret = execute_subprocess(console, self.name, base_args, max_duration, max_lines)
-            result["output"] = ret#last_output_lines(console, self.name, ret, n_lines=10)
+            result["output"] = ret  # last_output_lines(console, self.name, ret, n_lines=10)
 
         # -- unknown ----------------------------------------------------------
         else:
@@ -439,7 +445,7 @@ class Ros2ServiceTool(AtomicTool):
         elif command == "echo":
             base_args = ["ros2", "service", "echo", service_name]
             ret = execute_subprocess(console, self.name, base_args, max_duration, max_lines)
-            result["output"] = ret#last_output_lines(console, self.name, ret, n_lines=10)
+            result["output"] = ret  # last_output_lines(console, self.name, ret, n_lines=10)
 
         # -- unknown ------------------------------------------------------------
         else:
@@ -963,7 +969,7 @@ class Ros2PublishTool(AtomicTool):
             cancel_token = Future()
             console.set_stream_task(cancel_token)
             console.logger.log_tool("[tool]Publisher created![tool]", tool_name=self.name)
-            #output_lines.append(f"[TOOL {self.name}] Publisher created!")
+            # output_lines.append(f"[TOOL {self.name}] Publisher created!")
             log_tool_in_stream_and_main(
                 console,
                 "[tool]Publisher created![tool]",
@@ -1017,9 +1023,7 @@ class Ros2PublishTool(AtomicTool):
 
                 if hasattr(msg, "data"):
                     publish_line = f"[ROS] [INFO] Publishing: '{msg.data}'"
-                    console.call_from_thread(
-                        console.logger.log_msg, f"<gray>{publish_line}</gray>"
-                    )
+                    console.call_from_thread(console.logger.log_msg, f"<gray>{publish_line}</gray>")
                 else:
                     publish_line = f"[ROS] [INFO] Publishing custom message to '{topic_name}'"
                     console.call_from_thread(
@@ -1109,7 +1113,6 @@ class Ros2SubscribeTool(AtomicTool):
         if max_lines is not None and not isinstance(max_lines, int):
             max_lines = None
 
-        output_lines = []
         panel_enabled = console is not None and hasattr(console, "change_route_logs")
         if panel_enabled:
             console.call_from_thread(console.change_route_logs, True)
@@ -1124,7 +1127,6 @@ class Ros2SubscribeTool(AtomicTool):
         ret = execute_subprocess(console, self.name, base_args, max_duration, max_lines, log_created=False)
 
         ret_lines = ret.splitlines() if isinstance(ret, str) and ret else []
-        
 
         result["output"] = "\n".join(ret_lines)
 

@@ -88,8 +88,7 @@ async def run_streaming_cmd_async(
             # Check duration
             if max_duration is not None and (time.monotonic() - start_time) >= max_duration:
                 log_tool_in_stream_and_main(
-                    console,
-                    f"[tool]Stopping:[/tool] Exceeded max_duration = {max_duration}s", tool_name=tool_name
+                    console, f"[tool]Stopping:[/tool] Exceeded max_duration = {max_duration}s", tool_name=tool_name
                 )
                 console.set_stream_task(None)
                 process.terminate()
@@ -296,10 +295,12 @@ def last_output_lines(console, tool_name: str, output: str, n_lines: int = 10) -
         )
     return "\n".join(lines[-n_lines:])
 
+
 def print_tool_output(console, result, name):
     console.logger.log_tool("[tool]<bold>Output:</bold>[tool]", tool_name=name)
     console.logger.log_msg(result, color="gray")
     console.logger.log_msg("\n")
+
 
 def log_tool_in_stream_and_main(console, msg: str, tool_name: str = "", error: bool = False, color: str = "") -> None:
     """

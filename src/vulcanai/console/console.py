@@ -820,7 +820,9 @@ class VulcanConsole(App):
         if self.stream_pannel is None:
             return
 
-        self.logger.log_tool("Streaming terminal opened. <bold>Press Ctrl+C to stop</bold> the running process.", color="tool")
+        self.logger.log_tool(
+            "Streaming terminal opened. <bold>Press Ctrl+C to stop</bold> the running process.", color="tool"
+        )
 
         self.stream_pannel.clear_console()
         self.stream_pannel.display = True
