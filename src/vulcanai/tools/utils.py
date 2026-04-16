@@ -334,5 +334,14 @@ def log_tool_in_stream_and_main(console, msg: str, tool_name: str = "", error: b
     if main_panel is None:
         return
 
+    app_thread_id = getattr(console, "_thread_id", None)
+    on_app_thread = app_thread_id is None or threading.get_ident() == app_thread_id
+    force_follow_main = False
+
     for line in processed_msg.splitlines():
-        main_panel.append_line(line)
+        if on_app_thread:
+            main_panel.append_line(line, force_follow_main)
+        elif hasattr(console, "call_from_thread"):
+            console.call_from_thread(main_panel.append_line, line, force_follow_main)
+        else:
+            main_panel.append_line(line, force_follow_main)

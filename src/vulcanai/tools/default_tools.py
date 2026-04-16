@@ -927,9 +927,7 @@ class Ros2PublishTool(AtomicTool):
         msg_type_str = kwargs.get("msg_type", "std_msgs/msg/String")
 
         max_duration = kwargs.get("max_duration", None)
-        if max_duration is not None and not isinstance(max_duration, (int, float)):
-            max_duration = None
-        if max_duration is not None and max_duration <= 0:
+        if not isinstance(max_duration, (int, float)) or max_duration <= 0:
             max_duration = None
 
         max_lines = kwargs.get("max_lines", None)
@@ -968,8 +966,6 @@ class Ros2PublishTool(AtomicTool):
             publisher = node.create_publisher(MsgType, topic_name, qos_depth)
             cancel_token = Future()
             console.set_stream_task(cancel_token)
-            console.logger.log_tool("[tool]Publisher created![tool]", tool_name=self.name)
-            # output_lines.append(f"[TOOL {self.name}] Publisher created!")
             log_tool_in_stream_and_main(
                 console,
                 "[tool]Publisher created![tool]",
@@ -981,22 +977,13 @@ class Ros2PublishTool(AtomicTool):
 
             while True:
                 if cancel_token.cancelled():
-                    log_tool_in_stream_and_main(
-                        console,
-                        "[tool]Ctrl+C received:[/tool] stopping publish...",
-                        tool_name=self.name,
-                    )
+                    console.logger.log_tool("[tool]Ctrl+C received:[/tool] stopping publish...", tool_name=self.name)
                     break
                 if max_lines is not None and published_count >= max_lines:
-                    log_tool_in_stream_and_main(
-                        console,
-                        f"[tool]Stopping:[/tool] Reached max_lines = {max_lines}",
-                        tool_name=self.name,
-                    )
+                    console.logger.log_tool(f"[tool]Stopping:[/tool] Reached max_lines = {max_lines}", tool_name=self.name)
                     break
                 if max_duration is not None and (time.monotonic() - start_time) >= max_duration:
-                    log_tool_in_stream_and_main(
-                        console,
+                    console.logger.log_tool(
                         f"[tool]Stopping:[/tool] Exceeded max_duration = {max_duration}s",
                         tool_name=self.name,
                     )
@@ -1133,22 +1120,4 @@ class Ros2SubscribeTool(AtomicTool):
 
         print_tool_output(console, result["output"], self.name)
 
-        # if panel_enabled:
-        #     console.call_from_thread(console.change_route_logs, False)
-        #     if ret_lines:
-        #         console.logger.log_msg("\n".join(f"<gray>{line}</gray>" for line in ret_lines))
-        #     # if stop_reason:
-        #     #     if max_lines is not None and len(ret_lines) >= max_lines:
-        #     #         console.logger.log_tool(
-        #     #             f"[tool]Stopping:[/tool] Reached max_lines = {max_lines}",
-        #     #             tool_name=self.name,
-        #     #         )
-        #     #     elif max_duration is not None:
-        #     #         console.logger.log_tool(
-        #     #             f"[tool]Stopping:[/tool] Exceeded max_duration = {max_duration}s",
-        #     #             tool_name=self.name,
-        #     #         )
-        #     console.logger.log_msg("\n")
-        # else:
-        #     print_tool_output(console, result["output"], self.name)
         return result

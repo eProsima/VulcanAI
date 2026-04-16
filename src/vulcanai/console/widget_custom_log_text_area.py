@@ -239,7 +239,7 @@ class CustomLogTextArea(TextArea):
 
     # region LOG
 
-    def append_line(self, text: str) -> bool:
+    def append_line(self, text: str, force_follow_output: bool = False) -> bool:
         """
         Function used to append a new line to the CustomLogTextArea.
 
@@ -297,7 +297,9 @@ class CustomLogTextArea(TextArea):
         with self._lock:
             # Terminal-like behavior:
             # keep following output only if the user was already at the bottom.
-            should_follow_output = self.is_near_vertical_scroll_end()
+            should_follow_output = force_follow_output or self.is_near_vertical_scroll_end()
+            previous_scroll_x = self.scroll_offset.x
+            previous_scroll_y = self.scroll_offset.y
 
             # Append via document API to keep row tracking consistent
             # Only add a newline before the new line if there is already content
@@ -326,6 +328,23 @@ class CustomLogTextArea(TextArea):
                 self.scroll_end(animate=False, immediate=True, x_axis=False)
                 # Ensure we stay anchored after any pending layout updates.
                 self.call_after_refresh(self.scroll_end, animate=False, immediate=True, x_axis=False)
+            else:
+                # Keep user viewport stable while new lines arrive in the background
+                self.scroll_to(
+                    x=previous_scroll_x,
+                    y=previous_scroll_y,
+                    animate=False,
+                    immediate=True,
+                    force=True,
+                )
+                self.call_after_refresh(
+                    self.scroll_to,
+                    x=previous_scroll_x,
+                    y=previous_scroll_y,
+                    animate=False,
+                    immediate=True,
+                    force=True,
+                )
 
             # Rebuild highlights and refresh
             self._rebuild_highlights()

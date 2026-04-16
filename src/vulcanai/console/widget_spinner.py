@@ -81,7 +81,10 @@ class SpinnerStatus(Static):
         self.display = False
         self.styles.height = 0
         if self._forced_compact:
-            self.logcontent.styles.height = "auto"
+            # Keep the log area in the same flexible layout mode used by the console.
+            # Restoring to "auto" can cause the stream panel to stop appearing on
+            # subsequent runs when the log grows.
+            self.logcontent.styles.height = "1fr"
             self._forced_compact = False
             self.refresh(layout=True)
             self.logcontent.refresh(layout=True)
