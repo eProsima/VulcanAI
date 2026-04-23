@@ -507,6 +507,7 @@ def _run_ros2_interface_command(console, tool_name: str, command: str, interface
 @vulcanai_tool
 class Ros2NodeListTool(AtomicTool):
     name = "ros2_node_list"
+    group_name = "ros2_node"
     tool_description = "List all currently available ROS 2 nodes. "
     description = (
         "List all currently available ROS 2 nodes. "
@@ -536,6 +537,7 @@ class Ros2NodeListTool(AtomicTool):
 @vulcanai_tool
 class Ros2NodeInfoTool(AtomicTool):
     name = "ros2_node_info"
+    group_name = "ros2_node"
     tool_description = "Show details for a specific ROS 2 node. "
     description = (
         "Show details for a specific ROS 2 node. "
@@ -562,6 +564,7 @@ class Ros2NodeInfoTool(AtomicTool):
 @vulcanai_tool
 class Ros2TopicListTool(AtomicTool):
     name = "ros2_topic_list"
+    group_name = "ros2_topic"
     tool_description = "List all currently available ROS 2 topics. "
     description = (
         "List all currently available ROS 2 topics. "
@@ -591,6 +594,7 @@ class Ros2TopicListTool(AtomicTool):
 @vulcanai_tool
 class Ros2TopicInfoTool(AtomicTool):
     name = "ros2_topic_info"
+    group_name = "ros2_topic"
     tool_description = "Show details for a specific ROS 2 topic. "
     description = (
         "Show details for a specific ROS 2 topic. "
@@ -617,6 +621,7 @@ class Ros2TopicInfoTool(AtomicTool):
 @vulcanai_tool
 class Ros2TopicFindTool(AtomicTool):
     name = "ros2_topic_find"
+    group_name = "ros2_topic"
     tool_description = "Find ROS 2 topics by message type. "
     description = (
         "Find ROS 2 topics by message type. "
@@ -645,6 +650,7 @@ class Ros2TopicFindTool(AtomicTool):
 @vulcanai_tool
 class Ros2TopicTypeTool(AtomicTool):
     name = "ros2_topic_type"
+    group_name = "ros2_topic"
     tool_description = "Show the message type used by a ROS 2 topic. "
     description = (
         "Show the message type used by a ROS 2 topic. "
@@ -673,6 +679,7 @@ class Ros2TopicTypeTool(AtomicTool):
 @vulcanai_tool
 class Ros2TopicBwTool(AtomicTool):
     name = "ros2_topic_bw"
+    group_name = "ros2_topic"
     tool_description = "Stream and observe ROS 2 topic bandwidth. "
     description = (
         "Stream and observe ROS 2 topic bandwidth. "
@@ -731,6 +738,7 @@ class Ros2TopicBwTool(AtomicTool):
 @vulcanai_tool
 class Ros2TopicDelayTool(AtomicTool):
     name = "ros2_topic_delay"
+    group_name = "ros2_topic"
     tool_description = "Stream and observe ROS 2 topic delay. "
     description = (
         "Stream and observe ROS 2 topic delay. "
@@ -779,6 +787,7 @@ class Ros2TopicDelayTool(AtomicTool):
 @vulcanai_tool
 class Ros2TopicHzTool(AtomicTool):
     name = "ros2_topic_hz"
+    group_name = "ros2_topic"
     tool_description = "Stream and observe ROS 2 topic average receiving rate. "
     description = (
         "Stream and observe ROS 2 topic average receiving rate. "
@@ -830,6 +839,7 @@ class Ros2TopicHzTool(AtomicTool):
 @vulcanai_tool
 class Ros2ServiceListTool(AtomicTool):
     name = "ros2_service_list"
+    group_name = "ros2_service"
     tool_description = "List all currently available ROS 2 services. "
     description = (
         "List all currently available ROS 2 services. "
@@ -859,6 +869,7 @@ class Ros2ServiceListTool(AtomicTool):
 @vulcanai_tool
 class Ros2ServiceInfoTool(AtomicTool):
     name = "ros2_service_info"
+    group_name = "ros2_service"
     tool_description = "Show details for a specific ROS 2 service. "
     description = (
         "Show details for a specific ROS 2 service. "
@@ -886,6 +897,7 @@ class Ros2ServiceInfoTool(AtomicTool):
 @vulcanai_tool
 class Ros2ServiceTypeTool(AtomicTool):
     name = "ros2_service_type"
+    group_name = "ros2_service"
     tool_description = "Show the message type used by a ROS 2 service. "
     description = (
         "Show the message type used by a ROS 2 service. "
@@ -914,6 +926,7 @@ class Ros2ServiceTypeTool(AtomicTool):
 @vulcanai_tool
 class Ros2ServiceFindTool(AtomicTool):
     name = "ros2_service_find"
+    group_name = "ros2_service"
     tool_description = "Find ROS 2 services by message type. "
     description = (
         "Find ROS 2 services by message type. "
@@ -941,6 +954,7 @@ class Ros2ServiceFindTool(AtomicTool):
 @vulcanai_tool
 class Ros2ServiceCallTool(AtomicTool):
     name = "ros2_service_call"
+    group_name = "ros2_service"
     tool_description = "Call a ROS 2 service. "
     description = (
         "Call a ROS 2 service. "
@@ -977,6 +991,7 @@ class Ros2ServiceCallTool(AtomicTool):
 @vulcanai_tool
 class Ros2ServiceEchoTool(AtomicTool):
     name = "ros2_service_echo"
+    group_name = "ros2_service"
     tool_description = "Stream and observe ROS 2 service traffic over time. "
     description = (
         "Stream and observe ROS 2 service traffic over time. "
@@ -1025,6 +1040,7 @@ class Ros2ServiceEchoTool(AtomicTool):
 @vulcanai_tool
 class Ros2ActionListTool(AtomicTool):
     name = "ros2_action_list"
+    group_name = "ros2_action"
     tool_description = "List all currently available ROS 2 actions. "
     description = (
         "List all currently available ROS 2 actions. "
@@ -1053,6 +1069,7 @@ class Ros2ActionListTool(AtomicTool):
 @vulcanai_tool
 class Ros2ActionInfoTool(AtomicTool):
     name = "ros2_action_info"
+    group_name = "ros2_action"
     tool_description = "Show details for a specific ROS 2 action. "
     description = (
         "Show details for a specific ROS 2 action. "
@@ -1078,6 +1095,7 @@ class Ros2ActionInfoTool(AtomicTool):
 @vulcanai_tool
 class Ros2ActionTypeTool(AtomicTool):
     name = "ros2_action_type"
+    group_name = "ros2_action"
     tool_description = "Show the message type used by a ROS 2 action. "
     description = (
         "Show the message type used by a ROS 2 action. "
@@ -1105,6 +1123,7 @@ class Ros2ActionTypeTool(AtomicTool):
 @vulcanai_tool
 class Ros2ActionSendGoalTool(AtomicTool):
     name = "ros2_action_send_goal"
+    group_name = "ros2_action"
     tool_description = "Send a goal to a ROS 2 action server. "
     description = (
         "Send a goal to a ROS 2 action server. "
@@ -1144,6 +1163,7 @@ class Ros2ActionSendGoalTool(AtomicTool):
 @vulcanai_tool
 class Ros2ParamListTool(AtomicTool):
     name = "ros2_param_list"
+    group_name = "ros2_param"
     tool_description = "List all currently available ROS 2 params. "
     description = (
         "List all currently available ROS 2 params. "
@@ -1172,6 +1192,7 @@ class Ros2ParamListTool(AtomicTool):
 @vulcanai_tool
 class Ros2ParamGetTool(AtomicTool):
     name = "ros2_param_get"
+    group_name = "ros2_param"
     tool_description = "Get the value of a parameter from a ROS 2 node. "
     description = (
         "Get the value of a parameter from a ROS 2 node. "
@@ -1208,6 +1229,7 @@ class Ros2ParamGetTool(AtomicTool):
 @vulcanai_tool
 class Ros2ParamDescribeTool(AtomicTool):
     name = "ros2_param_describe"
+    group_name = "ros2_param"
     tool_description = "Show the definition and metadata of a ROS 2 parameter. "
     description = (
         "Show the definition and metadata of a ROS 2 parameter. "
@@ -1244,6 +1266,7 @@ class Ros2ParamDescribeTool(AtomicTool):
 @vulcanai_tool
 class Ros2ParamSetTool(AtomicTool):
     name = "ros2_param_set"
+    group_name = "ros2_param"
     tool_description = "Set the value of a parameter on a ROS 2 node. "
     description = (
         "Set the value of a parameter on a ROS 2 node. "
@@ -1282,6 +1305,7 @@ class Ros2ParamSetTool(AtomicTool):
 @vulcanai_tool
 class Ros2ParamDeleteTool(AtomicTool):
     name = "ros2_param_delete"
+    group_name = "ros2_param"
     tool_description = "Delete a parameter from a ROS 2 node. "
     description = (
         "Delete a parameter from a ROS 2 node. "
@@ -1319,6 +1343,7 @@ class Ros2ParamDeleteTool(AtomicTool):
 @vulcanai_tool
 class Ros2ParamDumpTool(AtomicTool):
     name = "ros2_param_dump"
+    group_name = "ros2_param"
     tool_description = "Export all parameters from a ROS 2 node. "
     description = (
         "Export all parameters from a ROS 2 node. "
@@ -1347,6 +1372,7 @@ class Ros2ParamDumpTool(AtomicTool):
 @vulcanai_tool
 class Ros2ParamLoadTool(AtomicTool):
     name = "ros2_param_load"
+    group_name = "ros2_param"
     tool_description = "Load parameters into a ROS 2 node from a file."
     description = (
         "Load parameters into a ROS 2 node from a file."
@@ -1384,6 +1410,7 @@ class Ros2ParamLoadTool(AtomicTool):
 @vulcanai_tool
 class Ros2PkgListTool(AtomicTool):
     name = "ros2_pkg_list"
+    group_name = "ros2_pkg"
     tool_description = "List all currently available ROS 2 pkgs. "
     description = (
         "List all currently available ROS 2 pkgs. "
@@ -1412,6 +1439,7 @@ class Ros2PkgListTool(AtomicTool):
 @vulcanai_tool
 class Ros2PkgExecutablesTool(AtomicTool):
     name = "ros2_pkg_executables"
+    group_name = "ros2_pkg"
     tool_description = "List executable entry points provided by ROS 2 packages. "
     description = (
         "List executable entry points provided by ROS 2 packages. "
@@ -1440,6 +1468,7 @@ class Ros2PkgExecutablesTool(AtomicTool):
 @vulcanai_tool
 class Ros2InterfaceListTool(AtomicTool):
     name = "ros2_interface_list"
+    group_name = "ros2_interface"
     tool_description = "List all currently available ROS 2 interfaces. "
     description = (
         "List all currently available ROS 2 interfaces. "
@@ -1468,6 +1497,7 @@ class Ros2InterfaceListTool(AtomicTool):
 @vulcanai_tool
 class Ros2InterfacePackagesTool(AtomicTool):
     name = "ros2_interface_packages"
+    group_name = "ros2_interface"
     tool_description = "List ROS 2 packages that provide interfaces."
     description = (
         "List ROS 2 packages that provide interfaces."
@@ -1496,6 +1526,7 @@ class Ros2InterfacePackagesTool(AtomicTool):
 @vulcanai_tool
 class Ros2InterfacePackageTool(AtomicTool):
     name = "ros2_interface_package"
+    group_name = "ros2_interface"
     tool_description = "List the interfaces provided by a ROS 2 package. "
     description = (
         "List the interfaces provided by a ROS 2 package. "
@@ -1523,6 +1554,7 @@ class Ros2InterfacePackageTool(AtomicTool):
 @vulcanai_tool
 class Ros2InterfaceShowTool(AtomicTool):
     name = "ros2_interface_show"
+    group_name = "ros2_interface"
     tool_description = "Show the definition of a ROS 2 interface. "
     description = (
         "Show the definition of a ROS 2 interface. "
@@ -2005,7 +2037,7 @@ class Ros2SubscribeTool(AtomicTool):
     description = (
         "Stream and observe ROS 2 topic. "
         "Equivalent to `ros2 topic echo`. "
-        "Use when the user wants to show, display, or print what is being published in a ROS 2 topic. "
+        "Use when the user wants to show, display, print or listen what is being published in a ROS 2 topic. "
         "If optional limits are omitted, it defaults to 60 seconds and 100 lines."
     )
     tags = [
@@ -2014,6 +2046,7 @@ class Ros2SubscribeTool(AtomicTool):
         "echo",
         "subscribe",
         "subs",
+        "listen",
         "topic echo",
         "ros2 topic echo",
         "inspect topic",

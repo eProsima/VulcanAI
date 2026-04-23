@@ -654,13 +654,13 @@ class VulcanConsole(App):
         for entry_name, subtools in grouped:
             if subtools is None:
                 tool = self.manager.registry.tools[entry_name]
-                tool_msg += f"- <bold>{tool.name}:</bold> {tool.tool_description}\n"
+                tool_msg += f"<bold>{tool.name}:</bold> {tool.tool_description}\n"
             else:
                 tool_msg += f"<bold>{entry_name}:</bold>\n"
                 for subtool in subtools:
                     full_name = f"{entry_name}_{subtool}"
                     tool = self.manager.registry.tools[full_name]
-                    tool_msg += f"    - <bold>{subtool}:</bold> {tool.tool_description}\n"
+                    tool_msg += f"  - <bold>{subtool}:</bold> {tool.tool_description}\n"
 
         if "help" in self.manager.registry.tools:
             help_tool = self.manager.registry.tools["help"]

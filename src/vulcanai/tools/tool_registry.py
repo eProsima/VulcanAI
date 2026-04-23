@@ -302,51 +302,38 @@ class ToolRegistry:
         return f"{tool.name}\n{tool.description}\n{tool.tags}\n{inputs}\n"
 
     def group_tool_names(self, tool_names: list) -> list:
-        """Group tool names by common prefix, preserving registration order.
+        """Group tool names by each tools `group_name` attribute.
+
+        Tools that declare a `group_name` are collected under that group; tools
+        without the attribute are emitted standalone. Registration order is
+        preserved, with each group emitted on the first occurrence of one of
+        its members.
 
         Returns a list of (name, subtools) tuples:
-        - For groups: (prefix, [sorted subtool suffixes])
+        - For groups: (group_name, [sorted subtool display names])
         - For standalone tools: (tool_name, None)
         """
-        # Count how many tools share each prefix (require >= 2 underscore parts)
-        prefix_count: dict = {}
-        for name in tool_names:
-            parts = name.split("_")
-            for i in range(2, len(parts)):
-                prefix = "_".join(parts[:i])
-                prefix_count[prefix] = prefix_count.get(prefix, 0) + 1
-
-        # Assign each tool to its longest valid group prefix
-        tool_group: dict = {}
-        group_tools: dict = {}
-
-        for name in tool_names:
-            parts = name.split("_")
-            best_prefix = None
-            for i in range(len(parts) - 1, 1, -1):
-                prefix = "_".join(parts[:i])
-                if prefix_count.get(prefix, 0) >= 2:
-                    best_prefix = prefix
-                    break
-
-            if best_prefix:
-                suffix = name[len(best_prefix) + 1:]
-                tool_group[name] = best_prefix
-                group_tools.setdefault(best_prefix, []).append(suffix)
-            else:
-                tool_group[name] = None
-
-        # Build result preserving registration order, groups emitted on first occurrence
         result = []
-        emitted_groups: set = set()
+        group_tools: dict = {}
+        order = []
 
         for name in tool_names:
-            prefix = tool_group[name]
-            if prefix is None:
-                result.append((name, None))
-            elif prefix not in emitted_groups:
-                emitted_groups.add(prefix)
-                result.append((prefix, sorted(group_tools[prefix])))
+            tool = self.tools.get(name)
+            group = getattr(tool, "group_name", None) if tool is not None else None
+            if group:
+                if group not in group_tools:
+                    group_tools[group] = []
+                    order.append(("group", group))
+                display = name[len(group) + 1:] if name.startswith(group + "_") else name
+                group_tools[group].append(display)
+            else:
+                order.append(("tool", name))
+
+        for kind, item in order:
+            if kind == "tool":
+                result.append((item, None))
+            else:
+                result.append((item, sorted(group_tools[item])))
 
         return result
 
