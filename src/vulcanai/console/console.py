@@ -560,9 +560,8 @@ class VulcanConsole(App):
         else:
             selected_set = set(selected)
             # Collect all non-help tool names
-            all_tool_names = (
-                set(self.manager.registry.tools.keys())
-                | set(self.manager.registry.deactivated_tools.keys())
+            all_tool_names = set(self.manager.registry.tools.keys()) | set(
+                self.manager.registry.deactivated_tools.keys()
             )
             all_tool_names.discard("help")
 
@@ -671,8 +670,7 @@ class VulcanConsole(App):
     def cmd_edit_tools(self, _) -> None:
         all_names = sorted(
             n
-            for n in list(self.manager.registry.tools.keys())
-            + list(self.manager.registry.deactivated_tools.keys())
+            for n in list(self.manager.registry.tools.keys()) + list(self.manager.registry.deactivated_tools.keys())
             if n != "help"
         )
         active_set = set(self.manager.registry.tools.keys())
@@ -1029,7 +1027,8 @@ class VulcanConsole(App):
 
             # Keep tool/executor output hidden in main panel while stream panel remains
             # visible after stream completion. Flushes on Ctrl+C panel close
-            if (target_panel is self.main_pannel
+            if (
+                target_panel is self.main_pannel
                 and self._stream_panel_visible
                 and not self._is_stream_task_active()
                 and self._route_logs_to_stream_panel == 0
@@ -1069,7 +1068,11 @@ class VulcanConsole(App):
             # Console not ready yet
             return
 
-        cmd = event.value.strip()
+        # Strip '<' and '>' so inputs like '</chatter>' (ROS topic names) are not
+        # consumed by the Textual markup parser, which would drop the token from
+        # the echoed line and raise "'<name>' is not a valid color" errors when
+        # the same text flows through manager/plan logs.
+        cmd = event.value.strip().replace("<", "").replace(">", "")
         if not cmd:
             # Empty command
             return
@@ -1081,8 +1084,8 @@ class VulcanConsole(App):
                 # Not the command input box
                 return
 
-            # Get the user input and strip leading/trailing spaces
-            user_input = (event.value or "").strip()
+            # Already sanitized above; reuse to keep echo, history, and query aligned
+            user_input = cmd
 
             # Defensive recovery: if no stream is active but routing stayed enabled,
             # clear only routing (keep panel visible until Ctrl+C)
@@ -1386,8 +1389,7 @@ class VulcanConsole(App):
                 pass
             self.reset_stream_state()
 
-        elif self.stream_pannel is not None and (
-            self._stream_panel_visible or self._route_logs_to_stream_panel > 0):
+        elif self.stream_pannel is not None and (self._stream_panel_visible or self._route_logs_to_stream_panel > 0):
             # No active stream, but stale stream UI/routing is visible
             self.reset_stream_state()
 

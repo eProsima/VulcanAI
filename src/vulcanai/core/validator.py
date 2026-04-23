@@ -70,8 +70,7 @@ class PlanValidator:
             if len(step.args) < required_len or len(step.args) > schema_len:
                 if required_len == schema_len:
                     raise ValueError(
-                        f"Tool '{tool.name}' expects {schema_len} arguments,"
-                        f" but {len(step.args)} were provided."
+                        f"Tool '{tool.name}' expects {schema_len} arguments, but {len(step.args)} were provided."
                     )
                 raise ValueError(
                     f"Tool '{tool.name}' expects between {required_len} and {schema_len} arguments,"
@@ -80,9 +79,7 @@ class PlanValidator:
 
             missing_required = sorted(required_keys - provided_keys)
             if missing_required:
-                raise ValueError(
-                    f"Tool '{tool.name}' is missing required arguments: {', '.join(missing_required)}."
-                )
+                raise ValueError(f"Tool '{tool.name}' is missing required arguments: {', '.join(missing_required)}.")
 
             for arg in step.args:
                 if arg.key not in {k for d in tool.input_schema for k in d}:

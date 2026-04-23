@@ -193,11 +193,11 @@ class CheckListModal(ModalScreen[list[str] | None]):
 
     def __init__(self, grouped: list, active_tools: set) -> None:
         super().__init__()
-        self.grouped = grouped          # [(prefix, [subtools]) | (name, None), ...]
+        self.grouped = grouped  # [(prefix, [subtools]) | (name, None), ...]
         self.active_tools = active_tools
         self._parent_to_children: dict[str, list[str]] = {}
         self._child_to_parent: dict[str, str] = {}
-        self._id_to_tool: dict[str, str] = {}   # cb_id -> full tool name (children & standalone only)
+        self._id_to_tool: dict[str, str] = {}  # cb_id -> full tool name (children & standalone only)
 
     def compose(self) -> ComposeResult:
         with Vertical(classes="dialog"):
@@ -232,9 +232,7 @@ class CheckListModal(ModalScreen[list[str] | None]):
                         for cid in child_ids:
                             self._child_to_parent[cid] = parent_id
 
-                        all_active = all(
-                            f"{group_name}_{s}" in self.active_tools for s in subtools
-                        )
+                        all_active = all(f"{group_name}_{s}" in self.active_tools for s in subtools)
                         yield Checkbox(group_name, value=all_active, id=parent_id)
 
                         for subtool, child_id in zip(subtools, child_ids):
@@ -262,10 +260,7 @@ class CheckListModal(ModalScreen[list[str] | None]):
         elif cb_id in self._child_to_parent:
             # Child toggled -> update parent (checked only when ALL children checked)
             parent_id = self._child_to_parent[cb_id]
-            all_checked = all(
-                self.query_one(f"#{cid}", Checkbox).value
-                for cid in self._parent_to_children[parent_id]
-            )
+            all_checked = all(self.query_one(f"#{cid}", Checkbox).value for cid in self._parent_to_children[parent_id])
             with self.prevent(Checkbox.Changed):
                 self.query_one(f"#{parent_id}", Checkbox).value = all_checked
 

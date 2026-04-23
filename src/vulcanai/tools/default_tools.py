@@ -438,7 +438,9 @@ def _run_ros2_param_command(
             raise ValueError("`command='load'` `file_path`.")
         result["output"] = run_oneshot_cmd(["ros2", "param", "load", node_name, file_path])
     else:
-        raise ValueError(f"Unknown command '{command}'. Expected one of: list, get, describe, set, delete, dump, load.")
+        raise ValueError(
+            f"Unknown command '{command}'. Expected one of: list, get, describe, set, delete, dump, load."
+        )
 
     print_tool_output(console, result["output"], tool_name)
     return result
@@ -543,16 +545,8 @@ class Ros2NodeInfoTool(AtomicTool):
         "Show details for a specific ROS 2 node. "
         "Equivalent to `ros2 node info [name]`."
         "Use when the user wants to list, show, display, or print the information of a ROS 2 node."
-        )
-    tags = [
-        "ros2",
-        "ros 2",
-        "info",
-        "node info",
-        "ros2 node info",
-        "inspect node",
-        "show node details"
-    ]
+    )
+    tags = ["ros2", "ros 2", "info", "node info", "ros2 node info", "inspect node", "show node details"]
     input_schema = [("node_name", "string")]
     output_schema = {"output": "string"}
 
@@ -601,15 +595,7 @@ class Ros2TopicInfoTool(AtomicTool):
         "Equivalent to `ros2 topic info`. "
         "Use when the user wants to list, show, display, or print the information of a ROS 2 topic."
     )
-    tags = [
-        "ros2",
-        "ros 2",
-        "info",
-        "topic info",
-        "ros2 topic info",
-        "inspect topic",
-        "show topic details"
-    ]
+    tags = ["ros2", "ros 2", "info", "topic info", "ros2 topic info", "inspect topic", "show topic details"]
     input_schema = [("topic_name", "string")]
     output_schema = {"output": "string"}
 
@@ -695,14 +681,10 @@ class Ros2TopicBwTool(AtomicTool):
         "topic bandwidth",
         "ros2 topic bandwidth",
         "inspect topic bandwidth",
-        "show topic bandwidth"
+        "show topic bandwidth",
     ]
 
-    input_schema = [
-        ("topic_name", "string"),
-        ("max_duration", "float?"),
-        ("max_lines", "int?")
-    ]
+    input_schema = [("topic_name", "string"), ("max_duration", "float?"), ("max_lines", "int?")]
     input_defaults = {"max_duration": 60, "max_lines": 100}
     output_schema = {"output": "string"}
 
@@ -745,20 +727,8 @@ class Ros2TopicDelayTool(AtomicTool):
         "Equivalent to `ros2 topic delay`. "
         "Use when the user wants to show, display, or print the delay of a ROS 2 topic that is publishing."
     )
-    tags = [
-        "ros2",
-        "ros 2",
-        "delay",
-        "topic delay",
-        "ros2 topic delay",
-        "inspect topic delay",
-        "show topic delay"
-    ]
-    input_schema = [
-        ("topic_name", "string"),
-        ("max_duration", "float?"),
-        ("max_lines", "int?")
-    ]
+    tags = ["ros2", "ros 2", "delay", "topic delay", "ros2 topic delay", "inspect topic delay", "show topic delay"]
+    input_schema = [("topic_name", "string"), ("max_duration", "float?"), ("max_lines", "int?")]
     input_defaults = {"max_duration": 60, "max_lines": 100}
     output_schema = {"output": "string"}
 
@@ -792,25 +762,18 @@ class Ros2TopicHzTool(AtomicTool):
     description = (
         "Stream and observe ROS 2 topic average receiving rate. "
         "Equivalent to `ros2 topic hz`. "
-        "Use when the user wants to show, display, or print the average receiving rate of a ROS 2 topic that is publishing."
+        "Use when the user wants to show, display, or print "
+        "the average receiving rate of a ROS 2 topic that is publishing."
     )
     tags = [
         "ros2",
         "ros 2",
-        "hz"
-        "rate"
-        "receiving rate"
-        "average receiving rate"
-        "topic hz",
+        "hzratereceiving rateaverage receiving ratetopic hz",
         "ros2 topic hz",
         "inspect topic hz",
-        "show topic hz"
+        "show topic hz",
     ]
-    input_schema = [
-        ("topic_name", "string"),
-        ("max_duration", "float?"),
-        ("max_lines", "int?")
-    ]
+    input_schema = [("topic_name", "string"), ("max_duration", "float?"), ("max_lines", "int?")]
     input_defaults = {"max_duration": 60, "max_lines": 100}
     output_schema = {"output": "string"}
 
@@ -884,7 +847,7 @@ class Ros2ServiceInfoTool(AtomicTool):
         "service info",
         "ros2 service info",
         "inspect service",
-        "show service details"
+        "show service details",
     ]
     input_schema = [("service_name", "string")]
     output_schema = {"output": "string"}
@@ -969,11 +932,7 @@ class Ros2ServiceCallTool(AtomicTool):
         "call service",
         "call ros2 service",
     ]
-    input_schema = [
-        ("service_name", "string"),
-        ("service_type", "string"),
-        ("args", "string")
-    ]
+    input_schema = [("service_name", "string"), ("service_type", "string"), ("args", "string")]
     output_schema = {"output": "string"}
 
     def run(self, **kwargs):
@@ -1008,11 +967,7 @@ class Ros2ServiceEchoTool(AtomicTool):
         "observe service",
         "echo service",
     ]
-    input_schema = [
-        ("service_name", "string"),
-        ("max_duration", "float?"),
-        ("max_lines", "int?")
-    ]
+    input_schema = [("service_name", "string"), ("max_duration", "float?"), ("max_lines", "int?")]
     output_schema = {"output": "string"}
 
     def run(self, **kwargs):
@@ -1076,14 +1031,7 @@ class Ros2ActionInfoTool(AtomicTool):
         "Equivalent to `ros2 action info`. "
         "Use when the user wants to list, show, display, or print the information of a ROS 2 action."
     )
-    tags = [
-        "ros2",
-        "ros 2",
-        "action info",
-        "ros2 action info",
-        "inspect action",
-        "show action details"
-    ]
+    tags = ["ros2", "ros 2", "action info", "ros2 action info", "inspect action", "show action details"]
     input_schema = [("action_name", "string")]
     output_schema = {"output": "string"}
 
@@ -1139,13 +1087,9 @@ class Ros2ActionSendGoalTool(AtomicTool):
         "ros2 action send_goal",
         "send action goal",
         "call action",
-        "trigger action"
+        "trigger action",
     ]
-    input_schema = [
-        ("action_name", "string"),
-        ("action_type", "string"),
-        ("goal_args", "string")
-    ]
+    input_schema = [("action_name", "string"), ("action_type", "string"), ("goal_args", "string")]
     output_schema = {"output": "string"}
 
     def run(self, **kwargs):
@@ -1207,12 +1151,9 @@ class Ros2ParamGetTool(AtomicTool):
         "ros2 param get",
         "get parameter",
         "read parameter",
-        "show parameter value"
+        "show parameter value",
     ]
-    input_schema = [
-        ("node_name", "string"),
-        ("param_name", "string")
-    ]
+    input_schema = [("node_name", "string"), ("param_name", "string")]
     output_schema = {"output": "string"}
 
     def run(self, **kwargs):
@@ -1246,10 +1187,7 @@ class Ros2ParamDescribeTool(AtomicTool):
         "parameter metadata",
         "parameter details",
     ]
-    input_schema = [
-        ("node_name", "string"),
-        ("param_name", "string")
-    ]
+    input_schema = [("node_name", "string"), ("param_name", "string")]
     output_schema = {"output": "string"}
 
     def run(self, **kwargs):
@@ -1281,13 +1219,9 @@ class Ros2ParamSetTool(AtomicTool):
         "ros2 param set",
         "set parameter",
         "update parameter",
-        "change parameter value"
+        "change parameter value",
     ]
-    input_schema = [
-        ("node_name", "string"),
-        ("param_name", "string"),
-        ("set_value", "string")
-    ]
+    input_schema = [("node_name", "string"), ("param_name", "string"), ("set_value", "string")]
     output_schema = {"output": "string"}
 
     def run(self, **kwargs):
@@ -1321,12 +1255,9 @@ class Ros2ParamDeleteTool(AtomicTool):
         "ros2 param delete",
         "delete parameter",
         "remove parameter",
-        "unset parameter"
+        "unset parameter",
     ]
-    input_schema = [
-        ("node_name", "string"),
-        ("param_name", "string")
-    ]
+    input_schema = [("node_name", "string"), ("param_name", "string")]
     output_schema = {"output": "string"}
 
     def run(self, **kwargs):
@@ -1359,7 +1290,7 @@ class Ros2ParamDumpTool(AtomicTool):
         "ros2 param dump",
         "export parameters",
         "dump parameters",
-        "save node parameters"
+        "save node parameters",
     ]
     input_schema = [("node_name", "string")]
     output_schema = {"output": "string"}
@@ -1388,12 +1319,9 @@ class Ros2ParamLoadTool(AtomicTool):
         "ros2 param load",
         "load parameters",
         "import parameters",
-        "load params from file"
+        "load params from file",
     ]
-    input_schema = [
-        ("node_name", "string"),
-        ("file_path", "string")
-    ]
+    input_schema = [("node_name", "string"), ("file_path", "string")]
     output_schema = {"output": "string"}
 
     def run(self, **kwargs):
@@ -1455,7 +1383,7 @@ class Ros2PkgExecutablesTool(AtomicTool):
         "ros2 pkg executables",
         "list package executables",
         "show executables",
-        "package binaries"
+        "package binaries",
     ]
     input_schema = []
     output_schema = {"output": "string"}
@@ -1513,7 +1441,7 @@ class Ros2InterfacePackagesTool(AtomicTool):
         "interface packages",
         "ros2 interface packages",
         "list interface packages",
-        "packages with interfaces"
+        "packages with interfaces",
     ]
     input_schema = []
     output_schema = {"output": "string"}
@@ -1536,12 +1464,11 @@ class Ros2InterfacePackageTool(AtomicTool):
     tags = [
         "ros2",
         "ros 2",
-        "interfaces"
-        "interface package",
+        "interfacesinterface package",
         "ros2 interface package",
         "list package interfaces",
         "show package interfaces",
-        "package interfaces"
+        "package interfaces",
     ]
     input_schema = [("interface_name", "string")]
     output_schema = {"output": "string"}
@@ -1570,7 +1497,7 @@ class Ros2InterfaceShowTool(AtomicTool):
         "ros2 interface show",
         "show interface",
         "interface definition",
-        "display interface"
+        "display interface",
     ]
     input_schema = [("interface_name", "string")]
     output_schema = {"output": "string"}
@@ -1799,7 +1726,7 @@ def import_msg_type(type_str: str, node):
 @vulcanai_tool
 class Ros2PublishTool(AtomicTool):
     name = "ros_publish"
-    #ros2 topic pub chatter std_msgs/msg/String 'data: Hello World'
+    # ros2 topic pub chatter std_msgs/msg/String 'data: Hello World'
     # description = (
     #     "Publish one or more messages to a given ROS 2 topic [topic_name]. "
     #     "Or execute 'ros2 topic pub [topic_name]'. "
@@ -1808,7 +1735,8 @@ class Ros2PublishTool(AtomicTool):
     #     "By default it keeps publishing messages until Ctrl+C is pressed. "
     #     "with type 'std_msgs/msg/String' in topic '/chatter' "
     #     "with 0.1 seconds of delay between messages to publish"
-    #     'Example for custom type: msg_type=\'my_pkg/msg/MyMessage\', message_data=\'{"index": 1, "message": "Hello"}\''
+    #     'Example for custom type: msg_type=\'my_pkg/msg/MyMessage\',
+    #           message_data=\'{"index": 1, "message": "Hello"}\''
     # )
     # tags = ["ros2", "publish", "message", "std_msgs"]
     tool_description = "Stream and publish ROS 2 topic. "
@@ -1823,13 +1751,13 @@ class Ros2PublishTool(AtomicTool):
         "ros 2",
         "write",
         "writer",
-        "pub",        
+        "pub",
         "publish",
         "publisher",
         "topic pub",
         "ros2 topic pub",
         "pub topic",
-        "write topic",        
+        "write topic",
     ]
 
     # input_schema = [
@@ -1847,7 +1775,7 @@ class Ros2PublishTool(AtomicTool):
         ("message_data", "string?"),  # (optional) payload - string for std_msgs/String or JSON for custom types
         ("msg_type", "string?"),  # (optional) e.g. "std_msgs/msg/String" or "my_pkg/msg/CustomMsg"
         ("max_lines", "int?"),  # (optional) number of messages to publish
-        ("max_duration", "int?"),  # (optional) stop after this seconds        
+        ("max_duration", "int?"),  # (optional) stop after this seconds
     ]
 
     output_schema = {
@@ -1956,7 +1884,9 @@ class Ros2PublishTool(AtomicTool):
                     console.logger.log_tool("[tool]Ctrl+C received:[/tool] stopping publish...", tool_name=self.name)
                     break
                 if max_lines is not None and published_count >= max_lines:
-                    console.logger.log_tool(f"[tool]Stopping:[/tool] Reached max_lines = {max_lines}", tool_name=self.name)
+                    console.logger.log_tool(
+                        f"[tool]Stopping:[/tool] Reached max_lines = {max_lines}", tool_name=self.name
+                    )
                     break
                 if max_duration is not None and (time.monotonic() - start_time) >= max_duration:
                     console.logger.log_tool(
@@ -2052,13 +1982,13 @@ class Ros2SubscribeTool(AtomicTool):
         "inspect topic",
         "show topic",
         "display topic",
-        "print topic"
+        "print topic",
     ]
 
     input_schema = [
-        ("topic", "string"),      # topic name
-        ("max_duration", "int?"), # (optional) stop after this seconds
-        ("max_lines", "int?"),    # (optional) stop after this number of messages
+        ("topic", "string"),  # topic name
+        ("max_duration", "int?"),  # (optional) stop after this seconds
+        ("max_lines", "int?"),  # (optional) stop after this number of messages
     ]
     input_defaults = {"max_duration": 60, "max_lines": 100}
     output_schema = {

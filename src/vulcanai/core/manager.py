@@ -12,13 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import shlex
 from typing import Any, Dict, Optional, Tuple
 
 from vulcanai.console.logger import VulcanAILogger
 from vulcanai.core.agent import Agent
 from vulcanai.core.executor import Blackboard, PlanExecutor
-from vulcanai.core.plan_types import ArgValue, GlobalPlan, PlanNode, Step
+from vulcanai.core.plan_types import GlobalPlan
 from vulcanai.core.validator import PlanValidator
 from vulcanai.tools.tool_registry import ToolRegistry
 
@@ -180,7 +179,7 @@ class ToolManager:
             )
         tools_text = "\n".join(tool_descriptions)
         # TODO. danip, better performance?
-        #tools_text = self.render_tool_descriptions(tools)
+        # tools_text = self.render_tool_descriptions(tools)
         user_context = self._parse_user_context()
         user_prompt = "User request:\n" + user_text
 
@@ -269,7 +268,8 @@ Your job is to take a user request and generate a valid execution plan, containi
 Be sure to understand the text received and select the best action command from the available options.
 Never return only a summary: always produce at least one PlanNode with at least one Step.
 Inputs whose type ends with `?` are optional and may be omitted when the tool default behavior is appropriate.
-If an input is marked optional and the user did not ask for a specific value, omit that argument instead of inventing one.
+If an input is marked optional and the user did not ask for a specific value, 
+omit that argument instead of inventing one.
 Do not guess placeholder values such as `1`, `1.0`, `10`, or empty strings for optional inputs.
 {user_context}
 ## Available tools:

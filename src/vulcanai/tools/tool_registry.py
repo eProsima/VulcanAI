@@ -290,7 +290,7 @@ class ToolRegistry:
     def _doc(tool: ITool) -> str:
         # Text used for embeddings
         # TODO. danip
-        #return f"{tool.name}\n{tool.description}\n{tool.tags}\n{tool.input_schema}\n"
+        # return f"{tool.name}\n{tool.description}\n{tool.tags}\n{tool.input_schema}\n"
         input_defaults = getattr(tool, "input_defaults", {}) or {}
         inputs = []
         for key, type_name in tool.input_schema:
@@ -324,7 +324,7 @@ class ToolRegistry:
                 if group not in group_tools:
                     group_tools[group] = []
                     order.append(("group", group))
-                display = name[len(group) + 1:] if name.startswith(group + "_") else name
+                display = name[len(group) + 1 :] if name.startswith(group + "_") else name
                 group_tools[group].append(display)
             else:
                 order.append(("tool", name))
@@ -342,13 +342,9 @@ class ToolRegistry:
         grouped = self.group_tool_names(tool_names)
         for entry_name, subtools in grouped:
             if subtools is None:
-                self.logger.log_registry(
-                    f"Registered tool: [registry]{entry_name}[/registry]"
-                )
+                self.logger.log_registry(f"Registered tool: [registry]{entry_name}[/registry]")
             else:
-                self.logger.log_registry(
-                    f"Registered group of tools: [registry]{entry_name}[/registry]"
-                )
+                self.logger.log_registry(f"Registered group of tools: [registry]{entry_name}[/registry]")
                 for subtool in subtools:
                     self.logger.log_registry(
                         f"Registered tool: [registry]{subtool}[/registry]",

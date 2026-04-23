@@ -255,7 +255,7 @@ class IterativeManager(ToolManager):
                 )
             tools_text = "\n".join(tool_descriptions)
             # TODO. danip, better performance?
-            #tools_text = self.render_tool_descriptions(tools)
+            # tools_text = self.render_tool_descriptions(tools)
         else:
             tools_text = "No available tools. Use blackboard"
 
