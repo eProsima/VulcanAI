@@ -219,6 +219,8 @@ class IterativeManager(ToolManager):
                 f"  Outputs: {tool.output_schema}\n"
             )
         tools_text = "\n".join(tool_descriptions)
+        # TODO. danip, better performance?
+        tools_text = self.render_tool_descriptions(tools)
 
         bb_snapshot = self.bb.text_snapshot()
 
@@ -252,6 +254,8 @@ class IterativeManager(ToolManager):
                     f"  Outputs: {tool.output_schema}\n"
                 )
             tools_text = "\n".join(tool_descriptions)
+            # TODO. danip, better performance?
+            #tools_text = self.render_tool_descriptions(tools)
         else:
             tools_text = "No available tools. Use blackboard"
 
@@ -349,6 +353,8 @@ Rules:
 - If the last step failed, propose a different approach or tool/arguments and include a brief rationale of what will
   be done differently (as a comment-like line in the Summary).
 - Add only optional execution control parameters if strictly necessary or requested by the user.
+- If an input is marked optional and the user did not ask for a specific value, omit that argument instead of
+  inventing one.
 - Use "{{{{bb.tool_name.key}}}}" to pass outputs from previous steps if relevant.
 For example, if tool 'detect_object' outputs {{"pose": [1.0, 2.0]}},
 you can pass it to navigate as:

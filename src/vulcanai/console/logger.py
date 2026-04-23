@@ -176,11 +176,15 @@ class VulcanAILogger:
 
         return processed_msg
 
-    def log_registry(self, msg: str, error: bool = False, color: str = ""):
+    def log_registry(self, msg: str, error: bool = False, color: str = "", indent: int = 0):
+        indent_str = "             " * indent
         if error:
-            prefix = "[error][REGISTRY] [ERROR][/error] "
+            prefix = f"[error][REGISTRY] [ERROR][/error]{indent_str} "
+        elif indent > 0:
+            prefix = f"<dim>{indent_str} "
+            msg = f"{msg}</dim>"
         else:
-            prefix = "<bold>[registry][REGISTRY][/registry]</bold> "
+            prefix = f"<bold>[registry][REGISTRY][/registry]</bold>{indent_str} "
 
         processed_msg = self.process_msg(msg, prefix=prefix, color=color)
         self.sink.write(processed_msg)

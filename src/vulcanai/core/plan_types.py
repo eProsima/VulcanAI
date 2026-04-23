@@ -32,7 +32,7 @@ class StepBase(BaseModel):
     """Atomic execution unit bound to a ITool."""
 
     # Associated tool
-    tool: str = None
+    tool: str = Field(..., description="Registered tool name")
     # Tool arguments
     args: List[ArgValue] = Field(
         default_factory=list,
@@ -59,7 +59,7 @@ class PlanBase(BaseModel):
     # SEQUENCE or PARALLEL execution of children
     kind: Kind
     # Child nodes
-    steps: List[Step] = Field(default_factory=list)
+    steps: List[Step] = Field(..., min_length=1)
     # Execution control
     condition: Optional[str] = None
     success_criteria: Optional[str] = None
@@ -79,7 +79,7 @@ class GlobalPlan(BaseModel):
     """GlobalPlan returned by the LLM with each step to be executed."""
 
     # Top-level plan structure. Always executed sequentially.
-    plan: List[PlanNode] = Field(default_factory=list)
+    plan: List[PlanNode] = Field(..., min_length=1)
     # Brief summary of the plan
     summary: Optional[str] = None
 

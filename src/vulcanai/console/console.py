@@ -388,6 +388,14 @@ class VulcanConsole(App):
         self.logger.log_console("Clipboard: select text and press F4 to copy. Use Ctrl+V or middle-click to paste.")
         self.logger.log_console("Use <bold>'/exit'</bold> or press <bold>'Ctrl+Q'</bold> to quit.")
 
+        # TODO. danip
+        # Anchor the main log at the bottom after all startup output has been queued,
+        # so the user sees the latest line (and input prompt) without manual scrolling.
+        if self.main_pannel is not None:
+            self.main_pannel.scroll_end(animate=False, immediate=True, x_axis=False)
+            self.call_after_refresh(self.main_pannel.scroll_end, animate=False, immediate=True, x_axis=False)
+            self.call_later(self.main_pannel.scroll_end, animate=False, immediate=True, x_axis=False)
+
         # Activate the terminal input
         self.set_input_enabled(True)
 
@@ -539,31 +547,32 @@ class VulcanConsole(App):
         kvalue_widget.update(text)
 
     @work  # Runs in a worker. waiting won't freeze the UI
-    async def open_checklist(self, tools_list: list[str], active_tools_num: int) -> None:
+    async def open_checklist(self, grouped: list, active_set: set) -> None:
         """
         Function used to open a Checklist ModalScreen in the console.
         Used in the /edit_tools command.
         """
         # Create the checklist dialog
-        selected = await self.push_screen_wait(CheckListModal(tools_list, active_tools_num))
+        selected = await self.push_screen_wait(CheckListModal(grouped, active_set))
 
         if selected is None:
             self.logger.log_msg("<yellow>Selection cancelled.</yellow>")
         else:
-            # Iterate over all tools and activate/deactivate accordingly
-            # to the selection made by the user
-            for tool_tmp in tools_list:
-                # Remove "- " prefix
-                tool = tool_tmp[2:]
+            selected_set = set(selected)
+            # Collect all non-help tool names
+            all_tool_names = (
+                set(self.manager.registry.tools.keys())
+                | set(self.manager.registry.deactivated_tools.keys())
+            )
+            all_tool_names.discard("help")
 
-                if tool_tmp in selected:
-                    # Current tool checbox, activated
-                    if self.manager.registry.activate_tool(tool):
-                        self.logger.log_console(f"Activated tool <bold>'{tool}'</bold>")
+            for tool_name in all_tool_names:
+                if tool_name in selected_set:
+                    if self.manager.registry.activate_tool(tool_name):
+                        self.logger.log_console(f"Activated tool <bold>'{tool_name}'</bold>")
                 else:
-                    # Current tool checbox, deactivated
-                    if self.manager.registry.deactivate_tool(tool):
-                        self.logger.log_console(f"Deactivated tool <bold>'{tool}'</bold>")
+                    if self.manager.registry.deactivate_tool(tool_name):
+                        self.logger.log_console(f"Deactivated tool <bold>'{tool_name}'</bold>")
 
     @work
     async def open_radiolist(
@@ -639,21 +648,36 @@ class VulcanConsole(App):
         tool_msg += "<bold>Available tools:</bold>\n"
         tool_msg += tmp_msg + "\n" + ("‾" * len(tmp_msg)) + "\n"
 
-        for tool in self.manager.registry.tools.values():
-            tool_msg += f"- <bold>{tool.name}:</bold> {tool.description}\n"
+        tool_names = [name for name in self.manager.registry.tools.keys() if name != "help"]
+        grouped = self.manager.registry.group_tool_names(tool_names)
+
+        for entry_name, subtools in grouped:
+            if subtools is None:
+                tool = self.manager.registry.tools[entry_name]
+                tool_msg += f"- <bold>{tool.name}:</bold> {tool.tool_description}\n"
+            else:
+                tool_msg += f"<bold>{entry_name}:</bold>\n"
+                for subtool in subtools:
+                    full_name = f"{entry_name}_{subtool}"
+                    tool = self.manager.registry.tools[full_name]
+                    tool_msg += f"    - <bold>{subtool}:</bold> {tool.tool_description}\n"
+
+        if "help" in self.manager.registry.tools:
+            help_tool = self.manager.registry.tools["help"]
+            tool_msg += f"- <bold>{help_tool.name}:</bold> {help_tool.tool_description}\n"
+
         self.logger.log_console(tool_msg, "console")
 
     def cmd_edit_tools(self, _) -> None:
-        tools_list = []
-        for tool in self.manager.registry.tools.values():
-            tools_list.append(f"- {tool.name}")
-
-        active_tools_num = len(tools_list)
-
-        for deactivated_tool in self.manager.registry.deactivated_tools.values():
-            tools_list.append(f"- {deactivated_tool.name}")
-
-        self.open_checklist(tools_list, active_tools_num)
+        all_names = sorted(
+            n
+            for n in list(self.manager.registry.tools.keys())
+            + list(self.manager.registry.deactivated_tools.keys())
+            if n != "help"
+        )
+        active_set = set(self.manager.registry.tools.keys())
+        grouped = self.manager.registry.group_tool_names(all_names)
+        self.open_checklist(grouped, active_set)
 
     def cmd_change_k(self, args) -> None:
         if len(args) == 0:

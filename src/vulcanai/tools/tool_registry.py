@@ -38,6 +38,10 @@ class HelpTool(ITool):
     """A tool that provides help information."""
 
     name = "help"
+    tool_description = (
+        "Provides help information for using the library. It can list all available tools or"
+        " give info about the usage of a specific tool if 'tool_name' is provided as an argument."
+    )
     description = (
         "Provides help information for using the library. It can list all available tools or"
         " give info about the usage of a specific tool if 'tool_name' is provided as an argument."
@@ -105,7 +109,7 @@ class ToolRegistry:
                 self.logger.log_msg(f"[error]{e}[/error]")
                 raise
 
-    def register_tool(self, tool: ITool, solve_deps: bool = True):
+    def register_tool(self, tool: ITool, solve_deps: bool = True, log: bool = True):
         """Register a single tool instance."""
         # Avoid duplicates
         if tool.name in self.tools:
@@ -116,7 +120,8 @@ class ToolRegistry:
             self.validation_tools.append(tool.name)
         emb = self.embedder.embed(self._doc(tool))
         self._index.append((tool.name, emb))
-        self.logger.log_registry(f"Registered tool: [registry]{tool.name}[/registry]")
+        if log:
+            self.logger.log_registry(f"Registered tool: [registry]{tool.name}[/registry]")
         self.help_tool.available_tools = self.tools
         if solve_deps:
             # Get class of tool
@@ -165,6 +170,7 @@ class ToolRegistry:
 
     def register(self):
         """Register all loaded classes marked with @vulcanai_tool."""
+        before = set(self.tools.keys())
         composite_classes = []
         for module in self._loaded_modules:
             for name in dir(module):
@@ -174,11 +180,14 @@ class ToolRegistry:
                         if issubclass(tool, CompositeTool):
                             composite_classes.append(tool)
                         else:
-                            self.register_tool(tool(), solve_deps=False)
+                            self.register_tool(tool(), solve_deps=False, log=False)
         # Register composite tools after atomic ones to resolve dependencies
         for tool_cls in composite_classes:
             tool = tool_cls()
-            self.register_tool(tool, solve_deps=True)
+            self.register_tool(tool, solve_deps=True, log=False)
+
+        newly_registered = [name for name in self.tools if name not in before]
+        self._log_tools_grouped(newly_registered)
 
     def _resolve_dependencies(self, tool: CompositeTool):
         """Resolve and attach dependencies for a CompositeTool."""
@@ -280,4 +289,81 @@ class ToolRegistry:
     @staticmethod
     def _doc(tool: ITool) -> str:
         # Text used for embeddings
-        return f"{tool.name}\n{tool.description}\n{tool.tags}\n{tool.input_schema}\n"
+        # TODO. danip
+        #return f"{tool.name}\n{tool.description}\n{tool.tags}\n{tool.input_schema}\n"
+        input_defaults = getattr(tool, "input_defaults", {}) or {}
+        inputs = []
+        for key, type_name in tool.input_schema:
+            optional = isinstance(type_name, str) and type_name.endswith("?")
+            base_type = type_name[:-1] if optional else type_name
+            role = "optional" if optional else "required"
+            default = f", default={input_defaults[key]}" if key in input_defaults else ""
+            inputs.append(f"{key}:{base_type}:{role}{default}")
+        return f"{tool.name}\n{tool.description}\n{tool.tags}\n{inputs}\n"
+
+    def group_tool_names(self, tool_names: list) -> list:
+        """Group tool names by common prefix, preserving registration order.
+
+        Returns a list of (name, subtools) tuples:
+        - For groups: (prefix, [sorted subtool suffixes])
+        - For standalone tools: (tool_name, None)
+        """
+        # Count how many tools share each prefix (require >= 2 underscore parts)
+        prefix_count: dict = {}
+        for name in tool_names:
+            parts = name.split("_")
+            for i in range(2, len(parts)):
+                prefix = "_".join(parts[:i])
+                prefix_count[prefix] = prefix_count.get(prefix, 0) + 1
+
+        # Assign each tool to its longest valid group prefix
+        tool_group: dict = {}
+        group_tools: dict = {}
+
+        for name in tool_names:
+            parts = name.split("_")
+            best_prefix = None
+            for i in range(len(parts) - 1, 1, -1):
+                prefix = "_".join(parts[:i])
+                if prefix_count.get(prefix, 0) >= 2:
+                    best_prefix = prefix
+                    break
+
+            if best_prefix:
+                suffix = name[len(best_prefix) + 1:]
+                tool_group[name] = best_prefix
+                group_tools.setdefault(best_prefix, []).append(suffix)
+            else:
+                tool_group[name] = None
+
+        # Build result preserving registration order, groups emitted on first occurrence
+        result = []
+        emitted_groups: set = set()
+
+        for name in tool_names:
+            prefix = tool_group[name]
+            if prefix is None:
+                result.append((name, None))
+            elif prefix not in emitted_groups:
+                emitted_groups.add(prefix)
+                result.append((prefix, sorted(group_tools[prefix])))
+
+        return result
+
+    def _log_tools_grouped(self, tool_names: list):
+        """Log a batch of newly registered tools, grouped by common prefix."""
+        grouped = self.group_tool_names(tool_names)
+        for entry_name, subtools in grouped:
+            if subtools is None:
+                self.logger.log_registry(
+                    f"Registered tool: [registry]{entry_name}[/registry]"
+                )
+            else:
+                self.logger.log_registry(
+                    f"Registered group of tools: [registry]{entry_name}[/registry]"
+                )
+                for subtool in subtools:
+                    self.logger.log_registry(
+                        f"Registered tool: [registry]{subtool}[/registry]",
+                        indent=1,
+                    )

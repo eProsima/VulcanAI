@@ -31,6 +31,9 @@ class ITool(ABC):
     # JSON schemas for input validation and output formatting.
     # Only used for documentation and LLM prompt generation.
     input_schema: List[Tuple[str, str]] = []  # List of (key, type) pairs, simulating a ArgValue list
+    # Optional default values for documented inputs.
+    # These are metadata for prompt generation and tool discovery only.
+    input_defaults: Dict[str, Any] = {}
     output_schema: Dict[str, str] = {}
     # Validation tool
     is_validation_tool: bool = False

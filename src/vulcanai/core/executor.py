@@ -25,8 +25,11 @@ from vulcanai.core.plan_types import ArgValue, GlobalPlan, PlanBase, Step
 TYPE_CAST = {
     "float": float,
     "int": int,
+    "integer": int,
     "bool": lambda v: v if isinstance(v, bool) else str(v).strip().lower() in ("1", "true", "yes", "on"),
+    "boolean": lambda v: v if isinstance(v, bool) else str(v).strip().lower() in ("1", "true", "yes", "on"),
     "str": str,
+    "string": str,
 }
 
 
@@ -246,6 +249,8 @@ class PlanExecutor:
     def _coerce_to_schema(self, schema: List[Tuple[str, str]], key: str, arg: str) -> Any:
         spec = dict(schema)
         t = spec.get(key, "str")
+        if isinstance(t, str) and t.endswith("?"):
+            t = t[:-1]
         try:
             out = TYPE_CAST[t](arg)
         except Exception:

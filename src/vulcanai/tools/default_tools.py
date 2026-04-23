@@ -507,6 +507,7 @@ def _run_ros2_interface_command(console, tool_name: str, command: str, interface
 @vulcanai_tool
 class Ros2NodeListTool(AtomicTool):
     name = "ros2_node_list"
+    tool_description = "List all currently available ROS 2 nodes. "
     description = (
         "List all currently available ROS 2 nodes. "
         "Equivalent to `ros2 node list`. "
@@ -535,9 +536,10 @@ class Ros2NodeListTool(AtomicTool):
 @vulcanai_tool
 class Ros2NodeInfoTool(AtomicTool):
     name = "ros2_node_info"
+    tool_description = "Show details for a specific ROS 2 node. "
     description = (
         "Show details for a specific ROS 2 node. "
-        "Equivalent to `ros2 node info <name>`."
+        "Equivalent to `ros2 node info [name]`."
         "Use when the user wants to list, show, display, or print the information of a ROS 2 node."
         )
     tags = [
@@ -560,6 +562,7 @@ class Ros2NodeInfoTool(AtomicTool):
 @vulcanai_tool
 class Ros2TopicListTool(AtomicTool):
     name = "ros2_topic_list"
+    tool_description = "List all currently available ROS 2 topics. "
     description = (
         "List all currently available ROS 2 topics. "
         "Equivalent to `ros2 topic list`. "
@@ -588,6 +591,7 @@ class Ros2TopicListTool(AtomicTool):
 @vulcanai_tool
 class Ros2TopicInfoTool(AtomicTool):
     name = "ros2_topic_info"
+    tool_description = "Show details for a specific ROS 2 topic. "
     description = (
         "Show details for a specific ROS 2 topic. "
         "Equivalent to `ros2 topic info`. "
@@ -613,9 +617,10 @@ class Ros2TopicInfoTool(AtomicTool):
 @vulcanai_tool
 class Ros2TopicFindTool(AtomicTool):
     name = "ros2_topic_find"
+    tool_description = "Find ROS 2 topics by message type. "
     description = (
         "Find ROS 2 topics by message type. "
-        "Equivalent to `ros2 topic find <msg_type>`."
+        "Equivalent to `ros2 topic find [msg_type]`."
         "Use when the user wants to find, show, display, or print the topic with a given ROS 2 topic type."
     )
     tags = [
@@ -640,9 +645,10 @@ class Ros2TopicFindTool(AtomicTool):
 @vulcanai_tool
 class Ros2TopicTypeTool(AtomicTool):
     name = "ros2_topic_type"
+    tool_description = "Show the message type used by a ROS 2 topic. "
     description = (
         "Show the message type used by a ROS 2 topic. "
-        "Equivalent to `ros2 topic type <topic_name>`."
+        "Equivalent to `ros2 topic type [topic_name]`."
         "Use when the user wants to get, show, display, or print the type of a ROS 2 topic."
     )
     tags = [
@@ -667,6 +673,7 @@ class Ros2TopicTypeTool(AtomicTool):
 @vulcanai_tool
 class Ros2TopicBwTool(AtomicTool):
     name = "ros2_topic_bw"
+    tool_description = "Stream and observe ROS 2 topic bandwidth. "
     description = (
         "Stream and observe ROS 2 topic bandwidth. "
         "Equivalent to `ros2 topic bw`. "
@@ -696,13 +703,20 @@ class Ros2TopicBwTool(AtomicTool):
         console = _require_console(self.bb)
 
         # Streaming commands variables
-        max_duration = kwargs.get("max_duration")
-        if max_duration is None:
-            max_duration = 60
+        # max_duration = kwargs.get("max_duration")
+        # if max_duration is None:
+        #     max_duration = 60
 
-        max_lines = kwargs.get("max_lines")
-        if max_lines is None:
-            max_lines = 100
+        # max_lines = kwargs.get("max_lines")
+        # if max_lines is None:
+        #     max_lines = 100
+        max_duration = kwargs.get("max_duration", None)
+        if max_duration is None or not isinstance(max_duration, (int, float)):
+            max_duration = self.input_defaults["max_duration"]
+
+        max_lines = kwargs.get("max_lines", None)
+        if max_lines is None or not isinstance(max_lines, (int, float)):
+            max_lines = self.input_defaults["max_lines"]
 
         return _run_ros2_topic_command(
             console,
@@ -717,6 +731,7 @@ class Ros2TopicBwTool(AtomicTool):
 @vulcanai_tool
 class Ros2TopicDelayTool(AtomicTool):
     name = "ros2_topic_delay"
+    tool_description = "Stream and observe ROS 2 topic delay. "
     description = (
         "Stream and observe ROS 2 topic delay. "
         "Equivalent to `ros2 topic delay`. "
@@ -731,24 +746,40 @@ class Ros2TopicDelayTool(AtomicTool):
         "inspect topic delay",
         "show topic delay"
     ]
-    input_schema = [("topic_name", "string"), ("max_duration", "float"), ("max_lines", "int")]
+    input_schema = [
+        ("topic_name", "string"),
+        ("max_duration", "float?"),
+        ("max_lines", "int?")
+    ]
+    input_defaults = {"max_duration": 60, "max_lines": 100}
     output_schema = {"output": "string"}
 
     def run(self, **kwargs):
         console = _require_console(self.bb)
+
+        # Streaming commands variables
+        max_duration = kwargs.get("max_duration")
+        if max_duration is None:
+            max_duration = 60
+
+        max_lines = kwargs.get("max_lines")
+        if max_lines is None:
+            max_lines = 100
+
         return _run_ros2_topic_command(
             console,
             self.name,
             "delay",
             topic_name=kwargs.get("topic_name"),
-            max_duration=kwargs.get("max_duration"),
-            max_lines=kwargs.get("max_lines"),
+            max_duration=max_duration,
+            max_lines=max_lines,
         )
 
 
 @vulcanai_tool
 class Ros2TopicHzTool(AtomicTool):
     name = "ros2_topic_hz"
+    tool_description = "Stream and observe ROS 2 topic average receiving rate. "
     description = (
         "Stream and observe ROS 2 topic average receiving rate. "
         "Equivalent to `ros2 topic hz`. "
@@ -766,24 +797,40 @@ class Ros2TopicHzTool(AtomicTool):
         "inspect topic hz",
         "show topic hz"
     ]
-    input_schema = [("topic_name", "string"), ("max_duration", "float"), ("max_lines", "int")]
+    input_schema = [
+        ("topic_name", "string"),
+        ("max_duration", "float?"),
+        ("max_lines", "int?")
+    ]
+    input_defaults = {"max_duration": 60, "max_lines": 100}
     output_schema = {"output": "string"}
 
     def run(self, **kwargs):
         console = _require_console(self.bb)
+
+        # Streaming commands variables
+        max_duration = kwargs.get("max_duration")
+        if max_duration is None:
+            max_duration = 60
+
+        max_lines = kwargs.get("max_lines")
+        if max_lines is None:
+            max_lines = 100
+
         return _run_ros2_topic_command(
             console,
             self.name,
             "hz",
             topic_name=kwargs.get("topic_name"),
-            max_duration=kwargs.get("max_duration"),
-            max_lines=kwargs.get("max_lines"),
+            max_duration=max_duration,
+            max_lines=max_lines,
         )
 
 
 @vulcanai_tool
 class Ros2ServiceListTool(AtomicTool):
     name = "ros2_service_list"
+    tool_description = "List all currently available ROS 2 services. "
     description = (
         "List all currently available ROS 2 services. "
         "Equivalent to `ros2 service list`. "
@@ -812,6 +859,7 @@ class Ros2ServiceListTool(AtomicTool):
 @vulcanai_tool
 class Ros2ServiceInfoTool(AtomicTool):
     name = "ros2_service_info"
+    tool_description = "Show details for a specific ROS 2 service. "
     description = (
         "Show details for a specific ROS 2 service. "
         "Equivalent to `ros2 service info`. "
@@ -838,9 +886,10 @@ class Ros2ServiceInfoTool(AtomicTool):
 @vulcanai_tool
 class Ros2ServiceTypeTool(AtomicTool):
     name = "ros2_service_type"
+    tool_description = "Show the message type used by a ROS 2 service. "
     description = (
         "Show the message type used by a ROS 2 service. "
-        "Equivalent to `ros2 service type <service_name>`."
+        "Equivalent to `ros2 service type [service_name]`."
         "Use when the user wants to get, show, display, or print the type of a ROS 2 service."
     )
     tags = [
@@ -865,9 +914,10 @@ class Ros2ServiceTypeTool(AtomicTool):
 @vulcanai_tool
 class Ros2ServiceFindTool(AtomicTool):
     name = "ros2_service_find"
+    tool_description = "Find ROS 2 services by message type. "
     description = (
         "Find ROS 2 services by message type. "
-        "Equivalent to `ros2 service find <msg_type>`."
+        "Equivalent to `ros2 service find [msg_type]`."
         "Use when the user wants to find, show, display, or print the service with a given ROS 2 sevice type."
     )
     tags = [
@@ -891,9 +941,10 @@ class Ros2ServiceFindTool(AtomicTool):
 @vulcanai_tool
 class Ros2ServiceCallTool(AtomicTool):
     name = "ros2_service_call"
+    tool_description = "Call a ROS 2 service. "
     description = (
         "Call a ROS 2 service. "
-        "Equivalent to `ros2 service call <args>`."
+        "Equivalent to `ros2 service call [args]`."
         "Use when the user wants to call a ROS 2 service ."
     )
     tags = [
@@ -904,7 +955,11 @@ class Ros2ServiceCallTool(AtomicTool):
         "call service",
         "call ros2 service",
     ]
-    input_schema = [("service_name", "string"), ("service_type", "string"), ("args", "string")]
+    input_schema = [
+        ("service_name", "string"),
+        ("service_type", "string"),
+        ("args", "string")
+    ]
     output_schema = {"output": "string"}
 
     def run(self, **kwargs):
@@ -922,9 +977,10 @@ class Ros2ServiceCallTool(AtomicTool):
 @vulcanai_tool
 class Ros2ServiceEchoTool(AtomicTool):
     name = "ros2_service_echo"
+    tool_description = "Stream and observe ROS 2 service traffic over time. "
     description = (
         "Stream and observe ROS 2 service traffic over time. "
-        "Equivalent to `ros2 service echo <service_name>`."
+        "Equivalent to `ros2 service echo [service_name]`."
         "Use when the user wants to show, display, or print the information a ROS 2 service is publishing."
     )
     tags = [
@@ -937,24 +993,39 @@ class Ros2ServiceEchoTool(AtomicTool):
         "observe service",
         "echo service",
     ]
-    input_schema = [("service_name", "string"), ("max_duration", "float"), ("max_lines", "int")]
+    input_schema = [
+        ("service_name", "string"),
+        ("max_duration", "float?"),
+        ("max_lines", "int?")
+    ]
     output_schema = {"output": "string"}
 
     def run(self, **kwargs):
         console = _require_console(self.bb)
+
+        # Streaming commands variables
+        max_duration = kwargs.get("max_duration")
+        if max_duration is None:
+            max_duration = 60
+
+        max_lines = kwargs.get("max_lines")
+        if max_lines is None:
+            max_lines = 100
+
         return _run_ros2_service_command(
             console,
             self.name,
             "echo",
             service_name=kwargs.get("service_name"),
-            max_duration=kwargs.get("max_duration"),
-            max_lines=kwargs.get("max_lines"),
+            max_duration=max_duration,
+            max_lines=max_lines,
         )
 
 
 @vulcanai_tool
 class Ros2ActionListTool(AtomicTool):
     name = "ros2_action_list"
+    tool_description = "List all currently available ROS 2 actions. "
     description = (
         "List all currently available ROS 2 actions. "
         "Equivalent to `ros2 action list`. "
@@ -982,6 +1053,7 @@ class Ros2ActionListTool(AtomicTool):
 @vulcanai_tool
 class Ros2ActionInfoTool(AtomicTool):
     name = "ros2_action_info"
+    tool_description = "Show details for a specific ROS 2 action. "
     description = (
         "Show details for a specific ROS 2 action. "
         "Equivalent to `ros2 action info`. "
@@ -1006,9 +1078,10 @@ class Ros2ActionInfoTool(AtomicTool):
 @vulcanai_tool
 class Ros2ActionTypeTool(AtomicTool):
     name = "ros2_action_type"
+    tool_description = "Show the message type used by a ROS 2 action. "
     description = (
         "Show the message type used by a ROS 2 action. "
-        "Equivalent to `ros2 action type <action_name>`."
+        "Equivalent to `ros2 action type [action_name]`."
         "Use when the user wants to get, show, display, or print the type of a ROS 2 action."
     )
     tags = [
@@ -1032,9 +1105,10 @@ class Ros2ActionTypeTool(AtomicTool):
 @vulcanai_tool
 class Ros2ActionSendGoalTool(AtomicTool):
     name = "ros2_action_send_goal"
+    tool_description = "Send a goal to a ROS 2 action server. "
     description = (
         "Send a goal to a ROS 2 action server. "
-        "Equivalent to `ros2 action send_goal <action_name> <action_type>`."
+        "Equivalent to `ros2 action send_goal [action_name] [action_type]`."
         "Use when the user wants to send a ROS 2 action goal"
     )
     tags = [
@@ -1048,7 +1122,11 @@ class Ros2ActionSendGoalTool(AtomicTool):
         "call action",
         "trigger action"
     ]
-    input_schema = [("action_name", "string"), ("action_type", "string"), ("goal_args", "string")]
+    input_schema = [
+        ("action_name", "string"),
+        ("action_type", "string"),
+        ("goal_args", "string")
+    ]
     output_schema = {"output": "string"}
 
     def run(self, **kwargs):
@@ -1066,6 +1144,7 @@ class Ros2ActionSendGoalTool(AtomicTool):
 @vulcanai_tool
 class Ros2ParamListTool(AtomicTool):
     name = "ros2_param_list"
+    tool_description = "List all currently available ROS 2 params. "
     description = (
         "List all currently available ROS 2 params. "
         "Equivalent to `ros2 param list`. "
@@ -1093,9 +1172,10 @@ class Ros2ParamListTool(AtomicTool):
 @vulcanai_tool
 class Ros2ParamGetTool(AtomicTool):
     name = "ros2_param_get"
+    tool_description = "Get the value of a parameter from a ROS 2 node. "
     description = (
         "Get the value of a parameter from a ROS 2 node. "
-        "Equivalent to `ros2 param get <node_name> <param_name>`."
+        "Equivalent to `ros2 param get [node_name] [param_name]`."
         "Use when the user want to get a Ros 2 parameter"
     )
     tags = [
@@ -1108,7 +1188,10 @@ class Ros2ParamGetTool(AtomicTool):
         "read parameter",
         "show parameter value"
     ]
-    input_schema = [("node_name", "string"), ("param_name", "string")]
+    input_schema = [
+        ("node_name", "string"),
+        ("param_name", "string")
+    ]
     output_schema = {"output": "string"}
 
     def run(self, **kwargs):
@@ -1125,9 +1208,10 @@ class Ros2ParamGetTool(AtomicTool):
 @vulcanai_tool
 class Ros2ParamDescribeTool(AtomicTool):
     name = "ros2_param_describe"
+    tool_description = "Show the definition and metadata of a ROS 2 parameter. "
     description = (
         "Show the definition and metadata of a ROS 2 parameter. "
-        "Equivalent to `ros2 param describe <node_name> <param_name>`."
+        "Equivalent to `ros2 param describe [node_name] [param_name]`."
         "Use when the user want to show, display or print a desciptive information about a ROS 2 parameter"
     )
     tags = [
@@ -1140,7 +1224,10 @@ class Ros2ParamDescribeTool(AtomicTool):
         "parameter metadata",
         "parameter details",
     ]
-    input_schema = [("node_name", "string"), ("param_name", "string")]
+    input_schema = [
+        ("node_name", "string"),
+        ("param_name", "string")
+    ]
     output_schema = {"output": "string"}
 
     def run(self, **kwargs):
@@ -1157,9 +1244,10 @@ class Ros2ParamDescribeTool(AtomicTool):
 @vulcanai_tool
 class Ros2ParamSetTool(AtomicTool):
     name = "ros2_param_set"
+    tool_description = "Set the value of a parameter on a ROS 2 node. "
     description = (
         "Set the value of a parameter on a ROS 2 node. "
-        "Equivalent to `ros2 param set <node_name> <param_name> <value>`."
+        "Equivalent to `ros2 param set [node_name] [param_name] [value]`."
         "Use when the user want to set a ROS 2 parameter"
     )
     tags = [
@@ -1172,7 +1260,11 @@ class Ros2ParamSetTool(AtomicTool):
         "update parameter",
         "change parameter value"
     ]
-    input_schema = [("node_name", "string"), ("param_name", "string"), ("set_value", "string")]
+    input_schema = [
+        ("node_name", "string"),
+        ("param_name", "string"),
+        ("set_value", "string")
+    ]
     output_schema = {"output": "string"}
 
     def run(self, **kwargs):
@@ -1190,9 +1282,10 @@ class Ros2ParamSetTool(AtomicTool):
 @vulcanai_tool
 class Ros2ParamDeleteTool(AtomicTool):
     name = "ros2_param_delete"
+    tool_description = "Delete a parameter from a ROS 2 node. "
     description = (
         "Delete a parameter from a ROS 2 node. "
-        "Equivalent to `ros2 param delete <node_name> <param_name>`."
+        "Equivalent to `ros2 param delete [node_name] [param_name]`."
         "Used when the user want to delete a ROS 2 parameter"
     )
     tags = [
@@ -1206,7 +1299,10 @@ class Ros2ParamDeleteTool(AtomicTool):
         "remove parameter",
         "unset parameter"
     ]
-    input_schema = [("node_name", "string"), ("param_name", "string")]
+    input_schema = [
+        ("node_name", "string"),
+        ("param_name", "string")
+    ]
     output_schema = {"output": "string"}
 
     def run(self, **kwargs):
@@ -1223,9 +1319,10 @@ class Ros2ParamDeleteTool(AtomicTool):
 @vulcanai_tool
 class Ros2ParamDumpTool(AtomicTool):
     name = "ros2_param_dump"
+    tool_description = "Export all parameters from a ROS 2 node. "
     description = (
         "Export all parameters from a ROS 2 node. "
-        "Equivalent to `ros2 param dump <node_name>`."
+        "Equivalent to `ros2 param dump [node_name]`."
         "Used when the user want to show, display or print all the parameters of a ROS 2 node"
     )
     tags = [
@@ -1250,9 +1347,10 @@ class Ros2ParamDumpTool(AtomicTool):
 @vulcanai_tool
 class Ros2ParamLoadTool(AtomicTool):
     name = "ros2_param_load"
+    tool_description = "Load parameters into a ROS 2 node from a file."
     description = (
         "Load parameters into a ROS 2 node from a file."
-        "Equivalent to `ros2 param load <node_name> <file_path>`."
+        "Equivalent to `ros2 param load [node_name] [file_path]`."
         "Used when the user want to load a parameter filer for a ROS 2 node"
     )
     tags = [
@@ -1266,7 +1364,10 @@ class Ros2ParamLoadTool(AtomicTool):
         "import parameters",
         "load params from file"
     ]
-    input_schema = [("node_name", "string"), ("file_path", "string")]
+    input_schema = [
+        ("node_name", "string"),
+        ("file_path", "string")
+    ]
     output_schema = {"output": "string"}
 
     def run(self, **kwargs):
@@ -1283,6 +1384,7 @@ class Ros2ParamLoadTool(AtomicTool):
 @vulcanai_tool
 class Ros2PkgListTool(AtomicTool):
     name = "ros2_pkg_list"
+    tool_description = "List all currently available ROS 2 pkgs. "
     description = (
         "List all currently available ROS 2 pkgs. "
         "Equivalent to `ros2 pkg list`. "
@@ -1310,6 +1412,7 @@ class Ros2PkgListTool(AtomicTool):
 @vulcanai_tool
 class Ros2PkgExecutablesTool(AtomicTool):
     name = "ros2_pkg_executables"
+    tool_description = "List executable entry points provided by ROS 2 packages. "
     description = (
         "List executable entry points provided by ROS 2 packages. "
         "Equivalent to `ros2 pkg executables`."
@@ -1337,6 +1440,7 @@ class Ros2PkgExecutablesTool(AtomicTool):
 @vulcanai_tool
 class Ros2InterfaceListTool(AtomicTool):
     name = "ros2_interface_list"
+    tool_description = "List all currently available ROS 2 interfaces. "
     description = (
         "List all currently available ROS 2 interfaces. "
         "Equivalent to `ros2 interface list`. "
@@ -1364,6 +1468,7 @@ class Ros2InterfaceListTool(AtomicTool):
 @vulcanai_tool
 class Ros2InterfacePackagesTool(AtomicTool):
     name = "ros2_interface_packages"
+    tool_description = "List ROS 2 packages that provide interfaces."
     description = (
         "List ROS 2 packages that provide interfaces."
         "Equivalent to `ros2 interface packages`."
@@ -1391,9 +1496,10 @@ class Ros2InterfacePackagesTool(AtomicTool):
 @vulcanai_tool
 class Ros2InterfacePackageTool(AtomicTool):
     name = "ros2_interface_package"
+    tool_description = "List the interfaces provided by a ROS 2 package. "
     description = (
         "List the interfaces provided by a ROS 2 package. "
-        "Equivalent to `ros2 interface package <package_name>`."
+        "Equivalent to `ros2 interface package [package_name]`."
         "Used when the user wants to list, show, display or print the ROS 2 interfaces of a package"
     )
     tags = [
@@ -1417,9 +1523,10 @@ class Ros2InterfacePackageTool(AtomicTool):
 @vulcanai_tool
 class Ros2InterfaceShowTool(AtomicTool):
     name = "ros2_interface_show"
+    tool_description = "Show the definition of a ROS 2 interface. "
     description = (
         "Show the definition of a ROS 2 interface. "
-        "Equivalent to `ros2 interface show <interface_name>`."
+        "Equivalent to `ros2 interface show [interface_name]`."
         "Used when the user wants show, display or print the ROS 2 interface information"
     )
     tags = [
@@ -1657,275 +1764,327 @@ def import_msg_type(type_str: str, node):
     return getattr(module, msg_name)
 
 
-# @vulcanai_tool
-# class Ros2PublishTool(AtomicTool):
-#     name = "ros_publish"
-#     description = (
-#         "Publish one or more messages to a given ROS 2 topic [topic_name]. "
-#         "Or execute 'ros2 topic pub [topic_name]'. "
-#         "Supports both simple string messages (for std_msgs/msg/String) and custom message types. "
-#         "For custom types, pass message_data as a JSON object with field names and values. "
-#         "By default it keeps publishing messages until Ctrl+C is pressed. "
-#         "with type 'std_msgs/msg/String' in topic '/chatter' "
-#         "with 0.1 seconds of delay between messages to publish"
-#         'Example for custom type: msg_type=\'my_pkg/msg/MyMessage\', message_data=\'{"index": 1, "message": "Hello"}\''
-#     )
-#     tags = ["ros2", "publish", "message", "std_msgs"]
+@vulcanai_tool
+class Ros2PublishTool(AtomicTool):
+    name = "ros_publish"
+    #ros2 topic pub chatter std_msgs/msg/String 'data: Hello World'
+    # description = (
+    #     "Publish one or more messages to a given ROS 2 topic [topic_name]. "
+    #     "Or execute 'ros2 topic pub [topic_name]'. "
+    #     "Supports both simple string messages (for std_msgs/msg/String) and custom message types. "
+    #     "For custom types, pass message_data as a JSON object with field names and values. "
+    #     "By default it keeps publishing messages until Ctrl+C is pressed. "
+    #     "with type 'std_msgs/msg/String' in topic '/chatter' "
+    #     "with 0.1 seconds of delay between messages to publish"
+    #     'Example for custom type: msg_type=\'my_pkg/msg/MyMessage\', message_data=\'{"index": 1, "message": "Hello"}\''
+    # )
+    # tags = ["ros2", "publish", "message", "std_msgs"]
+    tool_description = "Stream and publish ROS 2 topic. "
+    description = (
+        "Stream and publish ROS 2 topic. "
+        "Equivalent to `ros2 topic pub`. "
+        "Use when the user wants to write or publish a message in a ROS 2 topic. "
+        "If optional limits are omitted, it defaults to 60 seconds and 100 lines."
+    )
+    tags = [
+        "ros2",
+        "ros 2",
+        "write",
+        "writer",
+        "pub",        
+        "publish",
+        "publisher",
+        "topic pub",
+        "ros2 topic pub",
+        "pub topic",
+        "write topic",        
+    ]
 
-#     input_schema = [
-#         ("topic", "string"),  # e.g. "/chatter"
-#         ("message_data", "string?"),  # (optional) payload - string for std_msgs/String or JSON for custom types
-#         ("msg_type", "string?"),  # (optional) e.g. "std_msgs/msg/String" or "my_pkg/msg/CustomMsg"
-#         ("max_lines", "int?"),  # (optional) number of messages to publish
-#         ("max_duration", "int?"),  # (optional) stop after this seconds
-#         ("period_sec", "float?"),  # (optional) delay between publishes (in seconds)
-#         ("message", "string?"),  # (deprecated) use message_data instead
-#     ]
+    # input_schema = [
+    #     ("topic", "string"),  # e.g. "/chatter"
+    #     ("message_data", "string?"),  # (optional) payload - string for std_msgs/String or JSON for custom types
+    #     ("msg_type", "string?"),  # (optional) e.g. "std_msgs/msg/String" or "my_pkg/msg/CustomMsg"
+    #     ("max_lines", "int?"),  # (optional) number of messages to publish
+    #     ("max_duration", "int?"),  # (optional) stop after this seconds
+    #     ("period_sec", "float?"),  # (optional) delay between publishes (in seconds)
+    #     ("message", "string?"),  # (deprecated) use message_data instead
+    # ]
 
-#     output_schema = {
-#         "published": "bool",
-#         "count": "int",
-#         "topic": "string",
-#         "output": "string",
-#     }
+    input_schema = [
+        ("topic", "string"),  # e.g. "/chatter"
+        ("message_data", "string?"),  # (optional) payload - string for std_msgs/String or JSON for custom types
+        ("msg_type", "string?"),  # (optional) e.g. "std_msgs/msg/String" or "my_pkg/msg/CustomMsg"
+        ("max_lines", "int?"),  # (optional) number of messages to publish
+        ("max_duration", "int?"),  # (optional) stop after this seconds        
+    ]
 
-#     def msg_from_dict(self, msg, values: dict):
-#         """
-#         Populate a ROS 2 message instance from a Python dictionary.
+    output_schema = {
+        "published": "bool",
+        "count": "int",
+        "topic": "string",
+        "output": "string",
+    }
 
-#         This function recursively assigns values from a dictionary to the
-#         corresponding fields of a ROS 2 message instance.
+    def msg_from_dict(self, msg, values: dict):
+        """
+        Populate a ROS 2 message instance from a Python dictionary.
 
-#         Supports:
-#         - Primitive fields (int, float, bool, string)
-#         - Nested ROS 2 messages
+        This function recursively assigns values from a dictionary to the
+        corresponding fields of a ROS 2 message instance.
 
-#         """
-#         for field, value in values.items():
-#             attr = getattr(msg, field)
-#             if hasattr(attr, "__slots__"):
-#                 self.msg_from_dict(attr, value)
-#             else:
-#                 setattr(msg, field, value)
+        Supports:
+        - Primitive fields (int, float, bool, string)
+        - Nested ROS 2 messages
 
-#     def run(self, **kwargs):
-#         # Ros2 node to create the Publisher and print the log information
-#         node = self.bb.get("main_node", None)
-#         if node is None:
-#             raise Exception("Could not find shared node, aborting...")
-#         # Optional console handle to route logs to the subprocess panel.
-#         console = self.bb.get("console", None)
+        """
+        for field, value in values.items():
+            attr = getattr(msg, field)
+            if hasattr(attr, "__slots__"):
+                self.msg_from_dict(attr, value)
+            else:
+                setattr(msg, field, value)
 
-#         result = {
-#             "published": "False",
-#             "count": "0",
-#             "topic": "",
-#             "output": "",
-#         }
+    def run(self, **kwargs):
+        # Ros2 node to create the Publisher and print the log information
+        node = self.bb.get("main_node", None)
+        if node is None:
+            raise Exception("Could not find shared node, aborting...")
+        # Optional console handle to route logs to the subprocess panel.
+        console = self.bb.get("console", None)
 
-#         panel_enabled = console is not None and hasattr(console, "show_subprocess_panel")
-#         if panel_enabled:
-#             console.call_from_thread(console.show_subprocess_panel)
-#             if hasattr(console, "change_route_logs"):
-#                 console.call_from_thread(console.change_route_logs, True)
+        result = {
+            "published": "False",
+            "count": "0",
+            "topic": "",
+            "output": "",
+        }
 
-#         topic_name = kwargs.get("topic", "/chatter")
-#         # Support both 'message_data' (new) and 'message' (deprecated)
-#         message_data = kwargs.get("message_data", kwargs.get("message", "Hello from VulcanAI PublishTool!"))
-#         msg_type_str = kwargs.get("msg_type", "std_msgs/msg/String")
+        panel_enabled = console is not None and hasattr(console, "show_subprocess_panel")
+        if panel_enabled:
+            console.call_from_thread(console.show_subprocess_panel)
+            if hasattr(console, "change_route_logs"):
+                console.call_from_thread(console.change_route_logs, True)
 
-#         max_duration = kwargs.get("max_duration", None)
-#         if not isinstance(max_duration, (int, float)) or max_duration <= 0:
-#             max_duration = None
+        topic_name = kwargs.get("topic", "/chatter")
+        # Support both 'message_data' (new) and 'message' (deprecated)
+        message_data = kwargs.get("message_data", kwargs.get("message", "Hello from VulcanAI PublishTool!"))
+        msg_type_str = kwargs.get("msg_type", "std_msgs/msg/String")
 
-#         max_lines = kwargs.get("max_lines", None)
-#         if max_lines is not None and not isinstance(max_lines, int):
-#             max_lines = None
+        max_duration = kwargs.get("max_duration", None)
+        if not isinstance(max_duration, (int, float)) or max_duration <= 0:
+            max_duration = None
 
-#         period_sec = kwargs.get("period_sec", 0.1)
+        max_lines = kwargs.get("max_lines", None)
+        if max_lines is not None and not isinstance(max_lines, int):
+            max_lines = None
 
-#         qos_depth = 10
+        period_sec = kwargs.get("period_sec", 0.1)
 
-#         if console is None:
-#             print("[ERROR] Console not is None")
+        qos_depth = 10
 
-#             return result
+        if console is None:
+            print("[ERROR] Console not is None")
 
-#         published_msgs = []
-#         output_lines = []
-#         publisher = None
-#         cancel_token = None
+            return result
 
-#         try:
-#             if not topic_name:
-#                 console.call_from_thread(console.logger.log_msg, "<gray>[ROS] [ERROR] No topic provided.</gray>")
-#                 return result
+        published_msgs = []
+        output_lines = []
+        publisher = None
+        cancel_token = None
 
-#             result["topic"] = topic_name
+        try:
+            if not topic_name:
+                console.call_from_thread(console.logger.log_msg, "<gray>[ROS] [ERROR] No topic provided.</gray>")
+                return result
 
-#             if max_lines is not None and max_lines <= 0:
-#                 # No messages to publish
-#                 console.call_from_thread(
-#                     console.logger.log_msg, "<gray>[ROS] [WARN] max_lines <= 0, nothing to publish.</gray>"
-#                 )
-#                 return result
+            result["topic"] = topic_name
 
-#             MsgType = import_msg_type(msg_type_str, node)
-#             publisher = node.create_publisher(MsgType, topic_name, qos_depth)
-#             cancel_token = Future()
-#             console.set_stream_task(cancel_token)
-#             log_tool_in_stream_and_main(
-#                 console,
-#                 "[tool]Publisher created![tool]",
-#                 tool_name=self.name,
-#             )
+            if max_lines is not None and max_lines <= 0:
+                # No messages to publish
+                console.call_from_thread(
+                    console.logger.log_msg, "<gray>[ROS] [WARN] max_lines <= 0, nothing to publish.</gray>"
+                )
+                return result
 
-#             start_time = time.monotonic()
-#             published_count = 0
+            MsgType = import_msg_type(msg_type_str, node)
+            publisher = node.create_publisher(MsgType, topic_name, qos_depth)
+            cancel_token = Future()
+            console.set_stream_task(cancel_token)
+            log_tool_in_stream_and_main(
+                console,
+                "[tool]Publisher created![tool]",
+                tool_name=self.name,
+            )
 
-#             while True:
-#                 if cancel_token.cancelled():
-#                     console.logger.log_tool("[tool]Ctrl+C received:[/tool] stopping publish...", tool_name=self.name)
-#                     break
-#                 if max_lines is not None and published_count >= max_lines:
-#                     console.logger.log_tool(f"[tool]Stopping:[/tool] Reached max_lines = {max_lines}", tool_name=self.name)
-#                     break
-#                 if max_duration is not None and (time.monotonic() - start_time) >= max_duration:
-#                     console.logger.log_tool(
-#                         f"[tool]Stopping:[/tool] Exceeded max_duration = {max_duration}s",
-#                         tool_name=self.name,
-#                     )
-#                     break
+            start_time = time.monotonic()
+            published_count = 0
 
-#                 msg = MsgType()
+            while True:
+                if cancel_token.cancelled():
+                    console.logger.log_tool("[tool]Ctrl+C received:[/tool] stopping publish...", tool_name=self.name)
+                    break
+                if max_lines is not None and published_count >= max_lines:
+                    console.logger.log_tool(f"[tool]Stopping:[/tool] Reached max_lines = {max_lines}", tool_name=self.name)
+                    break
+                if max_duration is not None and (time.monotonic() - start_time) >= max_duration:
+                    console.logger.log_tool(
+                        f"[tool]Stopping:[/tool] Exceeded max_duration = {max_duration}s",
+                        tool_name=self.name,
+                    )
+                    break
 
-#                 # Try to populate message based on message type
-#                 if hasattr(msg, "data"):
-#                     # Standard message type with a 'data' field (e.g., std_msgs/msg/String)
-#                     msg.data = message_data
-#                 else:
-#                     # Custom message type - parse message_data as JSON
-#                     try:
-#                         payload = json.loads(message_data)
-#                         self.msg_from_dict(msg, payload)
-#                     except json.JSONDecodeError as e:
-#                         console.call_from_thread(
-#                             console.logger.log_msg,
-#                             "<gray>[ROS] [ERROR] Failed to parse message_data as JSON for custom type"
-#                             + f"'{msg_type_str}': {e}</gray>",
-#                         )
-#                         return result
+                msg = MsgType()
 
-#                 if hasattr(msg, "data"):
-#                     publish_line = f"[ROS] [INFO] Publishing: '{msg.data}'"
-#                     console.call_from_thread(console.logger.log_msg, f"<gray>{publish_line}</gray>")
-#                 else:
-#                     publish_line = f"[ROS] [INFO] Publishing custom message to '{topic_name}'"
-#                     console.call_from_thread(
-#                         console.logger.log_msg,
-#                         f"<gray>{publish_line}</gray>",
-#                     )
-#                 output_lines.append(publish_line)
-#                 publisher.publish(msg)
-#                 published_msgs.append(msg.data if hasattr(msg, "data") else str(msg))
-#                 published_count += 1
+                # Try to populate message based on message type
+                if hasattr(msg, "data"):
+                    # Standard message type with a 'data' field (e.g., std_msgs/msg/String)
+                    msg.data = message_data
+                else:
+                    # Custom message type - parse message_data as JSON
+                    try:
+                        payload = json.loads(message_data)
+                        self.msg_from_dict(msg, payload)
+                    except json.JSONDecodeError as e:
+                        console.call_from_thread(
+                            console.logger.log_msg,
+                            "<gray>[ROS] [ERROR] Failed to parse message_data as JSON for custom type"
+                            + f"'{msg_type_str}': {e}</gray>",
+                        )
+                        return result
 
-#                 rclpy.spin_once(node, timeout_sec=0.05)
+                if hasattr(msg, "data"):
+                    publish_line = f"[ROS] [INFO] Publishing: '{msg.data}'"
+                    console.call_from_thread(console.logger.log_msg, f"<gray>{publish_line}</gray>")
+                else:
+                    publish_line = f"[ROS] [INFO] Publishing custom message to '{topic_name}'"
+                    console.call_from_thread(
+                        console.logger.log_msg,
+                        f"<gray>{publish_line}</gray>",
+                    )
+                output_lines.append(publish_line)
+                publisher.publish(msg)
+                published_msgs.append(msg.data if hasattr(msg, "data") else str(msg))
+                published_count += 1
 
-#                 if period_sec and period_sec > 0.0:
-#                     time.sleep(period_sec)
+                rclpy.spin_once(node, timeout_sec=0.05)
 
-#         finally:
-#             console.set_stream_task(None)
-#             if panel_enabled:
-#                 if hasattr(console, "change_route_logs"):
-#                     console.call_from_thread(console.change_route_logs, False)
-#             if publisher is not None:
-#                 try:
-#                     node.destroy_publisher(publisher)
-#                 except Exception:
-#                     pass
+                if period_sec and period_sec > 0.0:
+                    time.sleep(period_sec)
 
-#         result["output"] = "\n".join(output_lines)
+        finally:
+            console.set_stream_task(None)
+            if panel_enabled:
+                if hasattr(console, "change_route_logs"):
+                    console.call_from_thread(console.change_route_logs, False)
+            if publisher is not None:
+                try:
+                    node.destroy_publisher(publisher)
+                except Exception:
+                    pass
 
-#         if published_msgs is not None:
-#             result["published"] = "True"
-#             result["count"] = len(published_msgs)
+        result["output"] = "\n".join(output_lines)
 
-#         print_tool_output(console, result["output"], self.name)
+        if published_msgs is not None:
+            result["published"] = "True"
+            result["count"] = len(published_msgs)
 
-#         # if panel_enabled:
-#         #     console.logger.log_msg(result["output"], color="gray")
-#         #     console.logger.log_msg("\n")
-#         # else:
-#         #     print_tool_output(console, result["output"], self.name)
-#         return result
+        print_tool_output(console, result["output"], self.name)
+
+        # if panel_enabled:
+        #     console.logger.log_msg(result["output"], color="gray")
+        #     console.logger.log_msg("\n")
+        # else:
+        #     print_tool_output(console, result["output"], self.name)
+        return result
 
 
-# @vulcanai_tool
-# class Ros2SubscribeTool(AtomicTool):
-#     name = "ros_subscribe"
-#     description = (
-#         "Subscribe to a topic [topic] or execute 'ros2 topic echo [topic]' "
-#         "and stop after receiving N messages or max duration."
-#     )
-#     tags = ["ros2", "subscribe", "topic", "std_msgs"]
+@vulcanai_tool
+class Ros2SubscribeTool(AtomicTool):
+    name = "ros_subscribe"
+    tool_description = "Stream and observe ROS 2 topic. "
+    description = (
+        "Stream and observe ROS 2 topic. "
+        "Equivalent to `ros2 topic echo`. "
+        "Use when the user wants to show, display, or print what is being published in a ROS 2 topic. "
+        "If optional limits are omitted, it defaults to 60 seconds and 100 lines."
+    )
+    tags = [
+        "ros2",
+        "ros 2",
+        "echo",
+        "subscribe",
+        "subs",
+        "topic echo",
+        "ros2 topic echo",
+        "inspect topic",
+        "show topic",
+        "display topic",
+        "print topic"
+    ]
 
-#     input_schema = [
-#         ("topic", "string"),  # topic name
-#         ("max_lines", "int?"),  # (optional) stop after this number of messages
-#         ("max_duration", "int?"),  # (optional) stop after this seconds
-#     ]
+    input_schema = [
+        ("topic", "string"),      # topic name
+        ("max_duration", "int?"), # (optional) stop after this seconds
+        ("max_lines", "int?"),    # (optional) stop after this number of messages
+    ]
+    input_defaults = {"max_duration": 60, "max_lines": 100}
+    output_schema = {
+        "subscribed": "bool",
+        "count": "int",
+        "topic": "string",
+        "output": "string",
+    }
 
-#     output_schema = {
-#         "subscribed": "bool",
-#         "count": "int",
-#         "topic": "string",
-#         "output": "string",
-#     }
+    def run(self, **kwargs):
+        # Ros2 node to create the Publisher and print the log information
+        node = self.bb.get("main_node", None)
+        if node is None:
+            raise Exception("Could not find shared node, aborting...")
+        # Optional console handle to support Ctrl+C cancellation.
+        console = self.bb.get("console", None)
 
-#     def run(self, **kwargs):
-#         # Ros2 node to create the Publisher and print the log information
-#         node = self.bb.get("main_node", None)
-#         if node is None:
-#             raise Exception("Could not find shared node, aborting...")
-#         # Optional console handle to support Ctrl+C cancellation.
-#         console = self.bb.get("console", None)
+        result = {
+            "subscribed": "False",
+            "count": "0",
+            "topic": "",
+            "output": "",
+        }
 
-#         result = {
-#             "subscribed": "False",
-#             "count": "0",
-#             "topic": "",
-#             "output": "",
-#         }
+        topic_name = kwargs.get("topic", None)
+        max_duration = kwargs.get("max_duration")
+        try:
+            max_duration = float(max_duration) if max_duration is not None else None
+        except (TypeError, ValueError):
+            max_duration = None
+        if max_duration is None or max_duration <= 0:
+            max_duration = self.input_defaults["max_duration"]
 
-#         topic_name = kwargs.get("topic", None)
-#         max_duration = kwargs.get("max_duration", None)
-#         if max_duration is not None and not isinstance(max_duration, (int, float)):
-#             max_duration = None
+        max_lines = kwargs.get("max_lines")
+        try:
+            max_lines = int(max_lines) if max_lines is not None else None
+        except (TypeError, ValueError):
+            max_lines = None
+        if max_lines is None or max_lines <= 0:
+            max_lines = self.input_defaults["max_lines"]
 
-#         max_lines = kwargs.get("max_lines", None)
-#         if max_lines is not None and not isinstance(max_lines, int):
-#             max_lines = None
+        # Start line (stream panel/main panel with tool color)
+        console.logger.log_tool("[tool]Subscriber created![/tool]", tool_name=self.name)
 
-#         # Start line (stream panel/main panel with tool color)
-#         console.logger.log_tool("[tool]Subscriber created![/tool]", tool_name=self.name)
+        # "--field data" prints only the data field from each message
+        # instead of the full YAML message
+        # "--no-arr" do not print array fields of messages
+        base_args = ["ros2", "topic", "echo", topic_name, "--field", "data", "--no-arr"]
+        ret = execute_subprocess(console, self.name, base_args, max_duration, max_lines, log_created=False)
 
-#         # "--field data" prints only the data field from each message
-#         # instead of the full YAML message
-#         # "--no-arr" do not print array fields of messages
-#         base_args = ["ros2", "topic", "echo", topic_name, "--field", "data", "--no-arr"]
-#         ret = execute_subprocess(console, self.name, base_args, max_duration, max_lines, log_created=False)
+        ret_lines = ret.splitlines() if isinstance(ret, str) and ret else []
 
-#         ret_lines = ret.splitlines() if isinstance(ret, str) and ret else []
+        result["output"] = "\n".join(ret_lines)
 
-#         result["output"] = "\n".join(ret_lines)
+        if ret is not None:
+            result["subscribed"] = "True"
+            result["count"] = len(ret_lines)
+            result["topic"] = topic_name
 
-#         if ret is not None:
-#             result["subscribed"] = "True"
-#             result["count"] = len(ret_lines)
-#             result["topic"] = topic_name
+        print_tool_output(console, result["output"], self.name)
 
-#         print_tool_output(console, result["output"], self.name)
-
-#         return result
+        return result
