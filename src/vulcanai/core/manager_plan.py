@@ -57,6 +57,10 @@ Inputs whose type ends with `?` are optional and may be omitted when the tool de
 If an input is marked optional and the user did not ask for a specific value, 
 omit that argument instead of inventing one.
 Do not guess placeholder values such as `1`, `1.0`, `10`, or empty strings for optional inputs.
+When the user explicitly provides identifiers or counts (for example topic names, service names, node names,
+file paths, or the number of repetitions), copy those values exactly into the tool arguments.
+If the user asks to repeat the same action N times and a tool exposes an internal count or limit argument
+(for example `max_lines`), prefer a single Step using that argument instead of duplicating the same tool call.
 {user_context}
 ## Available tools:
 {tools_text}

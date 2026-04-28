@@ -642,6 +642,9 @@ class VulcanConsole(App):
         self.logger.log_console(table, "console")
 
     def cmd_tools(self, _) -> None:
+        def get_tool_summary(tool) -> str:
+            return getattr(tool, "tool_description", None) or tool.description
+
         tmp_msg = f"(current index k={self.manager.k})"
         tool_msg = ("_" * len(tmp_msg)) + "\n"
         tool_msg += "<bold>Available tools:</bold>\n"
@@ -653,17 +656,17 @@ class VulcanConsole(App):
         for entry_name, subtools in grouped:
             if subtools is None:
                 tool = self.manager.registry.tools[entry_name]
-                tool_msg += f"<bold>{tool.name}:</bold> {tool.tool_description}\n"
+                tool_msg += f"<bold>{tool.name}:</bold> {get_tool_summary(tool)}\n"
             else:
                 tool_msg += f"<bold>{entry_name}:</bold>\n"
                 for subtool in subtools:
                     full_name = f"{entry_name}_{subtool}"
                     tool = self.manager.registry.tools[full_name]
-                    tool_msg += f"  - <bold>{subtool}:</bold> {tool.tool_description}\n"
+                    tool_msg += f"  - <bold>{subtool}:</bold> {get_tool_summary(tool)}\n"
 
         if "help" in self.manager.registry.tools:
             help_tool = self.manager.registry.tools["help"]
-            tool_msg += f"- <bold>{help_tool.name}:</bold> {help_tool.tool_description}\n"
+            tool_msg += f"- <bold>{help_tool.name}:</bold> {get_tool_summary(help_tool)}\n"
 
         self.logger.log_console(tool_msg, "console")
 

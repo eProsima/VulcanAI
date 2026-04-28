@@ -1506,199 +1506,6 @@ class Ros2InterfaceShowTool(AtomicTool):
         console = _require_console(self.bb)
         return _run_ros2_interface_command(console, self.name, "show", interface_name=kwargs.get("interface_name"))
 
-
-# ---------------------------------------------------------------------------
-# Backward-compatible legacy wrappers (hidden from planner)
-# ---------------------------------------------------------------------------
-
-
-# @vulcanai_tool
-# class Ros2NodeTool(AtomicTool):
-#     name = "ros2_node"
-#     planner_visible = False
-#     description = (
-#         "[DEPRECATED] Backward-compatible wrapper for ROS2 node commands. "
-#         "Prefer strict tools: ros2_node_list and ros2_node_info."
-#     )
-#     tags = ["ros2", "nodes", "cli", "info", "diagnostics"]
-#     input_schema = [("command", "string"), ("node_name", "string?")]
-#     output_schema = {"output": "string"}
-
-#     def run(self, **kwargs):
-#         console = _require_console(self.bb)
-#         return _run_ros2_node_command(
-#             console,
-#             self.name,
-#             kwargs.get("command"),
-#             node_name=kwargs.get("node_name", ""),
-#         )
-
-
-# @vulcanai_tool
-# class Ros2TopicTool(AtomicTool):
-#     name = "ros2_topic"
-#     planner_visible = False
-#     description = (
-#         "[DEPRECATED] Backward-compatible wrapper for ROS2 topic commands. "
-#         "Prefer strict tools: ros2_topic_*."
-#     )
-#     tags = ["ros2", "topics", "cli", "info"]
-#     input_schema = [
-#         ("command", "string"),
-#         ("topic_name", "string?"),
-#         ("msg_type", "string?"),
-#         ("max_duration", "number?"),
-#         ("max_lines", "int?"),
-#     ]
-#     output_schema = {"output": "string"}
-
-#     def run(self, **kwargs):
-#         console = _require_console(self.bb)
-#         return _run_ros2_topic_command(
-#             console,
-#             self.name,
-#             kwargs.get("command"),
-#             topic_name=kwargs.get("topic_name"),
-#             msg_type=kwargs.get("msg_type"),
-#             max_duration=kwargs.get("max_duration"),
-#             max_lines=kwargs.get("max_lines"),
-#         )
-
-
-# @vulcanai_tool
-# class Ros2ServiceTool(AtomicTool):
-#     name = "ros2_service"
-#     planner_visible = False
-#     description = (
-#         "[DEPRECATED] Backward-compatible wrapper for ROS2 service commands. "
-#         "Prefer strict tools: ros2_service_*."
-#     )
-#     tags = ["ros2", "services", "cli", "info", "call"]
-#     input_schema = [
-#         ("command", "string"),
-#         ("service_name", "string?"),
-#         ("service_type", "string?"),
-#         ("call", "bool?"),
-#         ("args", "string?"),
-#         ("max_duration", "number?"),
-#         ("max_lines", "int?"),
-#     ]
-#     output_schema = {"output": "string"}
-
-#     def run(self, **kwargs):
-#         console = _require_console(self.bb)
-#         return _run_ros2_service_command(
-#             console,
-#             self.name,
-#             kwargs.get("command"),
-#             service_name=kwargs.get("service_name"),
-#             service_type=kwargs.get("service_type"),
-#             call_args=kwargs.get("args"),
-#             max_duration=kwargs.get("max_duration"),
-#             max_lines=kwargs.get("max_lines"),
-#         )
-
-
-# @vulcanai_tool
-# class Ros2ActionTool(AtomicTool):
-#     name = "ros2_action"
-#     planner_visible = False
-#     description = (
-#         "[DEPRECATED] Backward-compatible wrapper for ROS2 action commands. "
-#         "Prefer strict tools: ros2_action_*."
-#     )
-#     tags = ["ros2", "actions", "cli", "info", "goal"]
-#     input_schema = [
-#         ("command", "string"),
-#         ("action_name", "string?"),
-#         ("action_type", "string?"),
-#         ("send_goal", "bool?"),
-#         ("goal_args", "string?"),
-#     ]
-#     output_schema = {"output": "string"}
-
-#     def run(self, **kwargs):
-#         console = _require_console(self.bb)
-#         return _run_ros2_action_command(
-#             console,
-#             self.name,
-#             kwargs.get("command"),
-#             action_name=kwargs.get("action_name"),
-#             action_type=kwargs.get("action_type"),
-#             goal_args=kwargs.get("goal_args"),
-#         )
-
-
-# @vulcanai_tool
-# class Ros2ParamTool(AtomicTool):
-#     name = "ros2_param"
-#     planner_visible = False
-#     description = (
-#         "[DEPRECATED] Backward-compatible wrapper for ROS2 param commands. "
-#         "Prefer strict tools: ros2_param_*."
-#     )
-#     tags = ["ros2", "param", "parameters", "cli"]
-#     input_schema = [
-#         ("command", "string"),
-#         ("param_name", "string?"),
-#         ("node_name", "string?"),
-#         ("set_value", "string?"),
-#         ("file_path", "string?"),
-#     ]
-#     output_schema = {"output": "string"}
-
-#     def run(self, **kwargs):
-#         console = _require_console(self.bb)
-#         return _run_ros2_param_command(
-#             console,
-#             self.name,
-#             kwargs.get("command"),
-#             node_name=kwargs.get("node_name"),
-#             param_name=kwargs.get("param_name"),
-#             set_value=kwargs.get("set_value"),
-#             file_path=kwargs.get("file_path"),
-#         )
-
-
-# @vulcanai_tool
-# class Ros2PkgTool(AtomicTool):
-#     name = "ros2_pkg"
-#     planner_visible = False
-#     description = (
-#         "[DEPRECATED] Backward-compatible wrapper for ROS2 pkg commands. "
-#         "Prefer strict tools: ros2_pkg_list and ros2_pkg_executables."
-#     )
-#     tags = ["ros2", "pkg", "packages", "cli", "introspection"]
-#     input_schema = [("command", "string")]
-#     output_schema = {"output": "string"}
-
-#     def run(self, **kwargs):
-#         console = _require_console(self.bb)
-#         return _run_ros2_pkg_command(console, self.name, kwargs.get("command"))
-
-
-# @vulcanai_tool
-# class Ros2InterfaceTool(AtomicTool):
-#     name = "ros2_interface"
-#     planner_visible = False
-#     description = (
-#         "[DEPRECATED] Backward-compatible wrapper for ROS2 interface commands. "
-#         "Prefer strict tools: ros2_interface_*."
-#     )
-#     tags = ["ros2", "interface", "msg", "srv", "cli", "introspection"]
-#     input_schema = [("command", "string"), ("interface_name", "string?")]
-#     output_schema = {"output": "string"}
-
-#     def run(self, **kwargs):
-#         console = _require_console(self.bb)
-#         return _run_ros2_interface_command(
-#             console,
-#             self.name,
-#             kwargs.get("command"),
-#             interface_name=kwargs.get("interface_name"),
-#         )
-
-
 def import_msg_type(type_str: str, node):
     """
     Dynamically import a ROS 2 message type from its string identifier.
@@ -1726,25 +1533,14 @@ def import_msg_type(type_str: str, node):
 @vulcanai_tool
 class Ros2PublishTool(AtomicTool):
     name = "ros_publish"
-    # ros2 topic pub chatter std_msgs/msg/String 'data: Hello World'
-    # description = (
-    #     "Publish one or more messages to a given ROS 2 topic [topic_name]. "
-    #     "Or execute 'ros2 topic pub [topic_name]'. "
-    #     "Supports both simple string messages (for std_msgs/msg/String) and custom message types. "
-    #     "For custom types, pass message_data as a JSON object with field names and values. "
-    #     "By default it keeps publishing messages until Ctrl+C is pressed. "
-    #     "with type 'std_msgs/msg/String' in topic '/chatter' "
-    #     "with 0.1 seconds of delay between messages to publish"
-    #     'Example for custom type: msg_type=\'my_pkg/msg/MyMessage\',
-    #           message_data=\'{"index": 1, "message": "Hello"}\''
-    # )
-    # tags = ["ros2", "publish", "message", "std_msgs"]
     tool_description = "Stream and publish ROS 2 topic. "
     description = (
         "Stream and publish ROS 2 topic. "
         "Equivalent to `ros2 topic pub`. "
         "Use when the user wants to write or publish a message in a ROS 2 topic. "
-        "If optional limits are omitted, it defaults to 60 seconds and 100 lines."
+        "To publish N messages, call this tool once with `max_lines=N` instead of repeating the tool N times. "
+        "If optional limits are omitted, it defaults to 60 seconds, 100 messages, "
+        "and `std_msgs/msg/String` with a 0.1 second period."
     )
     tags = [
         "ros2",
@@ -1758,25 +1554,27 @@ class Ros2PublishTool(AtomicTool):
         "ros2 topic pub",
         "pub topic",
         "write topic",
+        "repeat",
+        "count",
+        "times",
     ]
-
-    # input_schema = [
-    #     ("topic", "string"),  # e.g. "/chatter"
-    #     ("message_data", "string?"),  # (optional) payload - string for std_msgs/String or JSON for custom types
-    #     ("msg_type", "string?"),  # (optional) e.g. "std_msgs/msg/String" or "my_pkg/msg/CustomMsg"
-    #     ("max_lines", "int?"),  # (optional) number of messages to publish
-    #     ("max_duration", "int?"),  # (optional) stop after this seconds
-    #     ("period_sec", "float?"),  # (optional) delay between publishes (in seconds)
-    #     ("message", "string?"),  # (deprecated) use message_data instead
-    # ]
 
     input_schema = [
-        ("topic", "string"),  # e.g. "/chatter"
+        # ros2 topic pub <topic> <type> <data>
+        ("topic", "string"),          # e.g. "/chatter"
+        ("msg_type", "string?"),      # (optional) e.g. "std_msgs/msg/String" or "my_pkg/msg/CustomMsg"
         ("message_data", "string?"),  # (optional) payload - string for std_msgs/String or JSON for custom types
-        ("msg_type", "string?"),  # (optional) e.g. "std_msgs/msg/String" or "my_pkg/msg/CustomMsg"
-        ("max_lines", "int?"),  # (optional) number of messages to publish
-        ("max_duration", "int?"),  # (optional) stop after this seconds
+        # Configuration of the publisher/execution
+        ("max_lines", "int?"),        # (optional) number of messages to publish
+        ("max_duration", "float?"),   # (optional) stop after this seconds
+        ("period_sec", "float?"),     # (optional) delay between publishes (in seconds)
     ]
+    input_defaults = {
+        "msg_type": "std_msgs/msg/String",
+        "max_lines": 100,
+        "max_duration": 60,
+        "period_sec": 0.1,
+    }
 
     output_schema = {
         "published": "bool",
@@ -1828,22 +1626,34 @@ class Ros2PublishTool(AtomicTool):
         topic_name = kwargs.get("topic", "/chatter")
         # Support both 'message_data' (new) and 'message' (deprecated)
         message_data = kwargs.get("message_data", kwargs.get("message", "Hello from VulcanAI PublishTool!"))
-        msg_type_str = kwargs.get("msg_type", "std_msgs/msg/String")
+        msg_type_str = kwargs.get("msg_type", self.input_defaults["msg_type"])
 
-        max_duration = kwargs.get("max_duration", None)
-        if not isinstance(max_duration, (int, float)) or max_duration <= 0:
-            max_duration = None
+        max_duration = kwargs.get("max_duration", self.input_defaults["max_duration"])
+        try:
+            max_duration = float(max_duration) if max_duration is not None else self.input_defaults["max_duration"]
+        except (TypeError, ValueError):
+            max_duration = self.input_defaults["max_duration"]
+        if max_duration <= 0:
+            max_duration = self.input_defaults["max_duration"]
 
-        max_lines = kwargs.get("max_lines", None)
-        if max_lines is not None and not isinstance(max_lines, int):
-            max_lines = None
+        max_lines = kwargs.get("max_lines", self.input_defaults["max_lines"])
+        try:
+            max_lines = int(max_lines) if max_lines is not None else self.input_defaults["max_lines"]
+        except (TypeError, ValueError):
+            max_lines = self.input_defaults["max_lines"]
 
-        period_sec = kwargs.get("period_sec", 0.1)
+        period_sec = kwargs.get("period_sec", self.input_defaults["period_sec"])
+        try:
+            period_sec = float(period_sec) if period_sec is not None else self.input_defaults["period_sec"]
+        except (TypeError, ValueError):
+            period_sec = self.input_defaults["period_sec"]
+        if period_sec < 0.0:
+            period_sec = self.input_defaults["period_sec"]
 
         qos_depth = 10
 
         if console is None:
-            print("[ERROR] Console not is None")
+            print("[ERROR] Console node is None")
 
             return result
 
@@ -1952,11 +1762,6 @@ class Ros2PublishTool(AtomicTool):
 
         print_tool_output(console, result["output"], self.name)
 
-        # if panel_enabled:
-        #     console.logger.log_msg(result["output"], color="gray")
-        #     console.logger.log_msg("\n")
-        # else:
-        #     print_tool_output(console, result["output"], self.name)
         return result
 
 
@@ -1986,9 +1791,9 @@ class Ros2SubscribeTool(AtomicTool):
     ]
 
     input_schema = [
-        ("topic", "string"),  # topic name
-        ("max_duration", "int?"),  # (optional) stop after this seconds
-        ("max_lines", "int?"),  # (optional) stop after this number of messages
+        ("topic", "string"),      # topic name
+        ("max_duration", "int?"), # (optional) stop after this seconds
+        ("max_lines", "int?"),    # (optional) stop after this number of messages
     ]
     input_defaults = {"max_duration": 60, "max_lines": 100}
     output_schema = {

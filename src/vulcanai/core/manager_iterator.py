@@ -355,6 +355,10 @@ Rules:
 - Add only optional execution control parameters if strictly necessary or requested by the user.
 - If an input is marked optional and the user did not ask for a specific value, omit that argument instead of
   inventing one.
+- When the user explicitly provides identifiers or counts (for example topic names, service names, node names,
+  file paths, or the number of repetitions), copy those values exactly into the tool arguments.
+- If the user asks to repeat the same action N times and a tool exposes an internal count or limit argument
+  (for example `max_lines`), prefer a single Step using that argument instead of duplicating the same tool call.
 - Use "{{{{bb.tool_name.key}}}}" to pass outputs from previous steps if relevant.
 For example, if tool 'detect_object' outputs {{"pose": [1.0, 2.0]}},
 you can pass it to navigate as:
