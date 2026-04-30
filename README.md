@@ -52,13 +52,10 @@ sudo apt install python3-venv python3-pip
 The fastest and simplest way to install VulcanAI is using pip. To do so, open a terminal and run the following command:
 
 ```bash
-pip install eprosima-vulcanai
+python3 -m pip install "git+https://github.com/eProsima/VulcanAI.git"
 ```
 
 This will install the latest stable version of VulcanAI and all its dependencies.
-
-> \[!WARNING]\
-> Pip installation will be available soon.
 
 ### Installation from source
 
