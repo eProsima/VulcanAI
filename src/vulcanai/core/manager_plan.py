@@ -30,8 +30,17 @@ class PlanManager(ToolManager):
         k: int = 5,
         hist_depth: int = 3,
         logger=None,
+        default_tools=True,
     ):
-        super().__init__(model, registry=registry, validator=validator, k=k, hist_depth=hist_depth, logger=logger)
+        super().__init__(
+            model,
+            registry=registry,
+            validator=validator,
+            k=k,
+            hist_depth=hist_depth,
+            logger=logger,
+            default_tools=default_tools,
+        )
 
     def _get_prompt_template(self) -> str:
         """
@@ -43,6 +52,15 @@ Your job is to take a user request and generate a valid execution plan,
 containing one or more steps grouped into one or more PlanNodes.
 Use PlanNodes to group steps that need to be executed together, either in sequence or in parallel, to
 achieve sub-goals.
+Never return only a summary: always produce at least one PlanNode with at least one Step.
+Inputs whose type ends with `?` are optional and may be omitted when the tool default behavior is appropriate.
+If an input is marked optional and the user did not ask for a specific value, 
+omit that argument instead of inventing one.
+Do not guess placeholder values such as `1`, `1.0`, `10`, or empty strings for optional inputs.
+When the user explicitly provides identifiers or counts (for example topic names, service names, node names,
+file paths, or the number of repetitions), copy those values exactly into the tool arguments.
+If the user asks to repeat the same action N times and a tool exposes an internal count or limit argument
+(for example `max_lines`), prefer a single Step using that argument instead of duplicating the same tool call.
 {user_context}
 ## Available tools:
 {tools_text}

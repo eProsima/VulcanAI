@@ -45,8 +45,8 @@ class VulcanAILogger:
         "executor": "#15B606",
         "vulcanai": "#56AA08",
         "user": "#91DD16",
-        "validator": "#C49C00",
-        "tool": "#EB921E",
+        "validator": "#9600C4",
+        "tool": "#C49C00",
         "error": "#FF0000",
         "console": "#8F6296",
         "warning": "#D8C412",
@@ -107,6 +107,20 @@ class VulcanAILogger:
             msg = re.sub(r"<(/?)(#[0-9a-fA-F]{6})>", r"[\1\2]", msg)
         return msg
 
+    def _apply_color_to_each_line(self, msg: str, color_begin: str, color_end: str) -> str:
+        """Wrap each logical line with color tags, preserving original line breaks."""
+        if msg == "":
+            return f"{color_begin}{msg}{color_end}"
+
+        colored_lines = []
+        for line in msg.splitlines(keepends=True):
+            # Keep newlines outside style tags so each line has a complete <color>...</color> pair.
+            line_content = line.rstrip("\r\n")
+            line_break = line[len(line_content) :]
+            colored_lines.append(f"{color_begin}{line_content}{color_end}{line_break}")
+
+        return "".join(colored_lines)
+
     def process_msg(self, msg: str, prefix: str = "", color: str = "") -> str:
         """Process the message by adding prefix, applying color formatting and rich markup if enabled."""
         color_begin = color_end = color
@@ -116,7 +130,9 @@ class VulcanAILogger:
             color_begin = f"<{color}>"
             color_end = f"</{color}>"
 
-        msg = f"{prefix}{color_begin}{msg}{color_end}"
+            msg = self._apply_color_to_each_line(msg, color_begin, color_end)
+
+        msg = f"{prefix}{msg}"
 
         return self.parse_rich_markup((self.parse_color(msg)))
 
@@ -158,11 +174,18 @@ class VulcanAILogger:
         processed_msg = self.process_msg(msg, prefix=prefix, color=color)
         self.sink.write(processed_msg)
 
-    def log_registry(self, msg: str, error: bool = False, color: str = ""):
+        return processed_msg
+
+    def log_registry(self, msg: str, error: bool = False, color: str = "", indent: int = 0):
+        # indent_str = "             " * indent
+        indent_str = "  " * indent
         if error:
-            prefix = "[error][REGISTRY] [ERROR][/error] "
+            prefix = f"[error][REGISTRY] [ERROR][/error]{indent_str} "
+        elif indent > 0:
+            prefix = f"<dim>{indent_str} "
+            msg = f"{msg}</dim>"
         else:
-            prefix = "<bold>[registry][REGISTRY][/registry]</bold> "
+            prefix = f"<bold>[registry][REGISTRY][/registry]</bold>{indent_str} "
 
         processed_msg = self.process_msg(msg, prefix=prefix, color=color)
         self.sink.write(processed_msg)

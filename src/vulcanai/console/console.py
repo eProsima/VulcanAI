@@ -50,14 +50,25 @@ class TextualLogSink:
         self.console = textual_console
 
     def write(self, msg: str, color: str = "") -> None:
+        # Logger calls can come from worker threads
+        # Route UI writes to Textual app thread
+        app_thread_id = getattr(self.console, "_thread_id", None)
+        if app_thread_id is not None and threading.get_ident() != app_thread_id:
+            self.console.call_from_thread(self.console.add_line, msg, color)
+            return
+
         self.console.add_line(msg, color)
 
 
 class VulcanConsole(App):
+    DEFAULT_CMD_PLACEHOLDER = "> "
+    # Extra info when a streaming process is active
+    STREAM_CMD_PLACEHOLDER = "Press Ctrl+C to stop stream | > "
     # CSS Styles
     # Two panels: left (log + input) and right (history + variables)
     #   Right panel: 48 characters length
     #   Left panel: fills remaining space
+
     CSS = """
     Screen {
         layout: horizontal;
@@ -85,13 +96,22 @@ class VulcanConsole(App):
     }
 
     #logcontent {
-        height: auto;
+        height: 1fr;
         min-height: 1;
-        max-height: 1fr;
         border: tall #333333;
-        scrollbar-size-vertical: 0;
-        scrollbar-size-horizontal: 0;
+        scrollbar-size-vertical: 1;
+        scrollbar-size-horizontal: 1;
         color: #ffffff;
+    }
+
+    #streamcontent {
+        height: 0;
+        min-height: 0;
+        border: solid #56AA08;
+        display: none;
+        overflow: auto auto;
+        scrollbar-size-vertical: 1;
+        scrollbar-size-horizontal: 1;
     }
 
     #llm_spinner {
@@ -148,6 +168,8 @@ class VulcanConsole(App):
         tools_from_entrypoints: str = "",
         user_context: str = "",
         main_node=None,
+        default_tools: bool = True,
+        debug: bool = False,
     ):
         # Used to set the same textual colors in a docker container
         os.environ.setdefault("COLORTERM", "truecolor")
@@ -172,10 +194,16 @@ class VulcanConsole(App):
         self.model = model
         # 'k' value for top_k tools selection
         self.k = k
+        # Flag to indicate if default tools should be enabled
+        self.default_tools = default_tools
         # Iterative mode
         self.iterative = iterative
+        # Enable debug-only logs
+        self.debug_flag = debug
         # CustomLogTextArea instance
-        self.left_pannel = None
+        self.main_pannel = None
+        # Subprocess output panel
+        self.stream_pannel = None
         # Logger instance
         self.logger = VulcanAILogger.default()
         self.logger.set_textualizer_console(TextualLogSink(self))
@@ -201,6 +229,13 @@ class VulcanConsole(App):
 
         # Streaming task control
         self.stream_task = None
+        # Number of active streaming processes routing logs to subprocess panel
+        self._route_logs_to_stream_panel = 0
+        # Visibility state for stream panel routing
+        self._stream_panel_visible = False
+        # Buffered main-log lines emitted while stream panel is open and waiting
+        # for user Ctrl+C closure
+        self._deferred_main_lines_after_stream: list[str] = []
         # Suggestion index for RadioListModal
         self.suggestion_index = -1
         self.suggestion_index_changed = threading.Event()
@@ -226,7 +261,8 @@ class VulcanConsole(App):
         Function called when the console is mounted.
         """
 
-        self.left_pannel = self.query_one("#logcontent", CustomLogTextArea)
+        self.main_pannel = self.query_one("#logcontent", CustomLogTextArea)
+        self.stream_pannel = self.query_one("#streamcontent", CustomLogTextArea)
         self.spinner_status = self.query_one("#llm_spinner", SpinnerStatus)
         self.hooks = SpinnerHook(self.spinner_status)
 
@@ -235,7 +271,7 @@ class VulcanConsole(App):
         sys.stdout = StreamToTextual(self, "stdout")
         sys.stderr = StreamToTextual(self, "stderr")
 
-        if self.main_node is not None:
+        if self.main_node is not None or self.default_tools:
             attach_ros_logger_to_console(self)
 
         self.loop = asyncio.get_running_loop()
@@ -264,10 +300,14 @@ class VulcanConsole(App):
                 # Log Area
                 logcontent = CustomLogTextArea(id="logcontent")
                 yield logcontent
+                # Subprocess stream area (hidden by default)
+                # Kept below the main log to avoid visually pushing main logs upward
+                streamcontent = CustomLogTextArea(id="streamcontent")
+                yield streamcontent
                 # Spinner Area
                 yield SpinnerStatus(logcontent, id="llm_spinner")
                 # Input Area
-                yield Input(placeholder="> ", id="cmd")
+                yield Input(placeholder=self.DEFAULT_CMD_PLACEHOLDER, id="cmd")
 
             # Right
             with Vertical(id="right"):
@@ -286,7 +326,6 @@ class VulcanConsole(App):
         Blocking operations (file I/O) run in executor, non-blocking in event loop.
         """
 
-        # Initialize manager (potentially blocking, run in executor)
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self.init_manager)
 
@@ -297,6 +336,7 @@ class VulcanConsole(App):
             "/edit_tools": self.cmd_edit_tools,
             "/change_k": self.cmd_change_k,
             "/history": self.cmd_history_index,
+            "/debug": self.cmd_debug,
             "/show_history": self.cmd_show_history,
             "/clear_history": self.cmd_clear_history,
             "/plan": self.cmd_plan,
@@ -315,6 +355,15 @@ class VulcanConsole(App):
             self.manager.llm.set_hooks(self.hooks)
         except Exception:
             pass
+
+        # Load a default ROS 2 node if default tools are enabled but no node is provided
+        if self.default_tools and self.main_node is None:
+            try:
+                from vulcanai.tools.default_tools import ROS2DefaultToolNode
+
+                self.main_node = ROS2DefaultToolNode()
+            except ImportError:
+                self.logger.log_console("Unable to load ROS 2 default node for default tools.")
 
         # -- Register tools (file I/O - run in executor) --
         # File paths tools
@@ -336,7 +385,15 @@ class VulcanConsole(App):
 
         self.is_ready = True
         self.logger.log_console("VulcanAI Interactive Console")
-        self.logger.log_console("Use <bold>'Ctrl+Q'</bold> to quit.")
+        self.logger.log_console("Clipboard: select text and press F4 to copy. Use Ctrl+V or middle-click to paste.")
+        self.logger.log_console("Use <bold>'/exit'</bold> or press <bold>'Ctrl+Q'</bold> to quit.")
+
+        # Anchor the main log at the bottom after all startup output has been queued,
+        # so the user sees the latest line (and input prompt) without manual scrolling.
+        if self.main_pannel is not None:
+            self.main_pannel.scroll_end(animate=False, immediate=True, x_axis=False)
+            self.call_after_refresh(self.main_pannel.scroll_end, animate=False, immediate=True, x_axis=False)
+            self.call_later(self.main_pannel.scroll_end, animate=False, immediate=True, x_axis=False)
 
         # Activate the terminal input
         self.set_input_enabled(True)
@@ -358,6 +415,7 @@ class VulcanConsole(App):
             self.set_input_enabled(False)
 
             try:
+                bb_before_ids = {k: id(v) for k, v in self.manager.bb.items()}
                 images = []
 
                 # Add the images
@@ -376,15 +434,21 @@ class VulcanConsole(App):
                 self.plans_list.append(result.get("plan", None))
                 self.last_bb = result.get("blackboard", None)
 
-                # Print the backboard state
+                # Print the blackboard state
                 bb_ret = result.get("blackboard", None)
-                if bb_ret:
-                    bb_ret = bb_ret.text_snapshot().replace("<", "'").replace(">", "'")
-                    self.logger.log_console(f"Output of plan: {bb_ret}")
+                if bb_ret and self.debug_flag:
+                    updated_keys = self._updated_blackboard_keys(bb_before_ids, bb_ret)
+                    bb_ret_str = "No new output generated by executed tools."
+                    if updated_keys:
+                        bb_ret_str = self._format_blackboard_subset(bb_ret, updated_keys)
+                    self.logger.log_console(f"Output of plan: {bb_ret_str}")
 
             except KeyboardInterrupt:
-                self.logger.log_msg("<yellow>Exiting...</yellow>")
-                return
+                if self.stream_task is None:
+                    self.logger.log_msg("<yellow>Exiting...</yellow>")
+                else:
+                    self.stream_task.cancel()  # triggers CancelledError in the task
+                    self.stream_task = None
             except EOFError:
                 self.logger.log_msg("<yellow>Exiting...</yellow>")
                 return
@@ -396,6 +460,30 @@ class VulcanConsole(App):
         self.set_input_enabled(True)
 
     # region Utilities
+
+    def _updated_blackboard_keys(self, before_ids: dict[str, int], bb_after) -> list[str]:
+        """
+        Return blackboard keys that were created or replaced during the latest execution.
+        """
+        updated_keys = []
+        for key, value in bb_after.items():
+            if key not in before_ids or before_ids[key] != id(value):
+                updated_keys.append(key)
+        return updated_keys
+
+    def _format_blackboard_subset(self, bb, keys: list[str]) -> str:
+        """
+        Format a subset of blackboard keys for debug logging in Textual console.
+        """
+        if not keys:
+            return "{}"
+
+        subset = {k: bb.get(k) for k in keys if k in bb}
+        if not subset:
+            return "{}"
+
+        # Keep output on a single line while avoiding Textual tag parsing issues.
+        return repr(subset).replace("<", "'").replace(">", "'")
 
     def _apply_history_to_input(self) -> None:
         """
@@ -458,44 +546,47 @@ class VulcanConsole(App):
         kvalue_widget.update(text)
 
     @work  # Runs in a worker. waiting won't freeze the UI
-    async def open_checklist(self, tools_list: list[str], active_tools_num: int) -> None:
+    async def open_checklist(self, grouped: list, active_set: set) -> None:
         """
         Function used to open a Checklist ModalScreen in the console.
         Used in the /edit_tools command.
         """
         # Create the checklist dialog
-        selected = await self.push_screen_wait(CheckListModal(tools_list, active_tools_num))
+        selected = await self.push_screen_wait(CheckListModal(grouped, active_set))
 
         if selected is None:
             self.logger.log_msg("<yellow>Selection cancelled.</yellow>")
         else:
-            # Iterate over all tools and activate/deactivate accordingly
-            # to the selection made by the user
-            for tool_tmp in tools_list:
-                # Remove "- " prefix
-                tool = tool_tmp[2:]
+            selected_set = set(selected)
+            # Collect all non-help tool names
+            all_tool_names = set(self.manager.registry.tools.keys()) | set(
+                self.manager.registry.deactivated_tools.keys()
+            )
+            all_tool_names.discard("help")
 
-                if tool_tmp in selected:
-                    # Current tool checbox, activated
-                    if self.manager.registry.activate_tool(tool):
-                        self.logger.log_console(f"Activated tool <bold>'{tool}'</bold>")
+            for tool_name in all_tool_names:
+                if tool_name in selected_set:
+                    if self.manager.registry.activate_tool(tool_name):
+                        self.logger.log_console(f"Activated tool <bold>'{tool_name}'</bold>")
                 else:
-                    # Current tool checbox, deactivated
-                    if self.manager.registry.deactivate_tool(tool):
-                        self.logger.log_console(f"Deactivated tool <bold>'{tool}'</bold>")
+                    if self.manager.registry.deactivate_tool(tool_name):
+                        self.logger.log_console(f"Deactivated tool <bold>'{tool_name}'</bold>")
 
     @work
-    async def open_radiolist(self, option_list: list[str], tool: str = "") -> str:
+    async def open_radiolist(
+        self, option_list: list[str], tool: str = "", category: str = "", input_string: str = ""
+    ) -> str:
         """
         Function used to open a RadioList ModalScreen in the console.
         Used in the tool suggestion selection, for default tools.
         """
         # Create the checklist dialog
-        selected = await self.push_screen_wait(RadioListModal(option_list))
+        selected = await self.push_screen_wait(RadioListModal(option_list, category, input_string))
 
         if selected is None:
             self.logger.log_tool("Suggestion cancelled", tool_name=tool)
             self.suggestion_index = -2
+            self.suggestion_index_changed.set()
             return
 
         self.logger.log_tool(f'Selected suggestion: "{option_list[selected]}"', tool_name=tool)
@@ -519,10 +610,12 @@ class VulcanConsole(App):
                 " or show the current value if no 'int' is provided\n"
                 "/<bold>history 'int'</bold>  - Change the history depth or show the current value if no"
                 " 'int' is provided\n"
+                "/<bold>debug 'bool'</bold>   - Set debug mode to true/false, or show current value if no"
+                " bool is provided\n"
                 "/<bold>show_history</bold>   - Show the current history\n"
                 "/<bold>clear_history</bold>  - Clear the history\n"
                 "/<bold>plan</bold>           - Show the last generated plan\n"
-                "/<bold>rerun</bold>          - Rerun the last plan\n"
+                "/<bold>rerun 'int'</bold>    - Rerun the last plan or the specified plan by index\n"
                 "/<bold>bb</bold>             - Show the last blackboard state\n"
                 "/<bold>clear</bold>          - Clears the console screen\n"
                 "/<bold>exit</bold>           - Exit the console\n"
@@ -534,7 +627,7 @@ class VulcanConsole(App):
                 "<bold>Available keybinds:</bold>\n"
                 "‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾\n"
                 "<bold>F2</bold>                - Show this help message\n"
-                "<bold>F3</bold>                - Copy selection area\n"
+                "<bold>F4</bold>                - Copy selection area\n"
                 "<bold>Ctrl+Q</bold>            - Exit the console\n"
                 "<bold>Ctrl+L</bold>            - Clears the console screen\n"
                 "<bold>Ctrl+U</bold>            - Clears the entire command line input\n"
@@ -548,26 +641,43 @@ class VulcanConsole(App):
         self.logger.log_console(table, "console")
 
     def cmd_tools(self, _) -> None:
+        def get_tool_summary(tool) -> str:
+            return getattr(tool, "tool_description", None) or tool.description
+
         tmp_msg = f"(current index k={self.manager.k})"
         tool_msg = ("_" * len(tmp_msg)) + "\n"
         tool_msg += "<bold>Available tools:</bold>\n"
         tool_msg += tmp_msg + "\n" + ("‾" * len(tmp_msg)) + "\n"
 
-        for tool in self.manager.registry.tools.values():
-            tool_msg += f"- <bold>{tool.name}:</bold> {tool.description}\n"
+        tool_names = [name for name in self.manager.registry.tools.keys() if name != "help"]
+        grouped = self.manager.registry.group_tool_names(tool_names)
+
+        for entry_name, subtools in grouped:
+            if subtools is None:
+                tool = self.manager.registry.tools[entry_name]
+                tool_msg += f"<bold>{tool.name}:</bold> {get_tool_summary(tool)}\n"
+            else:
+                tool_msg += f"<bold>{entry_name}:</bold>\n"
+                for subtool in subtools:
+                    full_name = f"{entry_name}_{subtool}"
+                    tool = self.manager.registry.tools[full_name]
+                    tool_msg += f"  - <bold>{subtool}:</bold> {get_tool_summary(tool)}\n"
+
+        if "help" in self.manager.registry.tools:
+            help_tool = self.manager.registry.tools["help"]
+            tool_msg += f"- <bold>{help_tool.name}:</bold> {get_tool_summary(help_tool)}\n"
+
         self.logger.log_console(tool_msg, "console")
 
     def cmd_edit_tools(self, _) -> None:
-        tools_list = []
-        for tool in self.manager.registry.tools.values():
-            tools_list.append(f"- {tool.name}")
-
-        active_tools_num = len(tools_list)
-
-        for deactivated_tool in self.manager.registry.deactivated_tools.values():
-            tools_list.append(f"- {deactivated_tool.name}")
-
-        self.open_checklist(tools_list, active_tools_num)
+        all_names = sorted(
+            n
+            for n in list(self.manager.registry.tools.keys()) + list(self.manager.registry.deactivated_tools.keys())
+            if n != "help"
+        )
+        active_set = set(self.manager.registry.tools.keys())
+        grouped = self.manager.registry.group_tool_names(all_names)
+        self.open_checklist(grouped, active_set)
 
     def cmd_change_k(self, args) -> None:
         if len(args) == 0:
@@ -595,6 +705,23 @@ class VulcanConsole(App):
         self.manager.update_history_depth(new_hist)
         # Update right panel info
         self._update_variables_panel()
+
+    def cmd_debug(self, args) -> None:
+        if len(args) == 0:
+            self.logger.log_console(f"Current 'debug' is {self.debug_flag}")
+            return
+
+        if len(args) != 1:
+            self.logger.log_console(f"Usage: /debug 'bool' - Actual 'debug' is {self.debug_flag}")
+            return
+
+        value = args[0].strip().lower()
+        if value not in ("true", "false"):
+            self.logger.log_console(f"Usage: /debug 'bool' - Actual 'debug' is {self.debug_flag}")
+            return
+
+        self.debug_flag = value == "true"
+        self.logger.log_console(f"Set 'debug' to {self.debug_flag}")
 
     def cmd_show_history(self, _) -> None:
         if not self.manager.history:
@@ -662,11 +789,14 @@ class VulcanConsole(App):
         else:
             selected_plan = int(args[0])
             if selected_plan < -1:
-                self.logger.log_console("Usage: /rerun 'int' [int >= -1].")
+                self.logger.log_console("Usage: /rerun 'int' [int > -1].")
                 return
 
         if not self.plans_list:
             self.logger.log_console("No plan to rerun.")
+            return
+        elif selected_plan >= len(self.plans_list):
+            self.logger.log_console("Selected Plan index do not exists. selected_plan >= len(executed_plans).")
             return
 
         self.logger.log_console(f"Rerunning {selected_plan}-th plan...")
@@ -680,7 +810,8 @@ class VulcanConsole(App):
         # UI updates must happen on the app thread:
         def apply_result():
             self.last_bb = last_bb
-            self.logger.log_console(f"Output of rerun: {last_bb_parsed}")
+            if self.debug_flag:
+                self.logger.log_console(f"Output of rerun: {last_bb_parsed}")
 
         self.call_from_thread(apply_result)
 
@@ -695,7 +826,9 @@ class VulcanConsole(App):
             self.logger.log_console("No blackboard available.")
 
     def cmd_clear(self, _) -> None:
-        self.left_pannel.clear_console()
+        if self.stream_pannel is not None:
+            self.stream_pannel.clear_console()
+        self.main_pannel.clear_console()
 
     def cmd_quit(self, _) -> None:
         self.exit()
@@ -704,10 +837,167 @@ class VulcanConsole(App):
 
     # region Logging
 
+    def show_subprocess_panel(self, show_notice: bool = True) -> None:
+        """
+        Show the dedicated subprocess output panel at the top of the main panel.
+        """
+
+        if self.stream_pannel is None:
+            return
+
+        follow_main_output = False
+        if self.main_pannel is not None:
+            follow_main_output = self.main_pannel.is_near_vertical_scroll_end(tolerance=2)
+
+        if show_notice:
+            self.logger.log_tool(
+                "Streaming terminal opened. <bold>Press Ctrl+C to stop</bold> the running process.", color="tool"
+            )
+
+        self.stream_pannel.clear_console()
+        self.stream_pannel.display = True
+        self.stream_pannel.styles.height = 12
+        self.query_one("#left", Vertical).refresh(layout=True)
+        self.stream_pannel.refresh(layout=True)
+        self.refresh(layout=True)
+        self._stream_panel_visible = True
+        cmd = self.query_one("#cmd", Input)
+        cmd.placeholder = self.STREAM_CMD_PLACEHOLDER
+        if follow_main_output and self.main_pannel is not None:
+            self.main_pannel.scroll_end(animate=False, immediate=True, x_axis=False)
+            self.call_after_refresh(self.main_pannel.scroll_end, animate=False, immediate=True, x_axis=False)
+            self.call_later(self.main_pannel.scroll_end, animate=False, immediate=True, x_axis=False)
+
+    def change_route_logs(self, value: bool = False) -> None:
+        """
+        Manage logger sink output routing to stream panel.
+
+        value = True  -> Increment active streaming routes.
+        value = False -> Decrement active streaming routes.
+        """
+
+        if value:
+            self._route_logs_to_stream_panel += 1
+            if self.stream_pannel is not None and not self._stream_panel_visible:
+                # Routing is active -> ensure stream panel is visible
+                self.show_subprocess_panel(show_notice=False)
+        else:
+            self._route_logs_to_stream_panel = max(0, self._route_logs_to_stream_panel - 1)
+            if not self._is_stream_task_active():
+                # No active stream: clear stale route counter/state, but keep the
+                # stream panel visible until user explicitly closes it with "Ctrl + C"
+                self._route_logs_to_stream_panel = 0
+                self.stream_task = None
+
+    def _is_stream_task_active(self) -> bool:
+        """
+        Return True if a streaming task/future is currently active
+        """
+
+        if self.stream_task is None:
+            return False
+        try:
+            return not self.stream_task.done()
+        except Exception:
+            try:
+                return not self.stream_task.cancelled()
+            except Exception:
+                # Unknown task-like object
+                return True
+
+    def reset_stream_state(self) -> None:
+        """
+        Reset stream routing and panel visibility
+        """
+
+        self._route_logs_to_stream_panel = 0
+        self.stream_task = None
+        if self._stream_panel_visible:
+            self.hide_subprocess_panel()
+
+    def should_defer_line_until_stream_panel_close(self, line: str) -> bool:
+        """
+        Return True when a line should be deferred until the stream panel is closed
+        """
+
+        return any(marker in line for marker in ("[TOOL", "[EXECUTOR]", "[ROS]", "Output of plan:"))
+
+    def write_deferred_main_output(self) -> None:
+        """
+        Flush buffered main-log lines captured while stream panel was open.
+        """
+
+        if not self._deferred_main_lines_after_stream or self.main_pannel is None:
+            return
+
+        follow_main_output = self.main_pannel.is_near_vertical_scroll_end(tolerance=2)
+        pending = self._deferred_main_lines_after_stream
+        self._deferred_main_lines_after_stream = []
+
+        for text in pending:
+            if not self.main_pannel.append_line(text, force_follow_output=follow_main_output):
+                self.logger.log_console("Warning: Trying to add an empty deferred line.")
+
+    def hide_subprocess_panel(self) -> None:
+        """
+        Hide the subprocess output panel and return space to the main log panel.
+        """
+
+        if self.stream_pannel is None:
+            return
+
+        follow_main_output = False
+        if self.main_pannel is not None:
+            follow_main_output = self.main_pannel.is_near_vertical_scroll_end(tolerance=2)
+
+        self.stream_pannel.display = False
+        self.stream_pannel.styles.height = 0
+        self.stream_pannel.refresh(layout=True)
+        self.refresh(layout=True)
+        self._stream_panel_visible = False
+        self.write_deferred_main_output()
+        cmd = self.query_one("#cmd", Input)
+        cmd.placeholder = self.DEFAULT_CMD_PLACEHOLDER
+        if follow_main_output and self.main_pannel is not None:
+            self.main_pannel.scroll_end(animate=False, immediate=True, x_axis=False)
+            self.call_after_refresh(self.main_pannel.scroll_end, animate=False, immediate=True, x_axis=False)
+
+    def add_subprocess_line(self, input: str) -> None:
+        """
+        Write output into the dedicated subprocess panel.
+        """
+        if self.stream_pannel is None:
+            self.add_line(input)
+            return
+
+        # Reopen only if there is an active stream/routing context
+        if not self._stream_panel_visible:
+            # After user send sigint "Ctrl + C" reset both flags
+            # Late subprocess lines should go to main log
+            # without reopening the stream panel
+            should_reopen = self._route_logs_to_stream_panel > 0 or self._is_stream_task_active()
+            if should_reopen:
+                self.show_subprocess_panel(show_notice=False)
+
+            if not self._stream_panel_visible:
+                self.add_line(input)
+                return
+
+        lines = input.splitlines()
+        for line in lines:
+            if not self.stream_pannel.append_line(line):
+                self.logger.log_console("Warning: Trying to add an empty subprocess line.")
+
     def add_line(self, input: str, color: str = "", subprocess_flag: bool = False) -> None:
         """
         Function used to write an input in the VulcanAI terminal.
         """
+
+        app_thread_id = getattr(self, "_thread_id", None)
+        if app_thread_id is not None and threading.get_ident() != app_thread_id:
+            self.call_from_thread(self.add_line, input, color, subprocess_flag)
+            return
+
         # Split incoming text into individual lines
         lines = input.splitlines()
 
@@ -717,20 +1007,46 @@ class VulcanConsole(App):
             color_begin = f"<{color}>"
             color_end = f"</{color}>"
 
+        target_panel = self.main_pannel
+        if self._route_logs_to_stream_panel > 0 and self.stream_pannel is not None:
+            if not self._stream_panel_visible:
+                # If somehow the streaming panel is closed without the user
+                # reopen it before routing output to the stream area
+                self.show_subprocess_panel(show_notice=False)
+            if self._stream_panel_visible:
+                target_panel = self.stream_pannel
+
+        force_follow_main = False
+        if target_panel is self.main_pannel:
+            force_follow_main = self.main_pannel.is_near_vertical_scroll_end(tolerance=2)
+
         # Append each line; deque automatically truncates old ones
         for line in lines:
             line_processed = line
             if subprocess_flag:
                 line_processed = escape(line)
             text = f"{color_begin}{line_processed}{color_end}"
-            if not self.left_pannel.append_line(text):
+
+            # Keep tool/executor output hidden in main panel while stream panel remains
+            # visible after stream completion. Flushes on Ctrl+C panel close
+            if (
+                target_panel is self.main_pannel
+                and self._stream_panel_visible
+                and not self._is_stream_task_active()
+                and self._route_logs_to_stream_panel == 0
+                and self.should_defer_line_until_stream_panel_close(line_processed)
+            ):
+                self._deferred_main_lines_after_stream.append(text)
+                continue
+
+            if not target_panel.append_line(text, force_follow_output=force_follow_main):
                 self.logger.log_console("Warning: Trying to add an empty line.")
 
     def delete_last_line(self):
         """
         Function used to remove the last line in the VulcanAI terminal.
         """
-        self.left_pannel.delete_last_row()
+        self.main_pannel.delete_last_row()
 
     # endregion
 
@@ -754,7 +1070,11 @@ class VulcanConsole(App):
             # Console not ready yet
             return
 
-        cmd = event.value.strip()
+        # Strip '<' and '>' so inputs like '</chatter>' (ROS topic names) are not
+        # consumed by the Textual markup parser, which would drop the token from
+        # the echoed line and raise "'<name>' is not a valid color" errors when
+        # the same text flows through manager/plan logs.
+        cmd = event.value.strip().replace("<", "").replace(">", "")
         if not cmd:
             # Empty command
             return
@@ -766,8 +1086,13 @@ class VulcanConsole(App):
                 # Not the command input box
                 return
 
-            # Get the user input and strip leading/trailing spaces
-            user_input = (event.value or "").strip()
+            # Already sanitized above; reuse to keep echo, history, and query aligned
+            user_input = cmd
+
+            # Defensive recovery: if no stream is active but routing stayed enabled,
+            # clear only routing (keep panel visible until Ctrl+C)
+            if (not self._is_stream_task_active()) and self._route_logs_to_stream_panel > 0:
+                self._route_logs_to_stream_panel = 0
 
             # The the user_input in the history navigation list (used when the up, down keys are pressed)
             self.history.append(user_input)
@@ -999,7 +1324,7 @@ class VulcanConsole(App):
     def set_stream_task(self, input_stream):
         """
         Function used in the tools to set the current streaming task.
-        with this variable the user can finish the execution of the
+        With this variable the user can finish the execution of the
         task by using the signal "Ctrl + C"
         """
         self.stream_task = input_stream
@@ -1057,10 +1382,18 @@ class VulcanConsole(App):
 
         Binding("ctrl+c", "stop_streaming_task", ...),
         """
-        if self.stream_task is not None and not self.stream_task.done():
-            # Cancel the streaming task
-            self.stream_task.cancel()  # Triggers CancelledError in the task
-            self.stream_task = None
+
+        if self._is_stream_task_active():
+            # Cancel the active streaming task/future.
+            try:
+                self.stream_task.cancel()  # Triggers CancelledError / cancelled flag
+            except Exception:
+                pass
+            self.reset_stream_state()
+
+        elif self.stream_pannel is not None and (self._stream_panel_visible or self._route_logs_to_stream_panel > 0):
+            # No active stream, but stale stream UI/routing is visible
+            self.reset_stream_state()
 
         else:
             # No streaming task running, just notify the user
@@ -1129,7 +1462,7 @@ class VulcanConsole(App):
 
         self.logger.log_console(f"Initializing Manager <bold>'{ConsoleManager.__name__}'</bold>...")
 
-        self.manager = ConsoleManager(model=self.model, k=self.k, logger=self.logger)
+        self.manager = ConsoleManager(model=self.model, k=self.k, logger=self.logger, default_tools=self.default_tools)
 
         self.logger.log_console(f"Manager initialized with model <bold>'{self.model.replace('ollama-', '')}</bold>'")
         # Update right panel info
@@ -1174,6 +1507,7 @@ def main() -> None:
     parser.add_argument(
         "-i", "--iterative", action="store_true", default=False, help="Enable Iterative Manager (default: off)"
     )
+    parser.add_argument("--debug", action="store_true", default=False, help="Enable debug logs (default: off)")
 
     args = parser.parse_args()
 
@@ -1183,6 +1517,7 @@ def main() -> None:
         model=args.model,
         k=args.k,
         iterative=args.iterative,
+        debug=args.debug,
     )
     console.run_console()
 

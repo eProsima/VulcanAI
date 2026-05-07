@@ -24,13 +24,21 @@ class ITool(ABC):
 
     # Name given to the tool
     name: str
-    # Brief description of the tool's purpose
+    # Optional brief description of the tools.
+    # Used in the '/tools' command to display the info for the user. If this variable is not present in the tool
+    # the command fallback to the 'description' variable used by the LLM.
+    tool_description: Optional[str] = ""
+    # Detailed tool description used by the LLM during plan generation.
     description: str
     # List of keywords associated with the tool
     tags: list[str] = []
     # JSON schemas for input validation and output formatting.
     # Only used for documentation and LLM prompt generation.
     input_schema: List[Tuple[str, str]] = []  # List of (key, type) pairs, simulating a ArgValue list
+    # Optional default values for documented inputs.
+    # Used by prompt generation, tool discovery, and execution when optional
+    # arguments are omitted from a plan
+    input_defaults: Dict[str, Any] = {}
     output_schema: Dict[str, str] = {}
     # Validation tool
     is_validation_tool: bool = False

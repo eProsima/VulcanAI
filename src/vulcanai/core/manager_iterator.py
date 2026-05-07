@@ -43,8 +43,9 @@ class IterativeManager(ToolManager):
         logger=None,
         max_iters: int = 5,
         step_timeout_ms: Optional[int] = None,
+        default_tools: bool = True,
     ):
-        super().__init__(model, registry, validator, k, max(3, hist_depth), logger)
+        super().__init__(model, registry, validator, k, max(3, hist_depth), logger, default_tools)
 
         self.iter: int = 0
         self.max_iters: int = int(max_iters)
@@ -210,17 +211,9 @@ class IterativeManager(ToolManager):
         if not tools:
             self.logger.log_manager("No tools available in the registry.", error=True)
             return "", ""
-        tool_descriptions = []
-        for tool in tools:
-            tool_descriptions.append(
-                f"- *{tool.name}*: {tool.description}\n"
-                f"  Inputs: {tool.input_schema}\n"
-                f"  Outputs: {tool.output_schema}\n"
-            )
-        tools_text = "\n".join(tool_descriptions)
 
+        tools_text = self.render_tool_descriptions(tools)
         bb_snapshot = self.bb.text_snapshot()
-
         user_context = self._parse_user_context()
 
         system_prompt = self._get_prompt_template()
@@ -228,7 +221,6 @@ class IterativeManager(ToolManager):
             tools_text=tools_text,
             user_context=user_context,
         )
-
         user_prompt = (
             "## User Request: " + user_text + "\nContext:\n" + self._get_iter_context().format(bb_snapshot=bb_snapshot)
         )
@@ -243,14 +235,7 @@ class IterativeManager(ToolManager):
         """
         tools = self.registry.top_k(user_text, self.k, validation=True)
         if tools:
-            tool_descriptions = []
-            for tool in tools:
-                tool_descriptions.append(
-                    f"- *{tool.name}*: {tool.description}\n"
-                    f"  Inputs: {tool.input_schema}\n"
-                    f"  Outputs: {tool.output_schema}\n"
-                )
-            tools_text = "\n".join(tool_descriptions)
+            tools_text = self.render_tool_descriptions(tools)
         else:
             tools_text = "No available tools. Use blackboard"
 
@@ -348,6 +333,12 @@ Rules:
 - If the last step failed, propose a different approach or tool/arguments and include a brief rationale of what will
   be done differently (as a comment-like line in the Summary).
 - Add only optional execution control parameters if strictly necessary or requested by the user.
+- If an input is marked optional and the user did not ask for a specific value, omit that argument instead of
+  inventing one.
+- When the user explicitly provides identifiers or counts (for example topic names, service names, node names,
+  file paths, or the number of repetitions), copy those values exactly into the tool arguments.
+- If the user asks to repeat the same action N times and a tool exposes an internal count or limit argument
+  (for example `max_lines`), prefer a single Step using that argument instead of duplicating the same tool call.
 - Use "{{{{bb.tool_name.key}}}}" to pass outputs from previous steps if relevant.
 For example, if tool 'detect_object' outputs {{"pose": [1.0, 2.0]}},
 you can pass it to navigate as:
