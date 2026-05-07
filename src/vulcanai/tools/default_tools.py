@@ -1506,6 +1506,7 @@ class Ros2InterfaceShowTool(AtomicTool):
         console = _require_console(self.bb)
         return _run_ros2_interface_command(console, self.name, "show", interface_name=kwargs.get("interface_name"))
 
+
 def import_msg_type(type_str: str, node):
     """
     Dynamically import a ROS 2 message type from its string identifier.
@@ -1561,13 +1562,13 @@ class Ros2PublishTool(AtomicTool):
 
     input_schema = [
         # ros2 topic pub <topic> <type> <data>
-        ("topic", "string"),          # e.g. "/chatter"
-        ("msg_type", "string?"),      # (optional) e.g. "std_msgs/msg/String" or "my_pkg/msg/CustomMsg"
+        ("topic", "string"),  # e.g. "/chatter"
+        ("msg_type", "string?"),  # (optional) e.g. "std_msgs/msg/String" or "my_pkg/msg/CustomMsg"
         ("message_data", "string?"),  # (optional) payload - string for std_msgs/String or JSON for custom types
         # Configuration of the publisher/execution
-        ("max_lines", "int?"),        # (optional) number of messages to publish
-        ("max_duration", "float?"),   # (optional) stop after this seconds
-        ("period_sec", "float?"),     # (optional) delay between publishes (in seconds)
+        ("max_lines", "int?"),  # (optional) number of messages to publish
+        ("max_duration", "float?"),  # (optional) stop after this seconds
+        ("period_sec", "float?"),  # (optional) delay between publishes (in seconds)
     ]
     input_defaults = {
         "msg_type": "std_msgs/msg/String",
@@ -1791,9 +1792,9 @@ class Ros2SubscribeTool(AtomicTool):
     ]
 
     input_schema = [
-        ("topic", "string"),      # topic name
-        ("max_duration", "int?"), # (optional) stop after this seconds
-        ("max_lines", "int?"),    # (optional) stop after this number of messages
+        ("topic", "string"),  # topic name
+        ("max_duration", "int?"),  # (optional) stop after this seconds
+        ("max_lines", "int?"),  # (optional) stop after this number of messages
     ]
     input_defaults = {"max_duration": 60, "max_lines": 100}
     output_schema = {

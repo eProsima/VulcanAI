@@ -211,7 +211,7 @@ class IterativeManager(ToolManager):
         if not tools:
             self.logger.log_manager("No tools available in the registry.", error=True)
             return "", ""
-        
+
         tools_text = self.render_tool_descriptions(tools)
         bb_snapshot = self.bb.text_snapshot()
         user_context = self._parse_user_context()
