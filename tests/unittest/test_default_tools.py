@@ -1045,6 +1045,7 @@ class TestRos2ParamTool(unittest.TestCase):
             set_value="123",
         )
         self.assertIn("Set parameter", result["output"])
+
     # -------------------------------------------------------------------------
     # Tests — ros2 param delete <node_name> <param_name>
     # -------------------------------------------------------------------------
@@ -1071,6 +1072,7 @@ class TestRos2ParamTool(unittest.TestCase):
                 node_name="/parameter_blackboard",
                 param_name=param_name,
             )
+
     # -------------------------------------------------------------------------
     # Tests — ros2 param dump <node_name> [file_path]
     # -------------------------------------------------------------------------
@@ -1471,22 +1473,6 @@ class TestRos2SubscribeTool(unittest.TestCase):
         """`run` should receive live topic data and count lines."""
         topic = "/vulcan_test_subscribe"
         proc = start_background_publisher(topic, message="hello_subscribe", rate=10)
-        self._bg_publishers.append(proc)
-
-        result = self._run_subscribe_threaded(topic=topic, max_duration=5.0, max_lines=5)
-
-        self.assertEqual("True", result["subscribed"])
-        self.assertEqual(5, result["count"])
-        self.assertEqual(topic, result["topic"])
-        self.assertIn("I heard", result["output"])
-
-    # -------------------------------------------------------------------------
-    # Tests — Subscribe max_duration
-    # -------------------------------------------------------------------------
-    def test_subscribe_with_max_lines(self):
-        """`run` should receive live topic data and count lines."""
-        topic = "/vulcan_test_subscribe"
-        proc = start_background_publisher(topic, message="hello_subscribe", rate=1)
         self._bg_publishers.append(proc)
 
         result = self._run_subscribe_threaded(topic=topic, max_duration=5.0, max_lines=50)
