@@ -388,7 +388,6 @@ class VulcanConsole(App):
         self.logger.log_console("Clipboard: select text and press F4 to copy. Use Ctrl+V or middle-click to paste.")
         self.logger.log_console("Use <bold>'/exit'</bold> or press <bold>'Ctrl+Q'</bold> to quit.")
 
-        # TODO. danip
         # Anchor the main log at the bottom after all startup output has been queued,
         # so the user sees the latest line (and input prompt) without manual scrolling.
         if self.main_pannel is not None:

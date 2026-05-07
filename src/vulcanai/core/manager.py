@@ -170,16 +170,8 @@ class ToolManager:
         if not tools:
             self.logger.log_manager("No tools available in the registry.", error=True)
             return "", ""
-        tool_descriptions = []
-        for tool in tools:
-            tool_descriptions.append(
-                f"- *{tool.name}*: {tool.description}\n"
-                f"  Inputs: {tool.input_schema}\n"
-                f"  Outputs: {tool.output_schema}\n"
-            )
-        tools_text = "\n".join(tool_descriptions)
-        # TODO. danip, better performance?
-        # tools_text = self.render_tool_descriptions(tools)
+
+        tools_text = self.render_tool_descriptions(tools)
         user_context = self._parse_user_context()
         user_prompt = "User request:\n" + user_text
 

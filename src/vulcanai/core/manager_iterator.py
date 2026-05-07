@@ -211,19 +211,9 @@ class IterativeManager(ToolManager):
         if not tools:
             self.logger.log_manager("No tools available in the registry.", error=True)
             return "", ""
-        tool_descriptions = []
-        for tool in tools:
-            tool_descriptions.append(
-                f"- *{tool.name}*: {tool.description}\n"
-                f"  Inputs: {tool.input_schema}\n"
-                f"  Outputs: {tool.output_schema}\n"
-            )
-        tools_text = "\n".join(tool_descriptions)
-        # TODO. danip, better performance?
+        
         tools_text = self.render_tool_descriptions(tools)
-
         bb_snapshot = self.bb.text_snapshot()
-
         user_context = self._parse_user_context()
 
         system_prompt = self._get_prompt_template()
@@ -231,7 +221,6 @@ class IterativeManager(ToolManager):
             tools_text=tools_text,
             user_context=user_context,
         )
-
         user_prompt = (
             "## User Request: " + user_text + "\nContext:\n" + self._get_iter_context().format(bb_snapshot=bb_snapshot)
         )
@@ -246,16 +235,7 @@ class IterativeManager(ToolManager):
         """
         tools = self.registry.top_k(user_text, self.k, validation=True)
         if tools:
-            tool_descriptions = []
-            for tool in tools:
-                tool_descriptions.append(
-                    f"- *{tool.name}*: {tool.description}\n"
-                    f"  Inputs: {tool.input_schema}\n"
-                    f"  Outputs: {tool.output_schema}\n"
-                )
-            tools_text = "\n".join(tool_descriptions)
-            # TODO. danip, better performance?
-            # tools_text = self.render_tool_descriptions(tools)
+            tools_text = self.render_tool_descriptions(tools)
         else:
             tools_text = "No available tools. Use blackboard"
 

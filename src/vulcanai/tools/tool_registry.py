@@ -289,8 +289,6 @@ class ToolRegistry:
     @staticmethod
     def _doc(tool: ITool) -> str:
         # Text used for embeddings
-        # TODO. danip
-        # return f"{tool.name}\n{tool.description}\n{tool.tags}\n{tool.input_schema}\n"
         input_defaults = getattr(tool, "input_defaults", {}) or {}
         inputs = []
         for key, type_name in tool.input_schema:
