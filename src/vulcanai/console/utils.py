@@ -43,6 +43,7 @@ class StreamToTextual:
 
     def __init__(self, app, stream_name: str = "stdout"):
         self.app = app
+        self.stream_name = stream_name
         self.real_stream = getattr(sys, stream_name)
 
     def write(self, data: str):
@@ -50,9 +51,8 @@ class StreamToTextual:
             return
 
         if data.strip():
-            # Ensure update happens on the app thread
-            # self.app.call_from_thread(self.app.append_log_text, data)
-            self.app.call_from_thread(self.app.add_line, data)
+            color = "red" if self.stream_name == "stderr" else ""
+            self.app.call_from_thread(self.app.add_line, data, color)
 
     def flush(self):
         self.real_stream.flush()
