@@ -511,9 +511,11 @@ def _run_ros2_interface_command(console, tool_name: str, command: str, interface
     print_tool_output(console, result["output"], tool_name)
     return result
 
+
 # -----------------------------------------------------------------------------
 # ROS 2 wrappers kept for direct tests and compatibility
 # -----------------------------------------------------------------------------
+
 
 class Ros2NodeTool(AtomicTool):
     name = "ros2_node"
