@@ -695,7 +695,11 @@ class Ros2TopicBwTool(AtomicTool):
         "show topic bandwidth",
     ]
 
-    input_schema = [("topic_name", "string"), ("max_duration", "float?"), ("max_lines", "int?")]
+    input_schema = [
+        ("topic_name", "string"),
+        ("max_duration", "float?"),  # optional duration
+        ("max_lines", "int?"),  # optional number of lines
+    ]
     input_defaults = {"max_duration": 60, "max_lines": 100}
     output_schema = {"output": "string"}
 
@@ -731,7 +735,11 @@ class Ros2TopicDelayTool(AtomicTool):
         "Use when the user wants to show, display, or print the delay of a ROS 2 topic that is publishing."
     )
     tags = ["ros2", "ros 2", "delay", "topic delay", "ros2 topic delay", "inspect topic delay", "show topic delay"]
-    input_schema = [("topic_name", "string"), ("max_duration", "float?"), ("max_lines", "int?")]
+    input_schema = [
+        ("topic_name", "string"),
+        ("max_duration", "float?"),  # optional duration
+        ("max_lines", "int?"),  # optional number of lines
+    ]
     input_defaults = {"max_duration": 60, "max_lines": 100}
     output_schema = {"output": "string"}
 
@@ -776,7 +784,11 @@ class Ros2TopicHzTool(AtomicTool):
         "inspect topic hz",
         "show topic hz",
     ]
-    input_schema = [("topic_name", "string"), ("max_duration", "float?"), ("max_lines", "int?")]
+    input_schema = [
+        ("topic_name", "string"),
+        ("max_duration", "float?"),  # optional duration
+        ("max_lines", "int?"),  # optional number of lines
+    ]
     input_defaults = {"max_duration": 60, "max_lines": 100}
     output_schema = {"output": "string"}
 
@@ -935,7 +947,11 @@ class Ros2ServiceCallTool(AtomicTool):
         "call service",
         "call ros2 service",
     ]
-    input_schema = [("service_name", "string"), ("service_type", "string"), ("args", "string")]
+    input_schema = [
+        ("service_name", "string"),  # service name
+        ("service_type", "string"),  # service type
+        ("args", "string"),  # args
+    ]
     output_schema = {"output": "string"}
 
     def run(self, **kwargs):
@@ -970,7 +986,11 @@ class Ros2ServiceEchoTool(AtomicTool):
         "observe service",
         "echo service",
     ]
-    input_schema = [("service_name", "string"), ("max_duration", "float?"), ("max_lines", "int?")]
+    input_schema = [
+        ("service_name", "string"),
+        ("max_duration", "float?"),  # optional time
+        ("max_lines", "int?"),  # optional number of lines
+    ]
     input_defaults = {"max_duration": 60, "max_lines": 100}
     output_schema = {"output": "string"}
 
@@ -1093,7 +1113,11 @@ class Ros2ActionSendGoalTool(AtomicTool):
         "call action",
         "trigger action",
     ]
-    input_schema = [("action_name", "string"), ("action_type", "string"), ("goal_args", "string")]
+    input_schema = [
+        ("action_name", "string"),  # action name
+        ("action_type", "string"),  # action type
+        ("goal_args", "string"),  # goal arguments
+    ]
     output_schema = {"output": "string"}
 
     def run(self, **kwargs):
@@ -1129,7 +1153,9 @@ class Ros2ParamListTool(AtomicTool):
         "print ros2 params",
         "available params",
     ]
-    input_schema = [("node_name", "string?")]
+    input_schema = [
+        ("node_name", "string?")  # optional node name
+    ]
     output_schema = {"output": "string"}
 
     def run(self, **kwargs):
@@ -1157,7 +1183,10 @@ class Ros2ParamGetTool(AtomicTool):
         "read parameter",
         "show parameter value",
     ]
-    input_schema = [("node_name", "string"), ("param_name", "string")]
+    input_schema = [
+        ("node_name", "string"),  # node name
+        ("param_name", "string"),  # node param name
+    ]
     output_schema = {"output": "string"}
 
     def run(self, **kwargs):
@@ -1191,7 +1220,10 @@ class Ros2ParamDescribeTool(AtomicTool):
         "parameter metadata",
         "parameter details",
     ]
-    input_schema = [("node_name", "string"), ("param_name", "string")]
+    input_schema = [
+        ("node_name", "string"),  # node name
+        ("param_name", "string"),  # node param name
+    ]
     output_schema = {"output": "string"}
 
     def run(self, **kwargs):
@@ -1225,7 +1257,11 @@ class Ros2ParamSetTool(AtomicTool):
         "update parameter",
         "change parameter value",
     ]
-    input_schema = [("node_name", "string"), ("param_name", "string"), ("set_value", "string")]
+    input_schema = [
+        ("node_name", "string"),  # node name
+        ("param_name", "string"),  # node param name
+        ("set_value", "string"),  # new param value
+    ]
     output_schema = {"output": "string"}
 
     def run(self, **kwargs):
@@ -1261,7 +1297,10 @@ class Ros2ParamDeleteTool(AtomicTool):
         "remove parameter",
         "unset parameter",
     ]
-    input_schema = [("node_name", "string"), ("param_name", "string")]
+    input_schema = [
+        ("node_name", "string"),  # node name
+        ("param_name", "string"),  # node param name
+    ]
     output_schema = {"output": "string"}
 
     def run(self, **kwargs):
