@@ -170,7 +170,9 @@ class _DefaultToolsOptionalArgsBase(unittest.TestCase):
         tool.bb = {"console": self.console, "main_node": self.node}
         return tool
 
+
 # region TOPIC
+
 
 class TestStreamingToolOptionalArgs(_DefaultToolsOptionalArgsBase):
     def _assert_topic_default(
@@ -235,9 +237,11 @@ class TestStreamingToolOptionalArgs(_DefaultToolsOptionalArgsBase):
     def test_service_echo_defaults_max_lines_when_omitted(self):
         self._assert_service_default("max_lines", "max_duration", 2.5, 100)
 
+
 # endregion
 
 # region PARAM
+
 
 class TestParamListOptionalArgs(_DefaultToolsOptionalArgsBase):
     def test_param_list_passes_none_when_node_name_is_omitted(self):
@@ -250,9 +254,11 @@ class TestParamListOptionalArgs(_DefaultToolsOptionalArgsBase):
         self.assertEqual(runner.call_args.args[:3], (self.console, tool.name, "list"))
         self.assertIsNone(runner.call_args.kwargs["node_name"])
 
+
 # endregion
 
 # region PUBLISH
+
 
 class TestPublishOptionalArgs(_DefaultToolsOptionalArgsBase):
     def _run_publish(self, tool, monotonic_values, **kwargs):
@@ -359,9 +365,11 @@ class TestPublishOptionalArgs(_DefaultToolsOptionalArgsBase):
         self.assertEqual(len(publisher.messages), 1)
         sleep_mock.assert_called_once_with(0.25)
 
+
 # endregion
 
 # region SUBSCRIBE
+
 
 class TestSubscribeOptionalArgs(_DefaultToolsOptionalArgsBase):
     def test_subscribe_defaults_max_duration_when_omitted(self):
@@ -374,7 +382,10 @@ class TestSubscribeOptionalArgs(_DefaultToolsOptionalArgsBase):
             result = tool.run(topic="/demo_topic", max_lines=2)
 
         self.assertEqual(result["subscribed"], "True")
-        self.assertEqual(execute.call_args.args[:3], (self.console, tool.name, ["ros2", "topic", "echo", "/demo_topic", "--field", "data", "--no-arr"]))
+        self.assertEqual(
+            execute.call_args.args[:3],
+            (self.console, tool.name, ["ros2", "topic", "echo", "/demo_topic", "--field", "data", "--no-arr"]),
+        )
         self.assertEqual(execute.call_args.args[3], 60)
         self.assertEqual(execute.call_args.args[4], 2)
 
@@ -388,9 +399,13 @@ class TestSubscribeOptionalArgs(_DefaultToolsOptionalArgsBase):
             result = tool.run(topic="/demo_topic", max_duration=2.5)
 
         self.assertEqual(result["subscribed"], "True")
-        self.assertEqual(execute.call_args.args[:3], (self.console, tool.name, ["ros2", "topic", "echo", "/demo_topic", "--field", "data", "--no-arr"]))
+        self.assertEqual(
+            execute.call_args.args[:3],
+            (self.console, tool.name, ["ros2", "topic", "echo", "/demo_topic", "--field", "data", "--no-arr"]),
+        )
         self.assertEqual(execute.call_args.args[3], 2.5)
         self.assertEqual(execute.call_args.args[4], 100)
+
 
 # endregion
 

@@ -20,6 +20,7 @@ import types
 import unittest
 
 import numpy as np
+from pydantic import ValidationError
 
 
 # Stub sentence_transformers to avoid heavy dependency during tests
@@ -78,7 +79,7 @@ class TestPlanValidator(unittest.TestCase):
         self.Embedder = LocalDummyEmbedder()
 
         # Build registry and executor
-        self.registry = self.ToolRegistry(embedder=self.Embedder)
+        self.registry = self.ToolRegistry(embedder=self.Embedder, default_tools=False)
 
         # Define and register tools
         class EmptyTool(self.AtomicTool):
@@ -141,11 +142,21 @@ class TestPlanValidator(unittest.TestCase):
             def run(self, **kwargs):
                 return {"types": True}
 
+        class OptionalTool(self.AtomicTool):
+            name = "optional"
+            description = "Tool with one required argument and one optional argument"
+            input_schema = [("required", "string"), ("optional_value", "string?")]
+            output_schema = {"ok": "bool"}
+
+            def run(self, **kwargs):
+                return {"ok": True}
+
         self.registry.register_tool(EmptyTool())
         self.registry.register_tool(DetectTool())
         self.registry.register_tool(NavTool())
         self.registry.register_tool(SpeakTool())
         self.registry.register_tool(TypesTool())
+        self.registry.register_tool(OptionalTool())
 
         self.validator = self.Validator(self.registry)
 
@@ -195,19 +206,39 @@ class TestPlanValidator(unittest.TestCase):
             self.assertIn("not found in registry", str(e))
         self.assertTrue(fail, "Validator did not catch non-existing key error")
 
+    def test_global_plan_requires_at_least_one_plan_node(self):
+        with self.assertRaises(ValidationError) as ctx:
+            self.GlobalPlan(summary="Empty plan", plan=[])
+
+        self.assertIn("plan", str(ctx.exception))
+        self.assertIn("at least 1 item", str(ctx.exception))
+
+    def test_plan_node_requires_at_least_one_step(self):
+        with self.assertRaises(ValidationError) as ctx:
+            self.PlanNode(kind="SEQUENCE", steps=[])
+
+        self.assertIn("steps", str(ctx.exception))
+        self.assertIn("at least 1 item", str(ctx.exception))
+
+    def test_step_requires_tool_name(self):
+        with self.assertRaises(ValidationError) as ctx:
+            self.Step(args=[])
+
+        self.assertIn("tool", str(ctx.exception))
+        self.assertIn("Field required", str(ctx.exception))
+
     def test_validator_non_existing_key(self):
         plan = self.GlobalPlan(
-            summary="Navigate to a location",
+            summary="Optional tool with an unknown key",
             plan=[
                 self.PlanNode(
                     kind="SEQUENCE",
                     steps=[
                         self.Step(
-                            tool="go_to_pose",
+                            tool="optional",
                             args=[
-                                self.Arg(key="non_existing_key", val=1.0),
-                                self.Arg(key="y", val=2.0),
-                                self.Arg(key="z", val=0.0),
+                                self.Arg(key="required", val="hello"),
+                                self.Arg(key="non_existing_key", val="unexpected"),
                             ],
                         ),
                     ],

@@ -35,7 +35,17 @@ jobs:
 
       - name: Run unit tests
         run: |
-          python -m unittest discover -s tests/unittest -t . -p "test*.py" --ignore-patterns "test_default_tools.py" -v
+          mapfile -t test_modules < <(
+            find tests/unittest -maxdepth 1 -name "test*.py" ! -name "test_default_tools.py" -printf "%f\n" |
+            sed 's/\.py$//' |
+            sed 's/^/tests.unittest./' |
+            sort
+          )
+          if [ "${#test_modules[@]}" -eq 0 ]; then
+            echo "No unit test modules found"
+            exit 1
+          fi
+          python -m unittest -v "${test_modules[@]}"
 
   ros2_unittests:
     name: ROS 2 unit tests (default tools)
@@ -55,13 +65,12 @@ jobs:
 
       - name: Install VulcanAI library
         run: |
-          python3 -m pip install -U pip --break-system-packages
           python3 -m pip install -e .[test] --break-system-packages
 
       - name: Run ROS 2 default tools tests
         shell: bash
         run: |
-          source /opt/ros/jazzy/setup.bash
+          source /opt/ros/$ROS_DISTRO/setup.bash
           python3 -m unittest discover -s tests/unittest -t . -p "test_default_tools.py" -v
 
   integration:

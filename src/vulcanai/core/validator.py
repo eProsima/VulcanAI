@@ -45,17 +45,22 @@ class PlanValidator:
         """
         if not isinstance(plan, GlobalPlan):
             raise ValueError("Provided plan is not a GlobalPlan instance.")
+        if not plan.plan:
+            raise ValueError("GlobalPlan has no PlanNodes defined.")
         for node in plan.plan:
-            if isinstance(node, PlanNode):
-                if not node.steps:
-                    raise ValueError(f"PlanNode '{node.kind}' has no steps defined.")
-                for step in node.steps:
-                    self._validate_step(step)
+            if not isinstance(node, PlanNode):
+                raise ValueError("Provided node is not a PlanNode instance.")
+            if not node.steps:
+                raise ValueError(f"PlanNode '{node.kind}' has no steps defined.")
+            for step in node.steps:
+                self._validate_step(step)
 
     def _validate_step(self, step: Step):
         """Validate a single step in the plan."""
         if not isinstance(step, Step):
             raise ValueError("Provided step is not a Step instance.")
+        if not getattr(step, "tool", None):
+            raise ValueError("Provided step has no tool defined.")
         # Check tool exists and is registered
         if step.tool not in self.registry.tools:
             raise ValueError(f"Tool '{step.tool}' not found in registry.")

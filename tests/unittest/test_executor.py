@@ -79,7 +79,7 @@ class TestPlanExecutor(unittest.TestCase):
         self.Embedder = LocalDummyEmbedder()
 
         # Build registry and executor
-        self.registry = self.ToolRegistry(embedder=self.Embedder)
+        self.registry = self.ToolRegistry(embedder=self.Embedder, default_tools=False)
 
         # Define and register tools
         class NavTool(self.AtomicTool):
@@ -459,7 +459,7 @@ class TestPlanExecutor(unittest.TestCase):
             ],
         )
 
-        r = self.ToolRegistry(embedder=self.Embedder)
+        r = self.ToolRegistry(embedder=self.Embedder, default_tools=False)
         flaky_tool = self.FlakyTool()
         r.register_tool(flaky_tool)
         flaky_exec = self.PlanExecutor(r)
@@ -497,7 +497,7 @@ class TestPlanExecutor(unittest.TestCase):
             ],
         )
 
-        r = self.ToolRegistry(embedder=self.Embedder)
+        r = self.ToolRegistry(embedder=self.Embedder, default_tools=False)
         # First test with a value that does not meet criteria
         r.register_tool(self.CriteriaTool(return_value=5))
         criteria_exec = self.PlanExecutor(r)
@@ -509,7 +509,7 @@ class TestPlanExecutor(unittest.TestCase):
         self.assertEqual(bb["criteria_tool"]["value"], 5)
 
         # Now test with a value that meets criteria
-        r = self.ToolRegistry(embedder=self.Embedder)
+        r = self.ToolRegistry(embedder=self.Embedder, default_tools=False)
         r.register_tool(self.CriteriaTool(return_value=15))
         criteria_exec = self.PlanExecutor(r)
 
@@ -593,7 +593,7 @@ class TestPlanExecutor(unittest.TestCase):
             ],
         )
 
-        r = self.ToolRegistry(embedder=self.Embedder)
+        r = self.ToolRegistry(embedder=self.Embedder, default_tools=False)
         # First test with a value that does not meet criteria
         r.register_tool(self.CriteriaTool(return_value=5))
         criteria_exec = self.PlanExecutor(r)
@@ -605,7 +605,7 @@ class TestPlanExecutor(unittest.TestCase):
         self.assertEqual(bb["criteria_tool"]["value"], 5)
 
         # Now test with a value that meets criteria
-        r = self.ToolRegistry(embedder=self.Embedder)
+        r = self.ToolRegistry(embedder=self.Embedder, default_tools=False)
         r.register_tool(self.CriteriaTool(return_value=15))
         criteria_exec = self.PlanExecutor(r)
 
@@ -629,7 +629,7 @@ class TestPlanExecutor(unittest.TestCase):
             ],
         )
 
-        r = self.ToolRegistry(embedder=self.Embedder)
+        r = self.ToolRegistry(embedder=self.Embedder, default_tools=False)
         flaky_tool = self.FlakyTool()
         r.register_tool(flaky_tool)
         flaky_exec = self.PlanExecutor(r)
