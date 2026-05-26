@@ -189,6 +189,10 @@ class ToolRegistry:
         newly_registered = [name for name in self.tools if name not in before]
         self._log_tools_grouped(newly_registered)
 
+    def _get_tool_by_name(self, tool_name: str) -> ITool | None:
+        """Return a tool whether it is currently active or deactivated."""
+        return self.tools.get(tool_name) or self.deactivated_tools.get(tool_name)
+
     def _resolve_dependencies(self, tool: CompositeTool):
         """Resolve and attach dependencies for a CompositeTool."""
         for dep_name in tool.dependencies:
@@ -303,7 +307,9 @@ class ToolRegistry:
         """Group tool names by each tools `group_name` attribute.
 
         Tools that declare a `group_name` are collected under that group; tools
-        without the attribute are emitted standalone. Registration order is
+        without the attribute are emitted standalone. Group metadata is looked
+        up from both active and deactivated tools so `/edit_tools` can preserve
+        group structure when an entire group is disabled. Registration order is
         preserved, with each group emitted on the first occurrence of one of
         its members.
 
@@ -316,7 +322,7 @@ class ToolRegistry:
         order = []
 
         for name in tool_names:
-            tool = self.tools.get(name)
+            tool = self._get_tool_by_name(name)
             group = getattr(tool, "group_name", None) if tool is not None else None
             if group:
                 if group not in group_tools:

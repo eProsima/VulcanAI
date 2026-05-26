@@ -60,6 +60,43 @@ class TextualLogSink:
         self.console.add_line(msg, color)
 
 
+def ensure_ros_parameter_services(node):
+    """Attach ROS parameter services to a node when they were disabled at construction."""
+    if node is None:
+        return None
+
+    parameter_service = getattr(node, "_parameter_service", None)
+    if parameter_service is not None:
+        return parameter_service
+
+    from rclpy.parameter_service import ParameterService
+
+    parameter_service = ParameterService(node)
+    setattr(node, "_parameter_service", parameter_service)
+    return parameter_service
+
+
+def get_ros_spin_lock(node) -> threading.Lock | None:
+    """Return a shared spin lock stored on the node."""
+    if node is None:
+        return None
+
+    spin_lock = getattr(node, "_vulcanai_spin_lock", None)
+    if spin_lock is None:
+        spin_lock = threading.Lock()
+        setattr(node, "_vulcanai_spin_lock", spin_lock)
+    return spin_lock
+
+
+def has_ros2_runtime() -> bool:
+    """Return True when the ROS 2 Python runtime is available."""
+    try:
+        import rclpy  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
 class VulcanConsole(App):
     DEFAULT_CMD_PLACEHOLDER = "> "
     # Extra info when a streaming process is active
@@ -242,6 +279,7 @@ class VulcanConsole(App):
 
         self._gnome_profile_schema: str | None = None
         self._gnome_scrollbar_policy_backup: str | None = None
+        self._main_node_spin_task: asyncio.Task | None = None
 
     async def on_mouse_down(self, event: MouseEvent) -> None:
         """
@@ -365,6 +403,9 @@ class VulcanConsole(App):
             except ImportError:
                 self.logger.log_console("Unable to load ROS 2 default node for default tools.")
 
+        if has_ros2_runtime():
+            self._enable_main_node_ros_support()
+
         # -- Register tools (file I/O - run in executor) --
         # File paths tools
         for tool_file_path in self.register_from_file:
@@ -484,6 +525,45 @@ class VulcanConsole(App):
 
         # Keep output on a single line while avoiding Textual tag parsing issues.
         return repr(subset).replace("<", "'").replace(">", "'")
+
+    def _enable_main_node_ros_support(self) -> None:
+        """Ensure the shared ROS node is responsive to external ROS CLI calls."""
+        if self.main_node is None or not has_ros2_runtime():
+            return
+
+        get_ros_spin_lock(self.main_node)
+
+        try:
+            ensure_ros_parameter_services(self.main_node)
+        except Exception as e:
+            self.logger.log_console(
+                f"Unable to attach ROS parameter services to the shared node: {e}",
+            )
+
+        if self._main_node_spin_task is None or self._main_node_spin_task.done():
+            self._main_node_spin_task = asyncio.create_task(self._spin_main_node_loop())
+
+    async def _spin_main_node_loop(self) -> None:
+        """Keep the shared ROS node serviced so CLI tools do not time out on it."""
+        try:
+            import rclpy
+        except ImportError:
+            return
+
+        while self.main_node is not None:
+            try:
+                if rclpy.ok():
+                    spin_lock = get_ros_spin_lock(self.main_node)
+                    if spin_lock is not None and spin_lock.acquire(blocking=False):
+                        try:
+                            rclpy.spin_once(self.main_node, timeout_sec=0.0)
+                        finally:
+                            spin_lock.release()
+            except Exception:
+                # The node may be shutting down while the console exits.
+                break
+
+            await asyncio.sleep(0.05)
 
     def _apply_history_to_input(self) -> None:
         """
@@ -863,7 +943,7 @@ class VulcanConsole(App):
         self._stream_panel_visible = True
         cmd = self.query_one("#cmd", Input)
         cmd.placeholder = self.STREAM_CMD_PLACEHOLDER
-        if follow_main_output and self.main_pannel is not None:
+        if follow_main_output:
             self.main_pannel.scroll_end(animate=False, immediate=True, x_axis=False)
             self.call_after_refresh(self.main_pannel.scroll_end, animate=False, immediate=True, x_axis=False)
             self.call_later(self.main_pannel.scroll_end, animate=False, immediate=True, x_axis=False)
@@ -958,7 +1038,7 @@ class VulcanConsole(App):
         self.write_deferred_main_output()
         cmd = self.query_one("#cmd", Input)
         cmd.placeholder = self.DEFAULT_CMD_PLACEHOLDER
-        if follow_main_output and self.main_pannel is not None:
+        if follow_main_output:
             self.main_pannel.scroll_end(animate=False, immediate=True, x_axis=False)
             self.call_after_refresh(self.main_pannel.scroll_end, animate=False, immediate=True, x_axis=False)
 
@@ -1010,8 +1090,8 @@ class VulcanConsole(App):
         target_panel = self.main_pannel
         if self._route_logs_to_stream_panel > 0 and self.stream_pannel is not None:
             if not self._stream_panel_visible:
-                # If somehow the streaming panel is closed without the user
-                # reopen it before routing output to the stream area
+                # If the streaming panel did not showed up
+                # reopen it before routing the output to the stream area
                 self.show_subprocess_panel(show_notice=False)
             if self._stream_panel_visible:
                 target_panel = self.stream_pannel

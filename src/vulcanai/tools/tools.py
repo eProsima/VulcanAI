@@ -36,8 +36,7 @@ class ITool(ABC):
     # Only used for documentation and LLM prompt generation.
     input_schema: List[Tuple[str, str]] = []  # List of (key, type) pairs, simulating a ArgValue list
     # Optional default values for documented inputs.
-    # Used by prompt generation, tool discovery, and execution when optional
-    # arguments are omitted from a plan
+    # Used when optional arguments are omitted from a plan
     input_defaults: Dict[str, Any] = {}
     output_schema: Dict[str, str] = {}
     # Validation tool

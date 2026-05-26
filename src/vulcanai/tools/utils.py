@@ -214,7 +214,26 @@ def run_oneshot_cmd(args: list[str]) -> str:
 
 
 def suggest_string(console, tool_name, string_name, input_string, real_string_list):
-    ret = None
+    if input_string is None:
+        return None
+
+    def _normalize_strings(values: list[str]) -> list[str]:
+        ret_normalized = []
+        seen_values = set()
+
+        for value in values:
+            cleaned_value = value.strip()
+            if not cleaned_value or cleaned_value in seen_values:
+                continue
+
+            seen_values.add(cleaned_value)
+            ret_normalized.append(cleaned_value)
+
+        return ret_normalized
+
+    input_string = input_string.strip()
+    real_string_list = _normalize_strings(real_string_list)
+    ret = input_string
 
     def _similarity(a: str, b: str) -> float:
         """Return a similarity score between 0 and 1."""
@@ -275,6 +294,9 @@ def suggest_string(console, tool_name, string_name, input_string, real_string_li
     if input_string not in real_string_list:
         console.logger.log_tool(f'{string_name}: "{input_string}" does not exists', tool_name=tool_name)
 
+        if not real_string_list:
+            return ret
+
         # Get the suggestions list sorted by similitud value
         _, topic_sim_list = _get_suggestions(real_string_list, input_string)
 
@@ -287,7 +309,7 @@ def suggest_string(console, tool_name, string_name, input_string, real_string_li
 
         # Check if the user cancelled the suggestion
         if console.suggestion_index >= 0:
-            ret = topic_sim_list[console.suggestion_index]
+            ret = topic_sim_list[console.suggestion_index].strip()
 
         # Reset suggestion index
         console.suggestion_index = -1

@@ -179,6 +179,17 @@ def _require_console(bb):
     return console
 
 
+def _get_node_spin_lock(node):
+    if node is None:
+        return None
+
+    spin_lock = getattr(node, "_vulcanai_spin_lock", None)
+    if spin_lock is None:
+        spin_lock = threading.Lock()
+        setattr(node, "_vulcanai_spin_lock", spin_lock)
+    return spin_lock
+
+
 def _normalize_command(command):
     if command is None:
         raise ValueError("`command` is required.")
@@ -424,7 +435,7 @@ def _run_ros2_param_command(
     elif command == "set":
         if set_value is None:
             raise ValueError("`command='set'` requires `set_value`.")
-        result["output"] = run_oneshot_cmd(["ros2", "param", "set", node_name, param_name, set_value])
+        result["output"] = run_oneshot_cmd(["ros2", "param", "set", node_name, param_name, str(set_value)])
     elif command == "delete":
         result["output"] = run_oneshot_cmd(["ros2", "param", "delete", node_name, param_name])
     elif command == "dump":
@@ -483,7 +494,7 @@ def _run_ros2_interface_command(console, tool_name: str, command: str, interface
         if not interface_name:
             raise ValueError("`command='{}'` requires `interface_name`.".format(command))
         # Keep existing command behavior for compatibility.
-        result["output"] = run_oneshot_cmd(["ros2", "topic", "package", package_name])
+        result["output"] = run_oneshot_cmd(["ros2", "interface", "package", package_name])
     elif command == "show":
         suggested_interface_name = suggest_string(console, tool_name, "Interface", interface_name, interface_name_list)
         if suggested_interface_name is not None:
@@ -491,7 +502,7 @@ def _run_ros2_interface_command(console, tool_name: str, command: str, interface
         if not interface_name:
             raise ValueError("`command='{}'` requires `interface_name`.".format(command))
         # Keep existing command behavior for compatibility.
-        result["output"] = run_oneshot_cmd(["ros2", "topic", "show", interface_name])
+        result["output"] = run_oneshot_cmd(["ros2", "interface", "show", interface_name])
     else:
         raise ValueError(
             f"Unknown command '{command}'. Expected one of: list, info, echo, bw, delay, hz, find, pub, type."
@@ -691,19 +702,11 @@ class Ros2TopicBwTool(AtomicTool):
     def run(self, **kwargs):
         console = _require_console(self.bb)
 
-        # Streaming commands variables
-        # max_duration = kwargs.get("max_duration")
-        # if max_duration is None:
-        #     max_duration = 60
-
-        # max_lines = kwargs.get("max_lines")
-        # if max_lines is None:
-        #     max_lines = 100
-        max_duration = kwargs.get("max_duration", None)
+        max_duration = kwargs.get("max_duration")
         if max_duration is None or not isinstance(max_duration, (int, float)):
             max_duration = self.input_defaults["max_duration"]
 
-        max_lines = kwargs.get("max_lines", None)
+        max_lines = kwargs.get("max_lines")
         if max_lines is None or not isinstance(max_lines, (int, float)):
             max_lines = self.input_defaults["max_lines"]
 
@@ -737,12 +740,12 @@ class Ros2TopicDelayTool(AtomicTool):
 
         # Streaming commands variables
         max_duration = kwargs.get("max_duration")
-        if max_duration is None:
-            max_duration = 60
+        if max_duration is None or not isinstance(max_duration, (int, float)):
+            max_duration = self.input_defaults["max_duration"]
 
         max_lines = kwargs.get("max_lines")
-        if max_lines is None:
-            max_lines = 100
+        if max_lines is None or not isinstance(max_lines, (int, float)):
+            max_lines = self.input_defaults["max_lines"]
 
         return _run_ros2_topic_command(
             console,
@@ -782,12 +785,12 @@ class Ros2TopicHzTool(AtomicTool):
 
         # Streaming commands variables
         max_duration = kwargs.get("max_duration")
-        if max_duration is None:
-            max_duration = 60
+        if max_duration is None or not isinstance(max_duration, (int, float)):
+            max_duration = self.input_defaults["max_duration"]
 
         max_lines = kwargs.get("max_lines")
-        if max_lines is None:
-            max_lines = 100
+        if max_lines is None or not isinstance(max_lines, (int, float)):
+            max_lines = self.input_defaults["max_lines"]
 
         return _run_ros2_topic_command(
             console,
@@ -968,6 +971,7 @@ class Ros2ServiceEchoTool(AtomicTool):
         "echo service",
     ]
     input_schema = [("service_name", "string"), ("max_duration", "float?"), ("max_lines", "int?")]
+    input_defaults = {"max_duration": 60, "max_lines": 100}
     output_schema = {"output": "string"}
 
     def run(self, **kwargs):
@@ -975,12 +979,12 @@ class Ros2ServiceEchoTool(AtomicTool):
 
         # Streaming commands variables
         max_duration = kwargs.get("max_duration")
-        if max_duration is None:
-            max_duration = 60
+        if max_duration is None or not isinstance(max_duration, (int, float)):
+            max_duration = self.input_defaults["max_duration"]
 
         max_lines = kwargs.get("max_lines")
-        if max_lines is None:
-            max_lines = 100
+        if max_lines is None or not isinstance(max_lines, (int, float)):
+            max_lines = self.input_defaults["max_lines"]
 
         return _run_ros2_service_command(
             console,
@@ -1125,12 +1129,12 @@ class Ros2ParamListTool(AtomicTool):
         "print ros2 params",
         "available params",
     ]
-    input_schema = []
+    input_schema = [("node_name", "string?")]
     output_schema = {"output": "string"}
 
     def run(self, **kwargs):
         console = _require_console(self.bb)
-        return _run_ros2_param_command(console, self.name, "list")
+        return _run_ros2_param_command(console, self.name, "list", node_name=kwargs.get("node_name"))
 
 
 @vulcanai_tool
@@ -1576,7 +1580,6 @@ class Ros2PublishTool(AtomicTool):
         "max_duration": 60,
         "period_sec": 0.1,
     }
-
     output_schema = {
         "published": "bool",
         "count": "int",
@@ -1739,7 +1742,12 @@ class Ros2PublishTool(AtomicTool):
                 published_msgs.append(msg.data if hasattr(msg, "data") else str(msg))
                 published_count += 1
 
-                rclpy.spin_once(node, timeout_sec=0.05)
+                spin_lock = _get_node_spin_lock(node)
+                if spin_lock is None:
+                    rclpy.spin_once(node, timeout_sec=0.05)
+                else:
+                    with spin_lock:
+                        rclpy.spin_once(node, timeout_sec=0.05)
 
                 if period_sec and period_sec > 0.0:
                     time.sleep(period_sec)
