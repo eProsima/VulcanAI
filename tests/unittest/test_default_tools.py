@@ -1084,13 +1084,24 @@ class TestRos2ParamTool(unittest.TestCase):
         self.assertIn("ros__parameters", result["output"])
 
     def test_param_dump_with_output_file(self):
-        """`dump` with file path currently errors on unsupported CLI option."""
+        """`dump` with file path should create the output YAML file."""
         self._start_parameter_blackboard()
         dump_path = "/tmp/vulcan_param_dump.yaml"
-        if os.path.exists(dump_path):
-            os.remove(dump_path)
-        with self.assertRaises(Exception):
-            self._run_param(command="dump", node_name="/parameter_blackboard", file_path=dump_path)
+        try:
+            if os.path.exists(dump_path):
+                os.remove(dump_path)
+
+            result = self._run_param(command="dump", node_name="/parameter_blackboard", file_path=dump_path)
+
+            self.assertTrue(os.path.exists(dump_path))
+            with open(dump_path, encoding="utf-8") as f:
+                dumped_yaml = f.read()
+            self.assertIn("/parameter_blackboard:", dumped_yaml)
+            self.assertIn("ros__parameters", dumped_yaml)
+            self.assertTrue(result["output"].strip() or dump_path in result["output"])
+        finally:
+            if os.path.exists(dump_path):
+                os.remove(dump_path)
 
     # -------------------------------------------------------------------------
     # Tests — ros2 param load <node_name> <file_path>
@@ -1263,19 +1274,17 @@ class TestRos2InterfaceTool(unittest.TestCase):
     # Tests — ros2 interface package <interface_name>
     # -------------------------------------------------------------------------
     def test_interface_package_branch_calls_current_cli(self):
-        """`package` branch should use the current CLI call path."""
-        with self.assertRaises(Exception) as exc_info:
-            self._run_interface(command="package", interface_name="std_msgs")
-        self.assertIn("ros2 topic package", str(exc_info.exception))
+        """`package` should list interfaces provided by a package."""
+        result = self._run_interface(command="package", interface_name="std_msgs")
+        self.assertIn("std_msgs/msg/String", result["output"])
 
     # -------------------------------------------------------------------------
     # Tests — ros2 interface show
     # -------------------------------------------------------------------------
     def test_interface_show_branch_calls_current_cli(self):
-        """`show` branch should use the current CLI call path."""
-        with self.assertRaises(Exception) as exc_info:
-            self._run_interface(command="show", interface_name="std_msgs/msg/String")
-        self.assertIn("ros2 topic show", str(exc_info.exception))
+        """`show` should return the interface definition."""
+        result = self._run_interface(command="show", interface_name="std_msgs/msg/String")
+        self.assertIn("string data", result["output"])
 
     # -------------------------------------------------------------------------
     # Tests — Error
@@ -1475,7 +1484,7 @@ class TestRos2SubscribeTool(unittest.TestCase):
         proc = start_background_publisher(topic, message="hello_subscribe", rate=10)
         self._bg_publishers.append(proc)
 
-        result = self._run_subscribe_threaded(topic=topic, max_duration=5.0, max_lines=50)
+        result = self._run_subscribe_threaded(topic=topic, max_duration=5.0, max_lines=5)
 
         self.assertEqual("True", result["subscribed"])
         self.assertEqual(5, result["count"])

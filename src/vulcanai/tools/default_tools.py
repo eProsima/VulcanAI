@@ -511,6 +511,99 @@ def _run_ros2_interface_command(console, tool_name: str, command: str, interface
     print_tool_output(console, result["output"], tool_name)
     return result
 
+# -----------------------------------------------------------------------------
+# ROS 2 wrappers kept for direct tests and compatibility
+# -----------------------------------------------------------------------------
+
+class Ros2NodeTool(AtomicTool):
+    name = "ros2_node"
+
+    def run(self, **kwargs):
+        console = _require_console(self.bb)
+        return _run_ros2_node_command(console, self.name, kwargs.get("command"), node_name=kwargs.get("node_name"))
+
+
+class Ros2TopicTool(AtomicTool):
+    name = "ros2_topic"
+
+    def run(self, **kwargs):
+        console = _require_console(self.bb)
+        return _run_ros2_topic_command(
+            console,
+            self.name,
+            kwargs.get("command"),
+            topic_name=kwargs.get("topic_name"),
+            msg_type=kwargs.get("msg_type"),
+            max_duration=kwargs.get("max_duration"),
+            max_lines=kwargs.get("max_lines"),
+        )
+
+
+class Ros2ServiceTool(AtomicTool):
+    name = "ros2_service"
+
+    def run(self, **kwargs):
+        console = _require_console(self.bb)
+        return _run_ros2_service_command(
+            console,
+            self.name,
+            kwargs.get("command"),
+            service_name=kwargs.get("service_name"),
+            service_type=kwargs.get("service_type"),
+            call_args=kwargs.get("args"),
+            max_duration=kwargs.get("max_duration"),
+            max_lines=kwargs.get("max_lines"),
+        )
+
+
+class Ros2ActionTool(AtomicTool):
+    name = "ros2_action"
+
+    def run(self, **kwargs):
+        console = _require_console(self.bb)
+        return _run_ros2_action_command(
+            console,
+            self.name,
+            kwargs.get("command"),
+            action_name=kwargs.get("action_name"),
+            action_type=kwargs.get("action_type"),
+            goal_args=kwargs.get("goal_args"),
+        )
+
+
+class Ros2ParamTool(AtomicTool):
+    name = "ros2_param"
+
+    def run(self, **kwargs):
+        console = _require_console(self.bb)
+        return _run_ros2_param_command(
+            console,
+            self.name,
+            kwargs.get("command"),
+            node_name=kwargs.get("node_name"),
+            param_name=kwargs.get("param_name"),
+            set_value=kwargs.get("set_value"),
+            file_path=kwargs.get("file_path"),
+        )
+
+
+class Ros2PkgTool(AtomicTool):
+    name = "ros2_pkg"
+
+    def run(self, **kwargs):
+        console = _require_console(self.bb)
+        return _run_ros2_pkg_command(console, self.name, kwargs.get("command"))
+
+
+class Ros2InterfaceTool(AtomicTool):
+    name = "ros2_interface"
+
+    def run(self, **kwargs):
+        console = _require_console(self.bb)
+        return _run_ros2_interface_command(
+            console, self.name, kwargs.get("command"), interface_name=kwargs.get("interface_name")
+        )
+
 
 # ---------------------------------------------------------------------------
 # Strict per-subcommand ROS 2 tools (planner-facing)
