@@ -41,15 +41,20 @@ try:
 except ImportError:
     raise ImportError("Unable to load default tools because no ROS 2 installation was found.")
 
+try:
+    from rclpy.executors import SingleThreadedExecutor
+except ImportError:
+    SingleThreadedExecutor = None
+
 
 # This class contains a ROS 2 node that will be loaded if none is provided to launch ROS 2 default tools
 class ROS2DefaultToolNode(Node):
     def __init__(self, name: str = "vulcanai_ros2_default_tools_node"):
-        if not rclpy.ok():
-            rclpy.init()
-        # This helper node is not spun continuously, so exposing parameter services
-        # would make `ros2 param list` hang while waiting on unanswered requests.
-        super().__init__(name, start_parameter_services=False)
+        self._vulcan_context = rclpy.context.Context()
+        self._vulcan_context.init()
+        # Parameter services are attached manually below so the helper node can
+        # answer `ros2 param *` requests while still keeping spin ownership local.
+        super().__init__(name, context=self._vulcan_context, start_parameter_services=False)
         # Dictionary to store created clients
         self._vulcan_clients = {}
         # Dictionary to store created publishers
@@ -57,6 +62,64 @@ class ROS2DefaultToolNode(Node):
 
         # Ensure entities creation is thread-safe.
         self.node_lock = threading.Lock()
+        self._vulcanai_spin_stop = threading.Event()
+        self._vulcan_executor = None
+        if SingleThreadedExecutor is not None:
+            self._vulcan_executor = SingleThreadedExecutor(context=self.context)
+            self._vulcan_executor.add_node(self)
+
+        self._ensure_parameter_services()
+
+        # Runs in a background thread and keeps the node serviced
+        # That means subscriptions, service responses,
+        # and especially parameter-service callbacks can actually be processed
+        # Without something spinning the node, external ros2 CLI calls can hang waiting for a reply
+        self._vulcanai_spin_thread = threading.Thread(
+            target=self._spin_forever,
+            name=f"{name}_spin",
+            daemon=True,
+        )
+        self._vulcanai_spin_thread.start()
+
+    # region PRIVATE
+
+    def _ensure_parameter_services(self):
+        parameter_service = getattr(self, "_parameter_service", None)
+        if parameter_service is not None:
+            return parameter_service
+
+        from rclpy.parameter_service import ParameterService
+
+        parameter_service = ParameterService(self)
+        setattr(self, "_parameter_service", parameter_service)
+        return parameter_service
+
+    def _spin_forever(self):
+        while not self._vulcanai_spin_stop.is_set() and self.context.ok():
+            try:
+                self.spin_once(timeout_sec=0.1)
+            except Exception:
+                if self._vulcanai_spin_stop.is_set() or not self.context.ok():
+                    break
+                time.sleep(0.05)
+
+    # endregion
+
+    # region PUBLIC
+
+    def spin_once(self, timeout_sec: float = 0.1):
+        spin_lock = _get_node_spin_lock(self)
+        if spin_lock is None:
+            if self._vulcan_executor is not None:
+                self._vulcan_executor.spin_once(timeout_sec=timeout_sec)
+            else:
+                rclpy.spin_once(self, timeout_sec=timeout_sec)
+        else:
+            with spin_lock:
+                if self._vulcan_executor is not None:
+                    self._vulcan_executor.spin_once(timeout_sec=timeout_sec)
+                else:
+                    rclpy.spin_once(self, timeout_sec=timeout_sec)
 
     def get_client(self, srv_type, srv_name):
         """
@@ -98,12 +161,40 @@ class ROS2DefaultToolNode(Node):
 
         sub = self.create_subscription(msg_type, topic, callback, 10)
 
-        rclpy.spin_until_future_complete(self, future, timeout_sec=timeout_sec)
+        deadline = None if timeout_sec is None else time.monotonic() + timeout_sec
+        while not future.done():
+            if deadline is None:
+                spin_timeout = 0.1
+            else:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                spin_timeout = min(0.1, remaining)
+            self.spin_once(timeout_sec=spin_timeout)
         self.destroy_subscription(sub)
 
         if future.done():
             return future.result()
         return None
+
+    def destroy_node(self):
+        self._vulcanai_spin_stop.set()
+        spin_thread = getattr(self, "_vulcanai_spin_thread", None)
+        if spin_thread is not None and spin_thread.is_alive():
+            spin_thread.join(timeout=1.0)
+        try:
+            return super().destroy_node()
+        finally:
+            if self._vulcan_executor is not None:
+                try:
+                    self._vulcan_executor.remove_node(self)
+                except Exception:
+                    pass
+                self._vulcan_executor.shutdown(timeout_sec=1.0)
+            if self.context.ok():
+                self.context.try_shutdown()
+
+    # endregion
 
 
 """
@@ -388,6 +479,33 @@ def _run_ros2_action_command(
     return result
 
 
+def _parse_ros2_param_list_output(output: str, node_name: str = None):
+    """
+    Parse `ros2 param list` output into plain parameter names.
+
+    The ROS 2 CLI can emit either a node-scoped block format or a flat list.
+    When `node_name` is provided, only parameters for that node are returned.
+    """
+    parsed_params = []
+    current_node = None
+    saw_node_header = False
+
+    for raw_line in output.splitlines():
+        stripped_line = raw_line.strip()
+        if not stripped_line:
+            continue
+
+        if stripped_line.endswith(":") and not raw_line[:1].isspace():
+            current_node = stripped_line[:-1]
+            saw_node_header = True
+            continue
+
+        if not saw_node_header or node_name is None or current_node == node_name:
+            parsed_params.append(stripped_line)
+
+    return parsed_params
+
+
 def _run_ros2_param_command(
     console,
     tool_name: str,
@@ -400,31 +518,30 @@ def _run_ros2_param_command(
     command = _normalize_command(command)
     result = {"output": ""}
 
-    param_name_list_str = run_oneshot_cmd(["ros2", "param", "list"])
-    node_name_list_str = run_oneshot_cmd(["ros2", "node", "list"])
-
-    param_name_list = param_name_list_str.splitlines()
-    node_name_list = node_name_list_str.splitlines()
-
-    if command != "list":
-        if command not in ["dump", "load"]:
-            suggested_param_name = suggest_string(console, tool_name, "Param", param_name, param_name_list)
-            if suggested_param_name is not None:
-                param_name = suggested_param_name
-            if not param_name:
-                raise ValueError("`command='{}'` requires `param_name`.".format(command))
-
+    requires_node_name = command != "list" or node_name is not None
+    if requires_node_name:
+        node_name_list_str = run_oneshot_cmd(["ros2", "node", "list"])
+        node_name_list = node_name_list_str.splitlines()
         suggested_node_name = suggest_string(console, tool_name, "Node", node_name, node_name_list)
         if suggested_node_name is not None:
             node_name = suggested_node_name
         if not node_name:
             raise ValueError("`command='{}'` requires `node_name`.".format(command))
 
+    if command in ["get", "describe", "set", "delete"]:
+        param_name_list_str = run_oneshot_cmd(["ros2", "param", "list", node_name])
+        param_name_list = _parse_ros2_param_list_output(param_name_list_str, node_name=node_name)
+        suggested_param_name = suggest_string(console, tool_name, "Param", param_name, param_name_list)
+        if suggested_param_name is not None:
+            param_name = suggested_param_name
+        if not param_name:
+            raise ValueError("`command='{}'` requires `param_name`.".format(command))
+
     if command == "list":
         if node_name:
-            result["output"] = node_name_list_str
+            result["output"] = run_oneshot_cmd(["ros2", "param", "list", node_name])
         else:
-            result["output"] = param_name_list_str
+            result["output"] = run_oneshot_cmd(["ros2", "param", "list"])
     elif command == "get":
         get_output = run_oneshot_cmd(["ros2", "param", "get", node_name, param_name])
         if "parameter not set" in get_output.lower():
@@ -439,14 +556,16 @@ def _run_ros2_param_command(
     elif command == "delete":
         result["output"] = run_oneshot_cmd(["ros2", "param", "delete", node_name, param_name])
     elif command == "dump":
+        dump_output = run_oneshot_cmd(["ros2", "param", "dump", node_name])
         if file_path:
-            dump_output = run_oneshot_cmd(["ros2", "param", "dump", node_name, "--output-file", file_path])
+            with open(file_path, "w", encoding="utf-8") as output_file:
+                output_file.write(dump_output)
             result["output"] = dump_output or f"Dumped parameters to {file_path}"
         else:
-            result["output"] = run_oneshot_cmd(["ros2", "param", "dump", node_name])
+            result["output"] = dump_output
     elif command == "load":
         if not file_path:
-            raise ValueError("`command='load'` `file_path`.")
+            raise ValueError("`command='load'` requires `file_path`.")
         result["output"] = run_oneshot_cmd(["ros2", "param", "load", node_name, file_path])
     else:
         raise ValueError(
@@ -1876,12 +1995,15 @@ class Ros2PublishTool(AtomicTool):
                 published_msgs.append(msg.data if hasattr(msg, "data") else str(msg))
                 published_count += 1
 
-                spin_lock = _get_node_spin_lock(node)
-                if spin_lock is None:
-                    rclpy.spin_once(node, timeout_sec=0.05)
+                if hasattr(node, "spin_once"):
+                    node.spin_once(timeout_sec=0.05)
                 else:
-                    with spin_lock:
+                    spin_lock = _get_node_spin_lock(node)
+                    if spin_lock is None:
                         rclpy.spin_once(node, timeout_sec=0.05)
+                    else:
+                        with spin_lock:
+                            rclpy.spin_once(node, timeout_sec=0.05)
 
                 if period_sec and period_sec > 0.0:
                     time.sleep(period_sec)
@@ -1987,7 +2109,9 @@ class Ros2SubscribeTool(AtomicTool):
         base_args = ["ros2", "topic", "echo", topic_name, "--field", "data", "--no-arr"]
         ret = execute_subprocess(console, self.name, base_args, max_duration, max_lines, log_created=False)
 
-        ret_lines = ret.splitlines() if isinstance(ret, str) and ret else []
+        ret_lines = [line for line in ret.splitlines() if line.strip()] if isinstance(ret, str) and ret else []
+        if max_lines is not None:
+            ret_lines = ret_lines[:max_lines]
 
         result["output"] = "\n".join(ret_lines)
 
