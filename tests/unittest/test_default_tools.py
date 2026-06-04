@@ -1358,19 +1358,26 @@ class TestRos2PublishTool(unittest.TestCase):
     # Tests — Publish max_duration
     # -------------------------------------------------------------------------
     def test_publish_with_max_duration(self):
-        """Publisher should stop after max_lines and report count/output."""
+        """Publisher should stop due to max_duration and report progress/output."""
+        max_lines = 100
+        max_duration = 3.0
+        start_time = time.monotonic()
         result = self._run_publish(
             topic="/vulcan_publish_tool_test",
             message_data="hello_publish",
-            max_lines=10,
+            max_lines=max_lines,
             period_sec=1.0,
-            max_duration=10.0,
+            max_duration=max_duration,
         )
+        elapsed = time.monotonic() - start_time
 
         self.assertEqual("True", result["published"])
-        self.assertEqual(10, result["count"])
+        self.assertGreaterEqual(result["count"], 1)
+        self.assertLess(result["count"], max_lines)
         self.assertEqual("/vulcan_publish_tool_test", result["topic"])
         self.assertIn("Publishing: 'hello_publish'", result["output"])
+        self.assertGreaterEqual(elapsed, max_duration * 0.8)
+        self.assertLess(elapsed, max_duration + 5.0)
 
     # -------------------------------------------------------------------------
     # Tests — Errors

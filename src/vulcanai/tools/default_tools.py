@@ -506,6 +506,30 @@ def _parse_ros2_param_list_output(output: str, node_name: str = None):
     return parsed_params
 
 
+def _normalize_ros2_param_list_output(output: str, node_name: str = None):
+    """
+    Normalize `ros2 param list` output to the node-scoped block format.
+
+    Some ROS 2 distributions emit only plain parameter names for
+    `ros2 param list <node>`, while others include a `<node>:` header.
+    Returning a stable format keeps higher-level tooling and tests
+    consistent across environments.
+    """
+    if node_name is None or node_name in output:
+        return output
+
+    parsed_params = _parse_ros2_param_list_output(output, node_name=node_name)
+    if not parsed_params:
+        return output
+
+    normalized_lines = [f"{node_name}:"]
+    normalized_lines.extend(f"  {param_name}" for param_name in parsed_params)
+    normalized_output = "\n".join(normalized_lines)
+    if output.endswith("\n"):
+        normalized_output += "\n"
+    return normalized_output
+
+
 def _run_ros2_param_command(
     console,
     tool_name: str,
@@ -539,7 +563,8 @@ def _run_ros2_param_command(
 
     if command == "list":
         if node_name:
-            result["output"] = run_oneshot_cmd(["ros2", "param", "list", node_name])
+            raw_output = run_oneshot_cmd(["ros2", "param", "list", node_name])
+            result["output"] = _normalize_ros2_param_list_output(raw_output, node_name=node_name)
         else:
             result["output"] = run_oneshot_cmd(["ros2", "param", "list"])
     elif command == "get":
@@ -1944,6 +1969,7 @@ class Ros2PublishTool(AtomicTool):
             )
 
             start_time = time.monotonic()
+            next_publish_time = start_time
             published_count = 0
 
             while True:
@@ -1961,6 +1987,17 @@ class Ros2PublishTool(AtomicTool):
                         tool_name=self.name,
                     )
                     break
+
+                if period_sec and period_sec > 0.0:
+                    remaining_wait = next_publish_time - time.monotonic()
+                    if remaining_wait > 0.0:
+                        time.sleep(remaining_wait)
+                    if max_duration is not None and (time.monotonic() - start_time) >= max_duration:
+                        console.logger.log_tool(
+                            f"[tool]Stopping:[/tool] Exceeded max_duration = {max_duration}s",
+                            tool_name=self.name,
+                        )
+                        break
 
                 msg = MsgType()
 
@@ -2006,7 +2043,7 @@ class Ros2PublishTool(AtomicTool):
                             rclpy.spin_once(node, timeout_sec=0.05)
 
                 if period_sec and period_sec > 0.0:
-                    time.sleep(period_sec)
+                    next_publish_time += period_sec
 
         finally:
             console.set_stream_task(None)
