@@ -348,6 +348,21 @@ class TestToolRegistry(unittest.TestCase):
 
         self.assertEqual(grouped, [("demo_group", ["info", "list"])])
 
+    def test_group_tool_names_keeps_deactivated_groups_when_built_from_registry_state(self):
+        """Test grouped tools remain grouped when names come from active + deactivated registries."""
+        r = self.ToolRegistry(embedder=self.Embedder(), default_tools=False)
+        r.register_tool(self.DemoGroupListTool())
+        r.register_tool(self.DemoGroupInfoTool())
+
+        self.assertTrue(r.deactivate_tool("demo_group_list"))
+        self.assertTrue(r.deactivate_tool("demo_group_info"))
+
+        all_names = sorted(n for n in list(r.tools.keys()) + list(r.deactivated_tools.keys()) if n != "help")
+
+        grouped = r.group_tool_names(all_names)
+
+        self.assertEqual(grouped, [("demo_group", ["info", "list"])])
+
 
 if __name__ == "__main__":
     unittest.main()

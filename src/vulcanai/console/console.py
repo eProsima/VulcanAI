@@ -722,7 +722,8 @@ class VulcanConsole(App):
 
     def cmd_tools(self, _) -> None:
         def get_tool_summary(tool) -> str:
-            return getattr(tool, "tool_description", None) or tool.description
+            summary = getattr(tool, "tool_description", None) or tool.description
+            return escape(summary)
 
         tmp_msg = f"(current index k={self.manager.k})"
         tool_msg = ("_" * len(tmp_msg)) + "\n"

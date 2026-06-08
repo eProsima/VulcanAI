@@ -354,7 +354,7 @@ class TestPublishOptionalArgs(_DefaultToolsOptionalArgsBase):
 
         result, publisher, _, sleep_mock = self._run_publish(
             tool,
-            monotonic_values=[0.0, 0.0],
+            monotonic_values=[0.0, 0.0, 0.0, 0.0],
             topic="/demo_publish",
             message_data="hello",
             max_lines=1,
@@ -363,7 +363,7 @@ class TestPublishOptionalArgs(_DefaultToolsOptionalArgsBase):
 
         self.assertEqual(result["count"], 1)
         self.assertEqual(len(publisher.messages), 1)
-        sleep_mock.assert_called_once_with(0.25)
+        sleep_mock.assert_not_called()
 
 
 # endregion

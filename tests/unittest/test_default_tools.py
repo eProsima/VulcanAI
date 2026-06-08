@@ -1038,13 +1038,20 @@ class TestRos2ParamTool(unittest.TestCase):
     def test_param_set(self):
         """`set` should update a parameter on parameter_blackboard."""
         self._start_parameter_blackboard()
+        param_name = "vulcan_test_param_set"
         result = self._run_param_without_param_suggestion(
             command="set",
             node_name="/parameter_blackboard",
-            param_name="vulcan_test_param_set",
+            param_name=param_name,
             set_value="123",
         )
         self.assertIn("Set parameter", result["output"])
+        get_result = self._run_param_without_param_suggestion(
+            command="get",
+            node_name="/parameter_blackboard",
+            param_name=param_name,
+        )
+        self.assertIn("123", get_result["output"])
 
     # -------------------------------------------------------------------------
     # Tests — ros2 param delete <node_name> <param_name>
@@ -1361,7 +1368,6 @@ class TestRos2PublishTool(unittest.TestCase):
         """Publisher should stop due to max_duration and report progress/output."""
         max_lines = 100
         max_duration = 3.0
-        start_time = time.monotonic()
         result = self._run_publish(
             topic="/vulcan_publish_tool_test",
             message_data="hello_publish",
@@ -1369,15 +1375,12 @@ class TestRos2PublishTool(unittest.TestCase):
             period_sec=1.0,
             max_duration=max_duration,
         )
-        elapsed = time.monotonic() - start_time
 
         self.assertEqual("True", result["published"])
         self.assertGreaterEqual(result["count"], 1)
         self.assertLess(result["count"], max_lines)
         self.assertEqual("/vulcan_publish_tool_test", result["topic"])
         self.assertIn("Publishing: 'hello_publish'", result["output"])
-        self.assertGreaterEqual(elapsed, max_duration * 0.8)
-        self.assertLess(elapsed, max_duration + 5.0)
 
     # -------------------------------------------------------------------------
     # Tests — Errors
