@@ -2094,7 +2094,7 @@ class Ros2SubscribeTool(AtomicTool):
 
     input_schema = [
         ("topic", "string"),  # topic name
-        ("max_duration", "int?"),  # (optional) stop after this seconds
+        ("max_duration", "float?"),  # (optional) stop after this seconds
         ("max_lines", "int?"),  # (optional) stop after this number of messages
     ]
     input_defaults = {"max_duration": 60, "max_lines": 100}

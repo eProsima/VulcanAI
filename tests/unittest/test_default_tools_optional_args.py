@@ -266,7 +266,9 @@ class TestParamListOptionalArgs(_DefaultToolsOptionalArgsBase):
 
 
 class TestPublishOptionalArgs(_DefaultToolsOptionalArgsBase):
-    def _run_publish(self, tool, monotonic_values, message_cls=_StringMessage, future_cls=_NeverCancelledFuture, **kwargs):
+    def _run_publish(
+        self, tool, monotonic_values, message_cls=_StringMessage, future_cls=_NeverCancelledFuture, **kwargs
+    ):
         imported_types = []
         sleep_mock = Mock()
 

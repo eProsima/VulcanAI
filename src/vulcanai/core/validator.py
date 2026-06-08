@@ -117,12 +117,8 @@ class PlanValidator:
                     expected_type = None
                     for schema in tool.input_schema:
                         if arg.key in schema:
-                            print(f"Schema for arg '{arg.key}' in tool '{tool.name}': {schema}")  # Debug print
                             # Use TYPE_ALIAS to map string type names to actual types
                             expected_type = TYPE_ALIAS.get(_base_schema_type(schema[1]))
-                            print(
-                                f"Expected type for arg '{arg.key}' in tool '{tool.name}': {expected_type}"
-                            )  # Debug print
                             break
                     if expected_type and not isinstance(arg.val, expected_type):
                         if expected_type is float and isinstance(arg.val, int):
