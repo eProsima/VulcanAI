@@ -227,6 +227,36 @@ class TestPlanValidator(unittest.TestCase):
         self.assertIn("tool", str(ctx.exception))
         self.assertIn("Field required", str(ctx.exception))
 
+    def test_validator_rejects_non_global_plan(self):
+        with self.assertRaises(ValueError) as ctx:
+            self.validator.validate(object())
+
+        self.assertIn("not a GlobalPlan instance", str(ctx.exception))
+
+    def test_validate_step_rejects_non_step(self):
+        with self.assertRaises(ValueError) as ctx:
+            self.validator._validate_step(object())
+
+        self.assertIn("not a Step instance", str(ctx.exception))
+
+    def test_validator_accepts_required_arg_with_optional_arg_omitted(self):
+        plan = self.GlobalPlan(
+            summary="Use tool with omitted optional arg",
+            plan=[
+                self.PlanNode(
+                    kind="SEQUENCE",
+                    steps=[
+                        self.Step(tool="optional", args=[self.Arg(key="required", val="hello")]),
+                    ],
+                )
+            ],
+        )
+
+        try:
+            self.validator.validate(plan)
+        except Exception as e:
+            self.fail(f"Validation failed with omitted optional arg: {e}")
+
     def test_validator_non_existing_key(self):
         plan = self.GlobalPlan(
             summary="Optional tool with an unknown key",
@@ -392,6 +422,32 @@ class TestPlanValidator(unittest.TestCase):
             fail = True
             self.assertIn("Blackboard reference in argument", str(e))
         self.assertTrue(fail, "Validator did not catch non-existing key error")
+
+    def test_validator_accepts_multiple_well_formed_bb_refs_in_one_string(self):
+        plan = self.GlobalPlan(
+            summary="Speak using multiple blackboard references",
+            plan=[
+                self.PlanNode(
+                    kind="SEQUENCE",
+                    steps=[
+                        self.Step(
+                            tool="speak",
+                            args=[
+                                self.Arg(
+                                    key="text",
+                                    val="Detected at {{bb.detect_object.pose.x}}, {{bb.detect_object.pose.y}}",
+                                )
+                            ],
+                        ),
+                    ],
+                )
+            ],
+        )
+
+        try:
+            self.validator.validate(plan)
+        except Exception as e:
+            self.fail(f"Validation failed for well-formed multiple bb refs: {e}")
 
     def test_validator_correct_types(self):
         plan = self.GlobalPlan(

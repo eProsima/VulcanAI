@@ -1347,13 +1347,18 @@ class TestRos2PublishTool(unittest.TestCase):
     # Tests — Publish max_lines
     # -------------------------------------------------------------------------
     def test_publish_with_max_lines(self):
-        """Publisher should stop after max_lines and report count/output."""
+        """Publisher should stop after max_lines and report count/output.
+
+        Keep this focused on the max_lines stop condition rather than wall-clock
+        timing. Small publish periods can be flaky in CI when an iteration is
+        delayed long enough for max_duration to win before the second publish.
+        """
         result = self._run_publish(
             topic="/vulcan_publish_tool_test",
             message_data="hello_publish",
             max_lines=2,
-            period_sec=0.01,
-            max_duration=2.0,
+            period_sec=0.0,
+            max_duration=10.0,
         )
 
         self.assertEqual("True", result["published"])

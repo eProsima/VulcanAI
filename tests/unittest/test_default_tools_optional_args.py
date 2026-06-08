@@ -155,6 +155,11 @@ class _StringMessage:
         self.data = ""
 
 
+class _CustomMessage:
+    def __init__(self):
+        self.value = None
+
+
 class _DefaultToolsOptionalArgsBase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -261,13 +266,13 @@ class TestParamListOptionalArgs(_DefaultToolsOptionalArgsBase):
 
 
 class TestPublishOptionalArgs(_DefaultToolsOptionalArgsBase):
-    def _run_publish(self, tool, monotonic_values, **kwargs):
+    def _run_publish(self, tool, monotonic_values, message_cls=_StringMessage, future_cls=_NeverCancelledFuture, **kwargs):
         imported_types = []
         sleep_mock = Mock()
 
         def fake_import_msg_type(type_str, node):
             imported_types.append(type_str)
-            return _StringMessage
+            return message_cls
 
         with (
             patch.object(self.default_tools, "import_msg_type", side_effect=fake_import_msg_type),
@@ -275,7 +280,7 @@ class TestPublishOptionalArgs(_DefaultToolsOptionalArgsBase):
             patch.object(self.default_tools, "print_tool_output"),
             patch.object(self.default_tools, "_get_node_spin_lock", return_value=None),
             patch.object(self.default_tools.rclpy, "spin_once", create=True),
-            patch.object(self.default_tools, "Future", _NeverCancelledFuture),
+            patch.object(self.default_tools, "Future", future_cls),
             patch.object(self.default_tools.time, "monotonic", side_effect=monotonic_values),
             patch.object(self.default_tools.time, "sleep", sleep_mock),
         ):
@@ -365,6 +370,78 @@ class TestPublishOptionalArgs(_DefaultToolsOptionalArgsBase):
         self.assertEqual(len(publisher.messages), 1)
         sleep_mock.assert_not_called()
 
+    def test_publish_invalid_max_duration_falls_back_to_default(self):
+        tool = self._make_tool("Ros2PublishTool")
+        tool.input_defaults = {**tool.input_defaults, "max_duration": 0.001}
+
+        result, publisher, _, _ = self._run_publish(
+            tool,
+            monotonic_values=[0.0, 0.0, 0.1],
+            topic="/demo_publish",
+            message_data="hello",
+            max_lines=50,
+            max_duration="not_a_number",
+            period_sec=0.0,
+        )
+
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(len(publisher.messages), 1)
+
+    def test_publish_invalid_max_lines_falls_back_to_default(self):
+        tool = self._make_tool("Ros2PublishTool")
+        tool.input_defaults = {**tool.input_defaults, "max_lines": 2}
+
+        result, publisher, _, _ = self._run_publish(
+            tool,
+            monotonic_values=[0.0, 0.0, 0.1],
+            topic="/demo_publish",
+            message_data="hello",
+            max_lines="not_an_int",
+            max_duration=10.0,
+            period_sec=0.0,
+        )
+
+        self.assertEqual(result["count"], 2)
+        self.assertEqual(len(publisher.messages), 2)
+
+    def test_publish_negative_period_sec_falls_back_to_default(self):
+        tool = self._make_tool("Ros2PublishTool")
+        tool.input_defaults = {**tool.input_defaults, "period_sec": 0.25}
+
+        result, publisher, _, sleep_mock = self._run_publish(
+            tool,
+            monotonic_values=[0.0] * 10,
+            topic="/demo_publish",
+            message_data="hello",
+            max_lines=2,
+            max_duration=10.0,
+            period_sec=-1.0,
+        )
+
+        self.assertEqual(result["count"], 2)
+        self.assertEqual(len(publisher.messages), 2)
+        sleep_mock.assert_called()
+
+    def test_publish_valid_custom_message_json_populates_message(self):
+        tool = self._make_tool("Ros2PublishTool")
+
+        result, publisher, imported_types, _ = self._run_publish(
+            tool,
+            monotonic_values=[0.0, 0.0],
+            message_cls=_CustomMessage,
+            topic="/demo_publish",
+            msg_type="demo_msgs/msg/Custom",
+            message_data='{"value": 42}',
+            max_lines=1,
+            max_duration=10.0,
+            period_sec=0.0,
+        )
+
+        self.assertEqual(result["published"], "True")
+        self.assertEqual(imported_types, ["demo_msgs/msg/Custom"])
+        self.assertEqual(len(publisher.messages), 1)
+        self.assertEqual(publisher.messages[0].value, 42)
+
 
 # endregion
 
@@ -405,6 +482,47 @@ class TestSubscribeOptionalArgs(_DefaultToolsOptionalArgsBase):
         )
         self.assertEqual(execute.call_args.args[3], 2.5)
         self.assertEqual(execute.call_args.args[4], 100)
+
+    def test_subscribe_invalid_limits_fall_back_to_defaults(self):
+        tool = self._make_tool("Ros2SubscribeTool")
+
+        with (
+            patch.object(self.default_tools, "execute_subprocess", return_value="hello") as execute,
+            patch.object(self.default_tools, "print_tool_output"),
+        ):
+            result = tool.run(topic="/demo_topic", max_duration="invalid", max_lines="invalid")
+
+        self.assertEqual(result["subscribed"], "True")
+        self.assertEqual(execute.call_args.args[3], 60)
+        self.assertEqual(execute.call_args.args[4], 100)
+
+    def test_subscribe_truncates_output_to_max_lines(self):
+        tool = self._make_tool("Ros2SubscribeTool")
+
+        with (
+            patch.object(self.default_tools, "execute_subprocess", return_value="one\ntwo\nthree") as execute,
+            patch.object(self.default_tools, "print_tool_output"),
+        ):
+            result = tool.run(topic="/demo_topic", max_duration=2.0, max_lines=2)
+
+        self.assertEqual(result["subscribed"], "True")
+        self.assertEqual(result["count"], 2)
+        self.assertEqual(result["output"], "one\ntwo")
+        self.assertEqual(execute.call_args.args[4], 2)
+
+    def test_subscribe_none_output_keeps_default_unsubscribed_result(self):
+        tool = self._make_tool("Ros2SubscribeTool")
+
+        with (
+            patch.object(self.default_tools, "execute_subprocess", return_value=None),
+            patch.object(self.default_tools, "print_tool_output"),
+        ):
+            result = tool.run(topic="/demo_topic", max_duration=1.0, max_lines=1)
+
+        self.assertEqual(result["subscribed"], "False")
+        self.assertEqual(result["count"], "0")
+        self.assertEqual(result["topic"], "")
+        self.assertEqual(result["output"], "")
 
 
 # endregion
