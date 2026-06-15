@@ -150,6 +150,82 @@ class TestConsoleRegressions(unittest.IsolatedAsyncioTestCase):
         self.assertIn(("enter", "submit_selection"), bindings)
         self.assertIn(("space", "toggle_button"), bindings)
 
+    def test_cmd_edit_tools_passes_default_tool_subset_to_modal(self):
+        """`/edit_tools` should expose built-in default tools to the checklist modal."""
+
+        class DefaultTool:
+            pass
+
+        class CustomTool:
+            pass
+
+        DefaultTool.__module__ = "vulcanai.tools.default_tools"
+        CustomTool.__module__ = "demo.custom_tools"
+
+        default_active = DefaultTool()
+        default_inactive = DefaultTool()
+        custom_tool = CustomTool()
+
+        tool_lookup = {
+            "ros2_topic_list": default_active,
+            "ros2_node_info": default_inactive,
+            "custom_tool": custom_tool,
+        }
+        registry = SimpleNamespace(
+            tools={"ros2_topic_list": default_active, "custom_tool": custom_tool},
+            deactivated_tools={"ros2_node_info": default_inactive},
+            group_tool_names=Mock(return_value=[("custom_tool", None)]),
+            _get_tool_by_name=lambda name: tool_lookup[name],
+        )
+
+        console = self.console_mod.VulcanConsole(default_tools=False)
+        console.manager = SimpleNamespace(registry=registry)
+        console.open_checklist = Mock()
+
+        console.cmd_edit_tools([])
+
+        registry.group_tool_names.assert_called_once_with(["custom_tool", "ros2_node_info", "ros2_topic_list"])
+        console.open_checklist.assert_called_once_with(
+            [("custom_tool", None)],
+            {"ros2_topic_list", "custom_tool"},
+            {"ros2_topic_list", "ros2_node_info"},
+        )
+
+    def test_tool_toggle_log_message_marks_default_tools(self):
+        """Activation logs should label built-in tools as default tools."""
+
+        class DefaultTool:
+            pass
+
+        class CustomTool:
+            pass
+
+        DefaultTool.__module__ = "vulcanai.tools.default_tools"
+        CustomTool.__module__ = "demo.custom_tools"
+
+        registry = SimpleNamespace(
+            _get_tool_by_name=lambda name: {
+                "ros2_topic_list": DefaultTool(),
+                "custom_tool": CustomTool(),
+            }.get(name)
+        )
+
+        console = self.console_mod.VulcanConsole(default_tools=False)
+        console.manager = SimpleNamespace(registry=registry)
+
+        self.assertEqual(
+            console._tool_toggle_log_message("ros2_topic_list", activated=True),
+            "Activated default tool 'ros2_topic_list'",
+        )
+        self.assertEqual(
+            console._tool_toggle_log_message("ros2_topic_list", activated=False),
+            "Deactivated default tool 'ros2_topic_list'",
+        )
+        self.assertEqual(
+            console._tool_toggle_log_message("custom_tool", activated=True),
+            "Activated tool <bold>'custom_tool'</bold>",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

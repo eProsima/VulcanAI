@@ -626,13 +626,13 @@ class VulcanConsole(App):
         kvalue_widget.update(text)
 
     @work  # Runs in a worker. waiting won't freeze the UI
-    async def open_checklist(self, grouped: list, active_set: set) -> None:
+    async def open_checklist(self, grouped: list, active_set: set, default_set: set | None = None) -> None:
         """
         Function used to open a Checklist ModalScreen in the console.
         Used in the /edit_tools command.
         """
         # Create the checklist dialog
-        selected = await self.push_screen_wait(CheckListModal(grouped, active_set))
+        selected = await self.push_screen_wait(CheckListModal(grouped, active_set, default_set))
 
         if selected is None:
             self.logger.log_msg("<yellow>Selection cancelled.</yellow>")
@@ -647,10 +647,10 @@ class VulcanConsole(App):
             for tool_name in all_tool_names:
                 if tool_name in selected_set:
                     if self.manager.registry.activate_tool(tool_name):
-                        self.logger.log_console(f"Activated tool <bold>'{tool_name}'</bold>")
+                        self.logger.log_console(self._tool_toggle_log_message(tool_name, activated=True))
                 else:
                     if self.manager.registry.deactivate_tool(tool_name):
-                        self.logger.log_console(f"Deactivated tool <bold>'{tool_name}'</bold>")
+                        self.logger.log_console(self._tool_toggle_log_message(tool_name, activated=False))
 
     @work
     async def open_radiolist(
@@ -750,6 +750,16 @@ class VulcanConsole(App):
 
         self.logger.log_console(tool_msg, "console")
 
+    def _is_default_tool(self, tool_name: str) -> bool:
+        tool = self.manager.registry._get_tool_by_name(tool_name)
+        return tool is not None and tool.__class__.__module__ == "vulcanai.tools.default_tools"
+
+    def _tool_toggle_log_message(self, tool_name: str, activated: bool) -> str:
+        action = "Activated" if activated else "Deactivated"
+        if self._is_default_tool(tool_name):
+            return f"{action} default tool '{tool_name}'"
+        return f"{action} tool '{tool_name}'"
+
     def cmd_edit_tools(self, _) -> None:
         all_names = sorted(
             n
@@ -757,8 +767,9 @@ class VulcanConsole(App):
             if n != "help"
         )
         active_set = set(self.manager.registry.tools.keys())
+        default_set = {name for name in all_names if self._is_default_tool(name)}
         grouped = self.manager.registry.group_tool_names(all_names)
-        self.open_checklist(grouped, active_set)
+        self.open_checklist(grouped, active_set, default_set)
 
     def cmd_change_k(self, args) -> None:
         if len(args) == 0:

@@ -204,20 +204,21 @@ class CheckListModal(ModalScreen[list[str] | None]):
         width: 100%;
         margin-top: 1;
         padding: 0;
-        content-align: center middle;
-        align-horizontal: center;
+        content-align: right middle;
+        align-horizontal: right;
     }
 
     .btns Button {
-        padding: 0 3;
-        margin: 0 2;
+        padding: 0 2;
+        margin-left: 1;
     }
     """
 
-    def __init__(self, grouped: list, active_tools: set) -> None:
+    def __init__(self, grouped: list, active_tools: set, default_tools: set[str] | None = None) -> None:
         super().__init__()
         self.grouped = grouped  # [(prefix, [subtools]) | (name, None), ...]
         self.active_tools = active_tools
+        self.default_tools = default_tools or set()
         self._parent_to_children: dict[str, list[str]] = {}
         self._child_to_parent: dict[str, str] = {}
         self._id_to_tool: dict[str, str] = {}  # cb_id -> full tool name (children & standalone only)
@@ -268,6 +269,8 @@ class CheckListModal(ModalScreen[list[str] | None]):
                             )
 
             with Horizontal(classes="btns"):
+                yield Button("Toggle Default Tools", variant="default", id="toggle-default")
+                yield Button("Toggle All Tools", variant="default", id="toggle-all")
                 yield Button("Cancel", variant="default", id="cancel")
                 yield Button("Submit", variant="primary", id="submit")
 
@@ -290,6 +293,10 @@ class CheckListModal(ModalScreen[list[str] | None]):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "submit":
             self.dismiss_selected()
+        elif event.button.id == "toggle-all":
+            self._toggle_tool_subset(set(self._id_to_tool.values()))
+        elif event.button.id == "toggle-default":
+            self._toggle_tool_subset(self.default_tools)
         elif event.button.id == "cancel":
             self.dismiss(None)
 
@@ -300,6 +307,32 @@ class CheckListModal(ModalScreen[list[str] | None]):
             if self.query_one(f"#{cb_id}", Checkbox).value
         ]
         self.dismiss(selected)
+
+    def _set_tool_subset(self, tool_names: set[str], enabled: bool) -> None:
+        matched_tool_names = {tool_name for tool_name in tool_names if tool_name in self._id_to_tool.values()}
+        if not matched_tool_names:
+            return
+
+        with self.prevent(Checkbox.Changed):
+            for cb_id, tool_name in self._id_to_tool.items():
+                if tool_name in matched_tool_names:
+                    self.query_one(f"#{cb_id}", Checkbox).value = enabled
+
+            for parent_id, child_ids in self._parent_to_children.items():
+                all_checked = all(self.query_one(f"#{cid}", Checkbox).value for cid in child_ids)
+                self.query_one(f"#{parent_id}", Checkbox).value = all_checked
+
+    def _toggle_tool_subset(self, tool_names: set[str]) -> None:
+        matched_tool_names = {tool_name for tool_name in tool_names if tool_name in self._id_to_tool.values()}
+        if not matched_tool_names:
+            return
+
+        should_enable = not all(
+            self.query_one(f"#{cb_id}", Checkbox).value
+            for cb_id, tool_name in self._id_to_tool.items()
+            if tool_name in matched_tool_names
+        )
+        self._set_tool_subset(matched_tool_names, should_enable)
 
     def _move_checkbox_focus(self, step: int) -> None:
         checkboxes = list(self.query(Checkbox))
