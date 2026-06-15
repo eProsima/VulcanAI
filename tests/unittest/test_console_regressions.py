@@ -65,6 +65,7 @@ class TestConsoleRegressions(unittest.IsolatedAsyncioTestCase):
     def setUpClass(cls):
         cls.console_mod = importlib.import_module("vulcanai.console.console")
         cls.logger_mod = importlib.import_module("vulcanai.console.logger")
+        cls.modal_screens_mod = importlib.import_module("vulcanai.console.modal_screens")
 
     def setUp(self):
         self._default_logger_instance = self.logger_mod.VulcanAILogger._default_instance
@@ -132,6 +133,22 @@ class TestConsoleRegressions(unittest.IsolatedAsyncioTestCase):
         console.logger.log_user.assert_called_once_with(captured["query"])
         self.assertEqual(input_widget.value, "")
         self.assertTrue(input_widget.focused)
+
+    async def test_modal_enter_binding(self):
+        """Suggestion modal should accept the highlighted item when Enter is used."""
+        modal = self.modal_screens_mod.RadioListModal(["alpha", "beta", "gamma"])
+        modal.dismiss = Mock()
+        modal.query_one = Mock(return_value=SimpleNamespace(pressed_index=0, _selected=2))
+
+        modal.dismiss_selected()
+
+        modal.dismiss.assert_called_once_with(2)
+        bindings = {
+            (binding.key, binding.action)
+            for binding in self.modal_screens_mod.RadioListModal.SuggestionRadioSet.BINDINGS
+        }
+        self.assertIn(("enter", "submit_selection"), bindings)
+        self.assertIn(("space", "toggle_button"), bindings)
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@
 
 from textual import events
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.content import Content
 from textual.screen import ModalScreen
@@ -145,6 +146,28 @@ class ReverseSearchModal(ModalScreen[str | None]):
 
 
 class CheckListModal(ModalScreen[list[str] | None]):
+    class NavigableCheckbox(Checkbox):
+        BINDINGS = [
+            Binding("enter", "submit_selection", "Submit", show=False),
+            Binding("space", "toggle_button", "Toggle", show=False),
+            Binding("down", "next_checkbox", "Next checkbox", show=False),
+            Binding("up", "previous_checkbox", "Previous checkbox", show=False),
+        ]
+
+        def action_submit_selection(self) -> None:
+            self.screen.dismiss_selected()
+
+        def action_next_checkbox(self) -> None:
+            self.screen.action_next_checkbox()
+
+        def action_previous_checkbox(self) -> None:
+            self.screen.action_previous_checkbox()
+
+    BINDINGS = [
+        Binding("down", "next_checkbox", "Next checkbox", show=False),
+        Binding("up", "previous_checkbox", "Previous checkbox", show=False),
+    ]
+
     CSS = """
     CheckListModal {
         align: center middle;
@@ -210,7 +233,7 @@ class CheckListModal(ModalScreen[list[str] | None]):
                         # Standalone tool
                         cb_id = f"cb{idx}"
                         self._id_to_tool[cb_id] = group_name
-                        yield Checkbox(
+                        yield self.NavigableCheckbox(
                             group_name,
                             value=group_name in self.active_tools,
                             id=cb_id,
@@ -233,11 +256,11 @@ class CheckListModal(ModalScreen[list[str] | None]):
                             self._child_to_parent[cid] = parent_id
 
                         all_active = all(f"{group_name}_{s}" in self.active_tools for s in subtools)
-                        yield Checkbox(group_name, value=all_active, id=parent_id)
+                        yield self.NavigableCheckbox(group_name, value=all_active, id=parent_id)
 
                         for subtool, child_id in zip(subtools, child_ids):
                             full_name = f"{group_name}_{subtool}"
-                            yield Checkbox(
+                            yield self.NavigableCheckbox(
                                 subtool,
                                 value=full_name in self.active_tools,
                                 id=child_id,
@@ -266,14 +289,36 @@ class CheckListModal(ModalScreen[list[str] | None]):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "submit":
-            selected = [
-                tool_name
-                for cb_id, tool_name in self._id_to_tool.items()
-                if self.query_one(f"#{cb_id}", Checkbox).value
-            ]
-            self.dismiss(selected)
+            self.dismiss_selected()
         elif event.button.id == "cancel":
             self.dismiss(None)
+
+    def dismiss_selected(self) -> None:
+        selected = [
+            tool_name
+            for cb_id, tool_name in self._id_to_tool.items()
+            if self.query_one(f"#{cb_id}", Checkbox).value
+        ]
+        self.dismiss(selected)
+
+    def _move_checkbox_focus(self, step: int) -> None:
+        checkboxes = list(self.query(Checkbox))
+        if not checkboxes:
+            return
+
+        if isinstance(self.focused, Checkbox) and self.focused in checkboxes:
+            current_index = checkboxes.index(self.focused)
+            target_index = max(0, min(len(checkboxes) - 1, current_index + step))
+        else:
+            target_index = 0 if step > 0 else len(checkboxes) - 1
+
+        self.set_focus(checkboxes[target_index])
+
+    def action_next_checkbox(self) -> None:
+        self._move_checkbox_focus(1)
+
+    def action_previous_checkbox(self) -> None:
+        self._move_checkbox_focus(-1)
 
     def on_mount(self) -> None:
         first_cb = self.query_one(Checkbox)
@@ -292,6 +337,17 @@ class RadioListModal(ModalScreen[str | None]):
                 (symbol, button_style),
                 (" ", button_style),
             )
+
+    class SuggestionRadioSet(RadioSet):
+        BINDINGS = [
+            Binding("down,right", "next_button", "Next option", show=False),
+            Binding("enter", "submit_selection", "Submit", show=False),
+            Binding("space", "toggle_button", "Toggle", show=False),
+            Binding("up,left", "previous_button", "Previous option", show=False),
+        ]
+
+        def action_submit_selection(self) -> None:
+            self.screen.dismiss_selected()
 
     CSS = """
     RadioListModal {
@@ -343,7 +399,7 @@ class RadioListModal(ModalScreen[str | None]):
 
             # One-select radio list
             with VerticalScroll(classes="radio-list"):
-                with RadioSet(id="radio-set"):
+                with self.SuggestionRadioSet(id="radio-set"):
                     for i, line in enumerate(self.lines):
                         yield self.SquareRadioButton(line, id=f"rb{i}", value=(i == self.default_index))
 
@@ -353,14 +409,23 @@ class RadioListModal(ModalScreen[str | None]):
                 yield Button("Submit", variant="primary", id="submit")
 
     def on_mount(self) -> None:
-        first_rb = self.query_one(self.SquareRadioButton)
-        self.set_focus(first_rb)
+        radio_set = self.query_one("#radio-set", RadioSet)
+        self.set_focus(radio_set)
+
+    def dismiss_selected(self) -> None:
+        radioset = self.query_one("#radio-set", RadioSet)
+        selected = radioset.pressed_index
+        highlighted = getattr(radioset, "_selected", None)
+
+        # Arrow navigation changes the highlighted row before the radio value updates.
+        if highlighted is not None and highlighted != selected:
+            selected = highlighted
+
+        if selected >= 0:
+            self.dismiss(selected)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "submit":
-            radioset = self.query_one("#radio-set", RadioSet)
-            selected = radioset.pressed_index
-            if selected is not None:
-                self.dismiss(selected)
+            self.dismiss_selected()
         else:
             self.dismiss(None)
