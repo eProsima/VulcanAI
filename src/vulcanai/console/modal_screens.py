@@ -302,9 +302,7 @@ class CheckListModal(ModalScreen[list[str] | None]):
 
     def dismiss_selected(self) -> None:
         selected = [
-            tool_name
-            for cb_id, tool_name in self._id_to_tool.items()
-            if self.query_one(f"#{cb_id}", Checkbox).value
+            tool_name for cb_id, tool_name in self._id_to_tool.items() if self.query_one(f"#{cb_id}", Checkbox).value
         ]
         self.dismiss(selected)
 
