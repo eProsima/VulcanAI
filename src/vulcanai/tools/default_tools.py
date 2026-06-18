@@ -281,6 +281,14 @@ def _get_node_spin_lock(node):
     return spin_lock
 
 
+def _node_spins_in_background(node) -> bool:
+    if node is None:
+        return False
+
+    spin_thread = getattr(node, "_vulcanai_spin_thread", None)
+    return spin_thread is not None and spin_thread.is_alive()
+
+
 def _normalize_command(command):
     if command is None:
         raise ValueError("`command` is required.")
@@ -2032,15 +2040,20 @@ class Ros2PublishTool(AtomicTool):
                 published_msgs.append(msg.data if hasattr(msg, "data") else str(msg))
                 published_count += 1
 
-                if hasattr(node, "spin_once"):
-                    node.spin_once(timeout_sec=0.05)
-                else:
-                    spin_lock = _get_node_spin_lock(node)
-                    if spin_lock is None:
-                        rclpy.spin_once(node, timeout_sec=0.05)
+                # Publishing does not require a blocking spin. 
+                # When the helper node already owns a background spinner, 
+                # competing for the same executor lock here can starve
+                # this loop long enough for 'max_duration' to win before 'max_lines'
+                if not _node_spins_in_background(node):
+                    if hasattr(node, "spin_once"):
+                        node.spin_once(timeout_sec=0.0)
                     else:
-                        with spin_lock:
-                            rclpy.spin_once(node, timeout_sec=0.05)
+                        spin_lock = _get_node_spin_lock(node)
+                        if spin_lock is None:
+                            rclpy.spin_once(node, timeout_sec=0.0)
+                        else:
+                            with spin_lock:
+                                rclpy.spin_once(node, timeout_sec=0.0)
 
                 if period_sec and period_sec > 0.0:
                     next_publish_time += period_sec

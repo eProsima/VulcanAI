@@ -145,6 +145,20 @@ class _FakeNode:
         return self.logger
 
 
+class _AliveSpinThread:
+    def is_alive(self):
+        return True
+
+
+class _BackgroundSpinningNode(_FakeNode):
+    def __init__(self):
+        super().__init__()
+        self._vulcanai_spin_thread = _AliveSpinThread()
+
+    def spin_once(self, timeout_sec=0.1):
+        raise AssertionError("publish loop should not manually spin a node with a background spinner")
+
+
 class _NeverCancelledFuture:
     def cancelled(self):
         return False
@@ -271,6 +285,7 @@ class TestPublishOptionalArgs(_DefaultToolsOptionalArgsBase):
     ):
         imported_types = []
         sleep_mock = Mock()
+        active_node = tool.bb["main_node"]
 
         def fake_import_msg_type(type_str, node):
             imported_types.append(type_str)
@@ -288,7 +303,7 @@ class TestPublishOptionalArgs(_DefaultToolsOptionalArgsBase):
         ):
             result = tool.run(**kwargs)
 
-        publisher = self.node.publishers[-1] if self.node.publishers else None
+        publisher = active_node.publishers[-1] if active_node.publishers else None
         return result, publisher, imported_types, sleep_mock
 
     def test_publish_defaults_msg_type_when_omitted(self):
@@ -423,6 +438,23 @@ class TestPublishOptionalArgs(_DefaultToolsOptionalArgsBase):
         self.assertEqual(result["count"], 2)
         self.assertEqual(len(publisher.messages), 2)
         sleep_mock.assert_called()
+
+    def test_publish_skips_manual_spin_when_node_already_spins_in_background(self):
+        tool = self._make_tool("Ros2PublishTool")
+        tool.bb = {"console": self.console, "main_node": _BackgroundSpinningNode()}
+
+        result, publisher, _, _ = self._run_publish(
+            tool,
+            monotonic_values=[0.0, 0.0, 0.1],
+            topic="/demo_publish",
+            message_data="hello",
+            max_lines=2,
+            max_duration=10.0,
+            period_sec=0.0,
+        )
+
+        self.assertEqual(result["count"], 2)
+        self.assertEqual(len(publisher.messages), 2)
 
     def test_publish_valid_custom_message_json_populates_message(self):
         tool = self._make_tool("Ros2PublishTool")
