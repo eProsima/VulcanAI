@@ -2040,8 +2040,8 @@ class Ros2PublishTool(AtomicTool):
                 published_msgs.append(msg.data if hasattr(msg, "data") else str(msg))
                 published_count += 1
 
-                # Publishing does not require a blocking spin. 
-                # When the helper node already owns a background spinner, 
+                # Publishing does not require a blocking spin.
+                # When the helper node already owns a background spinner,
                 # competing for the same executor lock here can starve
                 # this loop long enough for 'max_duration' to win before 'max_lines'
                 if not _node_spins_in_background(node):

@@ -939,7 +939,7 @@ class VulcanConsole(App):
 
         follow_main_output = False
         if self.main_pannel is not None:
-            follow_main_output = self.main_pannel.is_near_vertical_scroll_end(tolerance=2)
+            follow_main_output = self.main_pannel.should_follow_output()
 
         if show_notice:
             self.logger.log_tool(
@@ -1022,7 +1022,7 @@ class VulcanConsole(App):
         if not self._deferred_main_lines_after_stream or self.main_pannel is None:
             return
 
-        follow_main_output = self.main_pannel.is_near_vertical_scroll_end(tolerance=2)
+        follow_main_output = self.main_pannel.should_follow_output()
         pending = self._deferred_main_lines_after_stream
         self._deferred_main_lines_after_stream = []
 
@@ -1040,7 +1040,7 @@ class VulcanConsole(App):
 
         follow_main_output = False
         if self.main_pannel is not None:
-            follow_main_output = self.main_pannel.is_near_vertical_scroll_end(tolerance=2)
+            follow_main_output = self.main_pannel.should_follow_output()
 
         self.stream_pannel.display = False
         self.stream_pannel.styles.height = 0
@@ -1110,7 +1110,7 @@ class VulcanConsole(App):
 
         force_follow_main = False
         if target_panel is self.main_pannel:
-            force_follow_main = self.main_pannel.is_near_vertical_scroll_end(tolerance=2)
+            force_follow_main = self.main_pannel.should_follow_output()
 
         # Append each line; deque automatically truncates old ones
         for line in lines:

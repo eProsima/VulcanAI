@@ -19,7 +19,9 @@ import sys
 import types
 import unittest
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, PropertyMock, patch
+
+from textual.geometry import Offset
 
 
 class _DummySentenceTransformer:
@@ -66,6 +68,7 @@ class TestConsoleRegressions(unittest.IsolatedAsyncioTestCase):
         cls.console_mod = importlib.import_module("vulcanai.console.console")
         cls.logger_mod = importlib.import_module("vulcanai.console.logger")
         cls.modal_screens_mod = importlib.import_module("vulcanai.console.modal_screens")
+        cls.log_text_area_mod = importlib.import_module("vulcanai.console.widget_custom_log_text_area")
 
     def setUp(self):
         self._default_logger_instance = self.logger_mod.VulcanAILogger._default_instance
@@ -150,6 +153,53 @@ class TestConsoleRegressions(unittest.IsolatedAsyncioTestCase):
         self.assertIn(("enter", "submit_selection"), bindings)
         self.assertIn(("space", "toggle_button"), bindings)
 
+    def test_log_text_area_keeps_following_output_when_sticky_follow_is_enabled(self):
+        """Appending output should stay anchored even if a one-shot end check would fail."""
+        widget = self.log_text_area_mod.CustomLogTextArea()
+        widget.is_near_vertical_scroll_end = Mock(return_value=False)
+        widget.scroll_end = Mock()
+        widget.scroll_to = Mock()
+        widget.call_after_refresh = Mock()
+        widget.refresh = Mock()
+
+        widget.append_line("hello")
+
+        self.assertEqual(widget.document.text, "hello")
+        self.assertTrue(widget.should_follow_output())
+        widget.scroll_end.assert_called_once_with(animate=False, immediate=True, x_axis=False)
+        widget.scroll_to.assert_not_called()
+        widget.call_after_refresh.assert_called_once_with(widget._scroll_to_output_end)
+
+    def test_log_text_area_preserves_viewport_when_follow_is_disabled(self):
+        """Appending output should not yank the viewport when the user scrolled up."""
+        widget = self.log_text_area_mod.CustomLogTextArea()
+        widget._follow_output = False
+        widget.scroll_end = Mock()
+        widget.scroll_to = Mock()
+        widget.call_after_refresh = Mock()
+        widget.refresh = Mock()
+
+        with patch.object(type(widget), "scroll_offset", new_callable=PropertyMock, return_value=Offset(3, 7)):
+            widget.append_line("hello")
+
+        self.assertFalse(widget.should_follow_output())
+        widget.scroll_end.assert_not_called()
+        widget.scroll_to.assert_called_once_with(x=3, y=7, animate=False, immediate=True, force=True)
+        widget.call_after_refresh.assert_called_once_with(widget._restore_scroll_position, 3, 7)
+
+    def test_log_text_area_follow_state_updates_when_user_moves_viewport(self):
+        """Returning to the end should resume sticky follow mode."""
+        widget = self.log_text_area_mod.CustomLogTextArea()
+        widget._follow_output = False
+        widget.is_near_vertical_scroll_end = Mock(return_value=True)
+
+        widget._update_follow_output_from_viewport()
+        self.assertTrue(widget.should_follow_output())
+
+        widget.is_near_vertical_scroll_end.return_value = False
+        widget._update_follow_output_from_viewport()
+        self.assertFalse(widget.should_follow_output())
+
     def test_cmd_edit_tools_passes_default_tool_subset_to_modal(self):
         """`/edit_tools` should expose built-in default tools to the checklist modal."""
 
@@ -223,8 +273,26 @@ class TestConsoleRegressions(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(
             console._tool_toggle_log_message("custom_tool", activated=True),
-            "Activated tool <bold>'custom_tool'</bold>",
+            "Activated tool 'custom_tool'",
         )
+
+    def test_add_line_uses_sticky_follow_state_for_main_log(self):
+        """Main log writes should rely on the shared sticky follow state."""
+        console = self.console_mod.VulcanConsole(default_tools=False)
+        console.main_pannel = SimpleNamespace(
+            should_follow_output=Mock(return_value=True),
+            append_line=Mock(return_value=True),
+        )
+        console.stream_pannel = None
+        console.logger = Mock()
+        console._route_logs_to_stream_panel = 0
+        console._stream_panel_visible = False
+        console._is_stream_task_active = Mock(return_value=False)
+
+        console.add_line("hello")
+
+        console.main_pannel.should_follow_output.assert_called_once_with()
+        console.main_pannel.append_line.assert_called_once_with("hello", force_follow_output=True)
 
 
 if __name__ == "__main__":

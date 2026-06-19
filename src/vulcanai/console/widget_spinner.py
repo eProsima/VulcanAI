@@ -50,7 +50,9 @@ class SpinnerStatus(Static):
 
     def start(self, text: str = "Querying LLM...") -> None:
         # Keep the log anchored at bottom if the user was already following output.
-        if hasattr(self.logcontent, "is_near_vertical_scroll_end"):
+        if hasattr(self.logcontent, "should_follow_output"):
+            was_at_bottom = self.logcontent.should_follow_output()
+        elif hasattr(self.logcontent, "is_near_vertical_scroll_end"):
             was_at_bottom = self.logcontent.is_near_vertical_scroll_end()
         else:
             was_at_bottom = self.logcontent.is_vertical_scroll_end
@@ -73,7 +75,9 @@ class SpinnerStatus(Static):
 
     def stop(self) -> None:
         # Keep the log anchored at bottom if the user was already following output.
-        if hasattr(self.logcontent, "is_near_vertical_scroll_end"):
+        if hasattr(self.logcontent, "should_follow_output"):
+            was_at_bottom = self.logcontent.should_follow_output()
+        elif hasattr(self.logcontent, "is_near_vertical_scroll_end"):
             was_at_bottom = self.logcontent.is_near_vertical_scroll_end()
         else:
             was_at_bottom = self.logcontent.is_vertical_scroll_end

@@ -16,6 +16,7 @@
 import re
 import threading
 from collections import defaultdict, deque
+from contextlib import contextmanager
 
 import pyperclip
 from rich.style import Style
@@ -70,6 +71,11 @@ class CustomLogTextArea(TextArea):
         #  A row with N styles # (e.g.: N = 2: two colors, one bold and color)
         #  will have N entries.
         self._lines_styles = deque(maxlen=self.MAX_LINES)
+        # Sticky terminal-like follow state
+        # When True, new output should keep the viewport anchored to the end
+        self._follow_output = True
+        # Suppress follow-state updates while we are applying programmatic scrolls
+        self._suspend_follow_tracking = 0
 
     # region UTILS
 
@@ -83,6 +89,50 @@ class CustomLogTextArea(TextArea):
         if not self.size:
             return True
         return (self.max_scroll_y - self.scroll_offset.y) <= max(0, tolerance)
+
+    def should_follow_output(self) -> bool:
+        """
+        Return True when the log should keep following new output.
+        """
+        return self._follow_output
+
+    def _update_follow_output_from_viewport(self, tolerance: int = 1) -> None:
+        """
+        Refresh sticky follow state from the current viewport position.
+        """
+        self._follow_output = self.is_near_vertical_scroll_end(tolerance=tolerance)
+
+    @contextmanager
+    def _suspend_follow_output_tracking(self):
+        """
+        Temporarily ignore viewport changes triggered by programmatic scrolling.
+        """
+        self._suspend_follow_tracking += 1
+        try:
+            yield
+        finally:
+            self._suspend_follow_tracking = max(0, self._suspend_follow_tracking - 1)
+
+    def _scroll_to_output_end(self) -> None:
+        """
+        Anchor the viewport to the end and keep follow mode enabled.
+        """
+        self._follow_output = True
+        with self._suspend_follow_output_tracking():
+            self.scroll_end(animate=False, immediate=True, x_axis=False)
+
+    def _restore_scroll_position(self, x: int, y: int) -> None:
+        """
+        Restore the viewport to a previous position and keep follow mode disabled.
+        """
+        self._follow_output = False
+        with self._suspend_follow_output_tracking():
+            self.scroll_to(x=x, y=y, animate=False, immediate=True, force=True)
+
+    def _watch_scroll_y(self) -> None:
+        super()._watch_scroll_y()
+        if self._suspend_follow_tracking == 0:
+            self._update_follow_output_from_viewport()
 
     def _trim_highlights(self) -> None:
         """
@@ -296,55 +346,43 @@ class CustomLogTextArea(TextArea):
         # [ROS] [INFO] Publishing message 1 to ...
         with self._lock:
             # Terminal-like behavior:
-            # keep following output only if the user was already at the bottom.
-            should_follow_output = force_follow_output or self.is_near_vertical_scroll_end()
+            # keep following output only if the user was already following output.
+            should_follow_output = force_follow_output or self.should_follow_output()
             previous_scroll_x = self.scroll_offset.x
             previous_scroll_y = self.scroll_offset.y
 
-            # Append via document API to keep row tracking consistent
-            # Only add a newline before the new line if there is already content
-            insert_text = ("\n" if self.document.text else "") + plain
-            self.insert(insert_text, location=self.document.end)
+            with self._suspend_follow_output_tracking():
+                # Append via document API to keep row tracking consistent
+                # Only add a newline before the new line if there is already content
+                insert_text = ("\n" if self.document.text else "") + plain
+                self.insert(insert_text, location=self.document.end)
 
-            # Track styles for the new line (always at the end)
-            self._line_count += 1
+                # Track styles for the new line (always at the end)
+                self._line_count += 1
 
-            if self._line_count > self.MAX_LINES:
-                self._highlights.pop(self._line_count - self.MAX_LINES, None)
+                if self._line_count > self.MAX_LINES:
+                    self._highlights.pop(self._line_count - self.MAX_LINES, None)
 
-            # Store styles
-            # Each line may have multiple styles (spans)
-            current_line = []
-            for start, end, token in spans:
-                current_line.append((start, end, token))
+                # Store styles
+                # Each line may have multiple styles (spans)
+                current_line = []
+                for start, end, token in spans:
+                    current_line.append((start, end, token))
 
-            self._lines_styles.append(current_line)
+                self._lines_styles.append(current_line)
 
-            # Trim now
-            self._trim_highlights()
+                # Trim now
+                self._trim_highlights()
 
             # Scroll to end only when the user was already at the bottom.
             if should_follow_output:
-                self.scroll_end(animate=False, immediate=True, x_axis=False)
+                self._scroll_to_output_end()
                 # Ensure we stay anchored after any pending layout updates.
-                self.call_after_refresh(self.scroll_end, animate=False, immediate=True, x_axis=False)
+                self.call_after_refresh(self._scroll_to_output_end)
             else:
                 # Keep user viewport stable while new lines arrive in the background
-                self.scroll_to(
-                    x=previous_scroll_x,
-                    y=previous_scroll_y,
-                    animate=False,
-                    immediate=True,
-                    force=True,
-                )
-                self.call_after_refresh(
-                    self.scroll_to,
-                    x=previous_scroll_x,
-                    y=previous_scroll_y,
-                    animate=False,
-                    immediate=True,
-                    force=True,
-                )
+                self._restore_scroll_position(previous_scroll_x, previous_scroll_y)
+                self.call_after_refresh(self._restore_scroll_position, previous_scroll_x, previous_scroll_y)
 
             # Rebuild highlights and refresh
             self._rebuild_highlights()
@@ -362,26 +400,33 @@ class CustomLogTextArea(TextArea):
                 # No lines, does nothing.
                 return
 
+            should_follow_output = self.should_follow_output()
+
             last_row = self._line_count - 1
 
             if last_row > 0:
                 # Delete the newline before the last line + the line itself
-                self.replace(
-                    "",
-                    start=(last_row - 1, len(self.document.get_line(last_row - 1))),
-                    end=(last_row, len(self.document.get_line(last_row))),
-                )
+                with self._suspend_follow_output_tracking():
+                    self.replace(
+                        "",
+                        start=(last_row - 1, len(self.document.get_line(last_row - 1))),
+                        end=(last_row, len(self.document.get_line(last_row))),
+                    )
             else:
                 # Only one line
-                self.replace(
-                    "",
-                    start=(0, 0),
-                    end=(0, len(self.document.get_line(0))),
-                )
+                with self._suspend_follow_output_tracking():
+                    self.replace(
+                        "",
+                        start=(0, 0),
+                        end=(0, len(self.document.get_line(0))),
+                    )
 
             # Decrease line count and remove styles
             self._line_count -= 1
             self._lines_styles.pop()
+
+            if should_follow_output:
+                self._scroll_to_output_end()
 
             # Rebuild highlights and refresh
             self._rebuild_highlights()
@@ -401,10 +446,12 @@ class CustomLogTextArea(TextArea):
             # Clear the document
             self._line_count = 0
             self._lines_styles.clear()
+            self._follow_output = True
 
             # Refresh and clear the TextArea
             self.refresh()
-            self.clear()
+            with self._suspend_follow_output_tracking():
+                self.clear()
 
     def action_copy_selection(self) -> None:
         """
