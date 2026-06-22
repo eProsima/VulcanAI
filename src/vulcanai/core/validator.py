@@ -14,6 +14,7 @@
 
 import re
 
+from vulcanai.console.logger import VulcanAILogger
 from vulcanai.core.plan_types import GlobalPlan, PlanNode, Step
 
 TYPE_ALIAS = {"int": int, "integer": int, "float": float, "bool": bool, "boolean": bool, "str": str, "string": str}
@@ -22,8 +23,11 @@ TYPE_ALIAS = {"int": int, "integer": int, "float": float, "bool": bool, "boolean
 class PlanValidator:
     """Validates and optionally augments a plan before execution."""
 
-    def __init__(self, registry):
+    def __init__(self, registry, logger=None):
         self.registry = registry
+        # Use an isolated logger instance by default to avoid sharing sinks across
+        # unrelated contexts (e.g. Textual app tests vs plain unittest).
+        self.logger = logger or VulcanAILogger().default()
 
     def validate(self, plan: GlobalPlan):
         """
@@ -89,12 +93,12 @@ class PlanValidator:
                     expected_type = None
                     for schema in tool.input_schema:
                         if arg.key in schema:
-                            print(f"Schema for arg '{arg.key}' in tool '{tool.name}': {schema}")  # Debug print
+                            self.logger.log_validator(f"Schema for arg '{arg.key}' in tool '{tool.name}': {schema}")
                             # Use TYPE_ALIAS to map string type names to actual types
                             expected_type = TYPE_ALIAS.get(schema[1])
-                            print(
+                            self.logger.log_validator(
                                 f"Expected type for arg '{arg.key}' in tool '{tool.name}': {expected_type}"
-                            )  # Debug print
+                            )
                             break
                     if expected_type and not isinstance(arg.val, expected_type):
                         if expected_type is float and isinstance(arg.val, int):
