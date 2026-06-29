@@ -159,7 +159,10 @@ class ROS2DefaultToolNode(Node):
             if not future.done():
                 future.set_result(msg)
 
-        sub = self.create_subscription(msg_type, topic, callback, 10)
+        # Protect against spinner running in background
+        spin_lock = _get_node_spin_lock(self)
+        with spin_lock:
+            sub = self.create_subscription(msg_type, topic, callback, 10)
 
         deadline = None if timeout_sec is None else time.monotonic() + timeout_sec
         while not future.done():
@@ -171,7 +174,9 @@ class ROS2DefaultToolNode(Node):
                     break
                 spin_timeout = min(0.1, remaining)
             self.spin_once(timeout_sec=spin_timeout)
-        self.destroy_subscription(sub)
+
+        with spin_lock:
+            self.destroy_subscription(sub)
 
         if future.done():
             return future.result()
