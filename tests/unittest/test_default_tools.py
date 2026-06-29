@@ -41,6 +41,9 @@ import sys
 import threading
 import time
 import unittest
+import uuid
+
+os.environ["ROS_DOMAIN_ID"] = "71"
 
 # -----------------------------------------------------------------------------
 # Skip entire module when ROS 2 is not available
@@ -162,11 +165,29 @@ class MockConsole:
 # -----------------------------------------------------------------------------
 # Helper: background ROS 2 publisher
 # -----------------------------------------------------------------------------
+def _signal_process_group(proc: subprocess.Popen, sig: int) -> None:
+    """Send ``sig`` to the whole process group led by ``proc``.
+
+    ``ros2 run``/``ros2 topic pub`` spawn the actual node as a child, so signaling
+    only ``proc`` orphans the node (and leaks its DDS participant). Launching with
+    ``start_new_session=True`` makes ``proc`` a group leader; killing the group
+    reaches the node too. Falls back to the bare process if the group is gone.
+    """
+    try:
+        os.killpg(os.getpgid(proc.pid), sig)
+    except (ProcessLookupError, PermissionError):
+        try:
+            proc.send_signal(sig)
+        except ProcessLookupError:
+            pass
+
+
 def start_background_publisher(
     topic: str,
     msg_type: str = "std_msgs/msg/String",
     rate: float = 10.0,
     message: str = "hello_test",
+    discovery_timeout: float = 10.0,
 ):
     """Launch ``ros2 topic pub`` in a subprocess and return the Popen handle."""
     proc = subprocess.Popen(
@@ -182,21 +203,41 @@ def start_background_publisher(
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
+        start_new_session=True,
     )
-    # Give the publisher a moment to register with the ROS graph
-    time.sleep(2)
+    # DDS discovery is not instant; poll until the topic is visible on the
+    # graph instead of relying on a fixed sleep (avoids flakiness under load).
+    start_time = time.monotonic()
+    while (time.monotonic() - start_time) <= discovery_timeout:
+        try:
+            topic_list = subprocess.check_output(["ros2", "topic", "list"], text=True, timeout=5)
+        except Exception:
+            topic_list = ""
+        if topic in topic_list:
+            break
+        time.sleep(0.2)
+    # Brief settle so subscribers finish matching after discovery completes.
+    time.sleep(0.5)
     return proc
 
 
 def stop_background_publisher(proc: subprocess.Popen):
-    """Terminate a background publisher gracefully."""
+    """Terminate a background publisher gracefully and wait for it to exit.
+
+    Escalates SIGINT -> SIGTERM -> SIGKILL so the publisher node is guaranteed
+    gone before the next test starts, and gives DDS a brief moment to drop the
+    node from the graph (avoids "nodes that share an exact name" warnings).
+    """
     if proc.poll() is None:
-        proc.send_signal(signal.SIGINT)
-        try:
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait()
+        for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGKILL):
+            _signal_process_group(proc, sig)
+            try:
+                proc.wait(timeout=5)
+                break
+            except subprocess.TimeoutExpired:
+                continue
+        # Let DDS deregister the participant before another test reuses the graph.
+        time.sleep(0.5)
     if proc.stdout is not None:
         proc.stdout.close()
     if proc.stderr not in (None, subprocess.STDOUT):
@@ -209,20 +250,34 @@ def start_background_ros2_executable(package: str, executable: str, wait_sec: fl
         ["ros2", "run", package, executable],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
+        start_new_session=True,
     )
     time.sleep(wait_sec)
     return proc
 
 
 def stop_background_process(proc: subprocess.Popen):
-    """Terminate a generic background process gracefully."""
+    """Terminate a generic background process and wait for DDS to clean up.
+
+    A clean SIGINT lets the node deregister from the graph quickly (~3s). If
+    the process has to be force-killed, the participant lingers far longer, so
+    we wait ~20s to keep the next test from colliding on the same node name.
+    """
     if proc.poll() is None:
-        proc.send_signal(signal.SIGINT)
+        clean_shutdown = False
+        _signal_process_group(proc, signal.SIGINT)
         try:
             proc.wait(timeout=5)
+            clean_shutdown = True
         except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait()
+            _signal_process_group(proc, signal.SIGTERM)
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                _signal_process_group(proc, signal.SIGKILL)
+                proc.wait()
+        # Give DDS time to deregister the participant before the next test.
+        time.sleep(3 if clean_shutdown else 20)
     if proc.stdout is not None:
         proc.stdout.close()
     if proc.stderr not in (None, subprocess.STDOUT):
@@ -250,7 +305,7 @@ class TestRos2NodeTool(unittest.TestCase):
 
     def setUp(self):
         self.console = MockConsole()
-        self.node = self.ROS2DefaultToolNode()
+        self.node = self.ROS2DefaultToolNode(name=f"vulcanai_test_node_{uuid.uuid4().hex[:8]}")
         self.node_name = f"/{self.node.get_name()}"
         self._bg_processes = []
 
@@ -347,7 +402,7 @@ class TestRos2TopicTool(unittest.TestCase):
 
     def setUp(self):
         self.console = MockConsole()
-        self.node = self.ROS2DefaultToolNode()
+        self.node = self.ROS2DefaultToolNode(name=f"vulcanai_test_node_{uuid.uuid4().hex[:8]}")
         self._bg_publishers = []
 
     def tearDown(self):
@@ -587,7 +642,7 @@ class TestRos2ServiceTool(unittest.TestCase):
 
     def setUp(self):
         self.console = MockConsole()
-        self.node = self.ROS2DefaultToolNode()
+        self.node = self.ROS2DefaultToolNode(name=f"vulcanai_test_node_{uuid.uuid4().hex[:8]}")
         self.get_parameters_service = f"/{self.node.get_name()}/get_parameters"
         self._bg_processes = []
 
@@ -789,7 +844,7 @@ class TestRos2ActionTool(unittest.TestCase):
 
     def setUp(self):
         self.console = MockConsole()
-        self.node = self.ROS2DefaultToolNode()
+        self.node = self.ROS2DefaultToolNode(name=f"vulcanai_test_node_{uuid.uuid4().hex[:8]}")
         self._bg_processes = []
 
     def tearDown(self):
@@ -914,7 +969,7 @@ class TestRos2ParamTool(unittest.TestCase):
 
     def setUp(self):
         self.console = MockConsole()
-        self.node = self.ROS2DefaultToolNode()
+        self.node = self.ROS2DefaultToolNode(name=f"vulcanai_test_node_{uuid.uuid4().hex[:8]}")
         self.node_name = f"/{self.node.get_name()}"
         self._bg_processes = []
 
@@ -973,15 +1028,33 @@ class TestRos2ParamTool(unittest.TestCase):
         proc = start_background_ros2_executable("demo_nodes_cpp", "parameter_blackboard", wait_sec=2.0)
         self._bg_processes.append(proc)
         start_time = time.monotonic()
+        node_visible = False
         while (time.monotonic() - start_time) <= 8.0:
             try:
                 node_list = subprocess.check_output(["ros2", "node", "list"], text=True, timeout=5)
             except Exception:
                 node_list = ""
             if "/parameter_blackboard" in node_list:
+                node_visible = True
+                break
+            time.sleep(0.2)
+        if not node_visible:
+            self.fail("Node '/parameter_blackboard' not visible within timeout")
+
+        # Node visibility precedes parameter-service readiness; wait until the
+        # param services actually answer so set/get/delete do not race them.
+        start_time = time.monotonic()
+        while (time.monotonic() - start_time) <= 8.0:
+            try:
+                param_list = subprocess.check_output(
+                    ["ros2", "param", "list", "/parameter_blackboard"], text=True, timeout=5
+                )
+            except Exception:
+                param_list = ""
+            if param_list.strip():
                 return
             time.sleep(0.2)
-        self.fail("Node '/parameter_blackboard' not visible within timeout")
+        self.fail("Parameter services for '/parameter_blackboard' not ready within timeout")
 
     # -------------------------------------------------------------------------
     # Tests — ros2 param list
@@ -1320,7 +1393,7 @@ class TestRos2PublishTool(unittest.TestCase):
 
     def setUp(self):
         self.console = MockConsole()
-        self.node = self.ROS2DefaultToolNode()
+        self.node = self.ROS2DefaultToolNode(name=f"vulcanai_test_node_{uuid.uuid4().hex[:8]}")
         self._bg_publishers = []
 
     def tearDown(self):
@@ -1450,7 +1523,7 @@ class TestRos2SubscribeTool(unittest.TestCase):
 
     def setUp(self):
         self.console = MockConsole()
-        self.node = self.ROS2DefaultToolNode()
+        self.node = self.ROS2DefaultToolNode(name=f"vulcanai_test_node_{uuid.uuid4().hex[:8]}")
         self._bg_publishers = []
 
     def tearDown(self):
