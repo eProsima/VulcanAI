@@ -109,17 +109,10 @@ class ROS2DefaultToolNode(Node):
 
     def spin_once(self, timeout_sec: float = 0.1):
         spin_lock = _get_node_spin_lock(self)
-        if spin_lock is None:
+
+        with spin_lock:
             if self._vulcan_executor is not None:
                 self._vulcan_executor.spin_once(timeout_sec=timeout_sec)
-            else:
-                rclpy.spin_once(self, timeout_sec=timeout_sec)
-        else:
-            with spin_lock:
-                if self._vulcan_executor is not None:
-                    self._vulcan_executor.spin_once(timeout_sec=timeout_sec)
-                else:
-                    rclpy.spin_once(self, timeout_sec=timeout_sec)
 
     def get_client(self, srv_type, srv_name):
         """
@@ -2052,13 +2045,6 @@ class Ros2PublishTool(AtomicTool):
                 if not _node_spins_in_background(node):
                     if hasattr(node, "spin_once"):
                         node.spin_once(timeout_sec=0.0)
-                    else:
-                        spin_lock = _get_node_spin_lock(node)
-                        if spin_lock is None:
-                            rclpy.spin_once(node, timeout_sec=0.0)
-                        else:
-                            with spin_lock:
-                                rclpy.spin_once(node, timeout_sec=0.0)
 
                 if period_sec and period_sec > 0.0:
                     next_publish_time += period_sec
