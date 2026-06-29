@@ -79,7 +79,7 @@ class TestPlanExecutor(unittest.TestCase):
         self.Embedder = LocalDummyEmbedder()
 
         # Build registry and executor
-        self.registry = self.ToolRegistry(embedder=self.Embedder)
+        self.registry = self.ToolRegistry(embedder=self.Embedder, default_tools=False)
 
         # Define and register tools
         class NavTool(self.AtomicTool):
@@ -187,7 +187,21 @@ class TestPlanExecutor(unittest.TestCase):
             def run(self, a: float, b: float):
                 return {"result": a + b}
 
+        class SubscribeLikeTool(self.AtomicTool):
+            name = "subscribe_like"
+            description = "Records subscription-like optional arguments."
+            input_schema = [("topic", "string"), ("max_duration", "float?"), ("max_lines", "int?")]
+            output_schema = {"topic": "string", "max_duration": "float", "max_lines": "int"}
+
+            def run(self, **kwargs):
+                return {
+                    "topic": kwargs.get("topic"),
+                    "max_duration": kwargs.get("max_duration"),
+                    "max_lines": kwargs.get("max_lines"),
+                }
+
         self.registry.register_tool(AddTool())
+        self.registry.register_tool(SubscribeLikeTool())
         self.registry.register_tool(NavTool())
         self.registry.register_tool(DetectTool())
         self.registry.register_tool(SpeakTool())
@@ -237,6 +251,35 @@ class TestPlanExecutor(unittest.TestCase):
         self.assertTrue(bb["detect_object"]["found"])
         self.assertTrue(bb["go_to_pose"]["arrived"])
         self.assertEqual(bb["detect_object"]["pose"], {"x": 4.0, "y": 2.0, "z": 0.0})
+
+    def test_optional_float_argument_preserves_fractional_value(self):
+        """Optional float arguments should keep fractional values through executor binding."""
+        plan = self.GlobalPlan(
+            summary="Preserve a fractional optional duration",
+            plan=[
+                self.PlanNode(
+                    kind="SEQUENCE",
+                    steps=[
+                        self.Step(
+                            tool="subscribe_like",
+                            args=[
+                                self.Arg(key="topic", val="/demo_topic"),
+                                self.Arg(key="max_duration", val=0.5),
+                                self.Arg(key="max_lines", val=2),
+                            ],
+                        ),
+                    ],
+                )
+            ],
+        )
+
+        result = self.exec.run(plan, {})
+        self.assertTrue(result["success"])
+        bb = result["blackboard"]
+        self.assertEqual(bb["subscribe_like"]["topic"], "/demo_topic")
+        self.assertEqual(bb["subscribe_like"]["max_duration"], 0.5)
+        self.assertIsInstance(bb["subscribe_like"]["max_duration"], float)
+        self.assertEqual(bb["subscribe_like"]["max_lines"], 2)
 
     def test_false_condition_skips_step(self):
         """
@@ -459,7 +502,7 @@ class TestPlanExecutor(unittest.TestCase):
             ],
         )
 
-        r = self.ToolRegistry(embedder=self.Embedder)
+        r = self.ToolRegistry(embedder=self.Embedder, default_tools=False)
         flaky_tool = self.FlakyTool()
         r.register_tool(flaky_tool)
         flaky_exec = self.PlanExecutor(r)
@@ -497,7 +540,7 @@ class TestPlanExecutor(unittest.TestCase):
             ],
         )
 
-        r = self.ToolRegistry(embedder=self.Embedder)
+        r = self.ToolRegistry(embedder=self.Embedder, default_tools=False)
         # First test with a value that does not meet criteria
         r.register_tool(self.CriteriaTool(return_value=5))
         criteria_exec = self.PlanExecutor(r)
@@ -509,7 +552,7 @@ class TestPlanExecutor(unittest.TestCase):
         self.assertEqual(bb["criteria_tool"]["value"], 5)
 
         # Now test with a value that meets criteria
-        r = self.ToolRegistry(embedder=self.Embedder)
+        r = self.ToolRegistry(embedder=self.Embedder, default_tools=False)
         r.register_tool(self.CriteriaTool(return_value=15))
         criteria_exec = self.PlanExecutor(r)
 
@@ -593,7 +636,7 @@ class TestPlanExecutor(unittest.TestCase):
             ],
         )
 
-        r = self.ToolRegistry(embedder=self.Embedder)
+        r = self.ToolRegistry(embedder=self.Embedder, default_tools=False)
         # First test with a value that does not meet criteria
         r.register_tool(self.CriteriaTool(return_value=5))
         criteria_exec = self.PlanExecutor(r)
@@ -605,7 +648,7 @@ class TestPlanExecutor(unittest.TestCase):
         self.assertEqual(bb["criteria_tool"]["value"], 5)
 
         # Now test with a value that meets criteria
-        r = self.ToolRegistry(embedder=self.Embedder)
+        r = self.ToolRegistry(embedder=self.Embedder, default_tools=False)
         r.register_tool(self.CriteriaTool(return_value=15))
         criteria_exec = self.PlanExecutor(r)
 
@@ -629,7 +672,7 @@ class TestPlanExecutor(unittest.TestCase):
             ],
         )
 
-        r = self.ToolRegistry(embedder=self.Embedder)
+        r = self.ToolRegistry(embedder=self.Embedder, default_tools=False)
         flaky_tool = self.FlakyTool()
         r.register_tool(flaky_tool)
         flaky_exec = self.PlanExecutor(r)

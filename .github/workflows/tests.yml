@@ -35,7 +35,49 @@ jobs:
 
       - name: Run unit tests
         run: |
-          python -m unittest discover -s tests/unittest -t . -p "test*.py" -v
+          mapfile -t test_modules < <(
+            find tests/unittest -maxdepth 1 -name "test*.py" ! -name "test_default_tools.py" -printf "%f\n" |
+            sed 's/\.py$//' |
+            sed 's/^/tests.unittest./' |
+            sort
+          )
+          if [ "${#test_modules[@]}" -eq 0 ]; then
+            echo "No unit test modules found"
+            exit 1
+          fi
+          python -m unittest -v "${test_modules[@]}"
+
+  ros2_unittests:
+    name: ROS 2 unit tests (default tools)
+    runs-on: ubuntu-24.04
+    container:
+      image: eprosima/vulcanexus:kilted-desktop
+
+    steps:
+      - name: Sync repository
+        uses: eProsima/eProsima-CI/external/checkout@v0
+
+      - name: Install ROS 2 auxiliary test dependencies
+        run: |
+          apt-get update && apt-get install -y --no-install-recommends \
+            python3-venv \
+            ros-kilted-examples-rclpy-minimal-service \
+            ros-kilted-examples-rclpy-minimal-action-server
+
+      - name: Install VulcanAI library
+        shell: bash
+        run: |
+          python3 -m venv .venv --system-site-packages
+          source .venv/bin/activate
+          python -m pip install -U pip
+          python -m pip install -e .[test]
+
+      - name: Run ROS 2 default tools tests
+        shell: bash
+        run: |
+          source /opt/ros/$ROS_DISTRO/setup.bash
+          source .venv/bin/activate
+          python -m unittest discover -s tests/unittest -t . -p "test_default_tools.py" -v
 
   integration:
     name: Integration tests (pytest)

@@ -20,6 +20,7 @@ import types
 import unittest
 
 import numpy as np
+from pydantic import ValidationError
 
 
 # Stub sentence_transformers to avoid heavy dependency during tests
@@ -78,7 +79,7 @@ class TestPlanValidator(unittest.TestCase):
         self.Embedder = LocalDummyEmbedder()
 
         # Build registry and executor
-        self.registry = self.ToolRegistry(embedder=self.Embedder)
+        self.registry = self.ToolRegistry(embedder=self.Embedder, default_tools=False)
 
         # Define and register tools
         class EmptyTool(self.AtomicTool):
@@ -141,11 +142,21 @@ class TestPlanValidator(unittest.TestCase):
             def run(self, **kwargs):
                 return {"types": True}
 
+        class OptionalTool(self.AtomicTool):
+            name = "optional"
+            description = "Tool with one required argument and one optional argument"
+            input_schema = [("required", "string"), ("optional_value", "string?")]
+            output_schema = {"ok": "bool"}
+
+            def run(self, **kwargs):
+                return {"ok": True}
+
         self.registry.register_tool(EmptyTool())
         self.registry.register_tool(DetectTool())
         self.registry.register_tool(NavTool())
         self.registry.register_tool(SpeakTool())
         self.registry.register_tool(TypesTool())
+        self.registry.register_tool(OptionalTool())
 
         self.validator = self.Validator(self.registry)
 
@@ -195,19 +206,69 @@ class TestPlanValidator(unittest.TestCase):
             self.assertIn("not found in registry", str(e))
         self.assertTrue(fail, "Validator did not catch non-existing key error")
 
+    def test_global_plan_requires_at_least_one_plan_node(self):
+        with self.assertRaises(ValidationError) as ctx:
+            self.GlobalPlan(summary="Empty plan", plan=[])
+
+        self.assertIn("plan", str(ctx.exception))
+        self.assertIn("at least 1 item", str(ctx.exception))
+
+    def test_plan_node_requires_at_least_one_step(self):
+        with self.assertRaises(ValidationError) as ctx:
+            self.PlanNode(kind="SEQUENCE", steps=[])
+
+        self.assertIn("steps", str(ctx.exception))
+        self.assertIn("at least 1 item", str(ctx.exception))
+
+    def test_step_requires_tool_name(self):
+        with self.assertRaises(ValidationError) as ctx:
+            self.Step(args=[])
+
+        self.assertIn("tool", str(ctx.exception))
+        self.assertIn("Field required", str(ctx.exception))
+
+    def test_validator_rejects_non_global_plan(self):
+        with self.assertRaises(ValueError) as ctx:
+            self.validator.validate(object())
+
+        self.assertIn("not a GlobalPlan instance", str(ctx.exception))
+
+    def test_validate_step_rejects_non_step(self):
+        with self.assertRaises(ValueError) as ctx:
+            self.validator._validate_step(object())
+
+        self.assertIn("not a Step instance", str(ctx.exception))
+
+    def test_validator_accepts_required_arg_with_optional_arg_omitted(self):
+        plan = self.GlobalPlan(
+            summary="Use tool with omitted optional arg",
+            plan=[
+                self.PlanNode(
+                    kind="SEQUENCE",
+                    steps=[
+                        self.Step(tool="optional", args=[self.Arg(key="required", val="hello")]),
+                    ],
+                )
+            ],
+        )
+
+        try:
+            self.validator.validate(plan)
+        except Exception as e:
+            self.fail(f"Validation failed with omitted optional arg: {e}")
+
     def test_validator_non_existing_key(self):
         plan = self.GlobalPlan(
-            summary="Navigate to a location",
+            summary="Optional tool with an unknown key",
             plan=[
                 self.PlanNode(
                     kind="SEQUENCE",
                     steps=[
                         self.Step(
-                            tool="go_to_pose",
+                            tool="optional",
                             args=[
-                                self.Arg(key="non_existing_key", val=1.0),
-                                self.Arg(key="y", val=2.0),
-                                self.Arg(key="z", val=0.0),
+                                self.Arg(key="required", val="hello"),
+                                self.Arg(key="non_existing_key", val="unexpected"),
                             ],
                         ),
                     ],
@@ -361,6 +422,32 @@ class TestPlanValidator(unittest.TestCase):
             fail = True
             self.assertIn("Blackboard reference in argument", str(e))
         self.assertTrue(fail, "Validator did not catch non-existing key error")
+
+    def test_validator_accepts_multiple_well_formed_bb_refs_in_one_string(self):
+        plan = self.GlobalPlan(
+            summary="Speak using multiple blackboard references",
+            plan=[
+                self.PlanNode(
+                    kind="SEQUENCE",
+                    steps=[
+                        self.Step(
+                            tool="speak",
+                            args=[
+                                self.Arg(
+                                    key="text",
+                                    val="Detected at {{bb.detect_object.pose.x}}, {{bb.detect_object.pose.y}}",
+                                )
+                            ],
+                        ),
+                    ],
+                )
+            ],
+        )
+
+        try:
+            self.validator.validate(plan)
+        except Exception as e:
+            self.fail(f"Validation failed for well-formed multiple bb refs: {e}")
 
     def test_validator_correct_types(self):
         plan = self.GlobalPlan(

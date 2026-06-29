@@ -16,10 +16,13 @@
 import re
 import threading
 from collections import defaultdict, deque
+from contextlib import contextmanager
 
 import pyperclip
 from rich.style import Style
 from textual.widgets import TextArea
+
+from vulcanai.console.logger import VulcanAILogger
 
 
 class CustomLogTextArea(TextArea):
@@ -33,7 +36,7 @@ class CustomLogTextArea(TextArea):
     """
 
     BINDINGS = [
-        ("f3", "copy_selection", "Copy selection"),
+        ("f4", "copy_selection", "Copy selection"),
     ]
 
     # Maximum number of lines to keep in the log
@@ -45,7 +48,10 @@ class CustomLogTextArea(TextArea):
     TAG_TOKEN_RE = re.compile(r"</?[^>]+>")
 
     def __init__(self, **kwargs):
-        super().__init__(read_only=True, **kwargs)
+        # Disable the TextArea cursor in this read-only log panel.
+        # This prevents Textual from auto-scrolling to keep cursor/selection visible
+        # every time new text is inserted.
+        super().__init__(read_only=True, show_cursor=False, **kwargs)
 
         # Lock used to avoid data races in 'self._lines_styles'
         #   when VulcanAI and ROS threads writes at the same time
@@ -65,8 +71,68 @@ class CustomLogTextArea(TextArea):
         #  A row with N styles # (e.g.: N = 2: two colors, one bold and color)
         #  will have N entries.
         self._lines_styles = deque(maxlen=self.MAX_LINES)
+        # Sticky terminal-like follow state
+        # When True, new output should keep the viewport anchored to the end
+        self._follow_output = True
+        # Suppress follow-state updates while we are applying programmatic scrolls
+        self._suspend_follow_tracking = 0
 
     # region UTILS
+
+    def is_near_vertical_scroll_end(self, tolerance: int = 1) -> bool:
+        """
+        Return True if the viewport is at, or very close to, the vertical end.
+
+        A small tolerance avoids false negatives after layout changes where
+        scroll position can be off by one line.
+        """
+        if not self.size:
+            return True
+        return (self.max_scroll_y - self.scroll_offset.y) <= max(0, tolerance)
+
+    def should_follow_output(self) -> bool:
+        """
+        Return True when the log should keep following new output.
+        """
+        return self._follow_output
+
+    def _update_follow_output_from_viewport(self, tolerance: int = 1) -> None:
+        """
+        Refresh sticky follow state from the current viewport position.
+        """
+        self._follow_output = self.is_near_vertical_scroll_end(tolerance=tolerance)
+
+    @contextmanager
+    def _suspend_follow_output_tracking(self):
+        """
+        Temporarily ignore viewport changes triggered by programmatic scrolling.
+        """
+        self._suspend_follow_tracking += 1
+        try:
+            yield
+        finally:
+            self._suspend_follow_tracking = max(0, self._suspend_follow_tracking - 1)
+
+    def _scroll_to_output_end(self) -> None:
+        """
+        Anchor the viewport to the end and keep follow mode enabled.
+        """
+        self._follow_output = True
+        with self._suspend_follow_output_tracking():
+            self.scroll_end(animate=False, immediate=True, x_axis=False)
+
+    def _restore_scroll_position(self, x: int, y: int) -> None:
+        """
+        Restore the viewport to a previous position and keep follow mode disabled.
+        """
+        self._follow_output = False
+        with self._suspend_follow_output_tracking():
+            self.scroll_to(x=x, y=y, animate=False, immediate=True, force=True)
+
+    def _watch_scroll_y(self) -> None:
+        super()._watch_scroll_y()
+        if self._suspend_follow_tracking == 0:
+            self._update_follow_output_from_viewport()
 
     def _trim_highlights(self) -> None:
         """
@@ -198,7 +264,7 @@ class CustomLogTextArea(TextArea):
 
                 # Gray color is not supported
                 if st == "gray":
-                    color = "#8D8D8D"
+                    color = "#A5A2A2"
                     token_parts.append("hex_" + color[1:])
                 else:
                     # Assume named color like "red", "yellow"
@@ -223,7 +289,7 @@ class CustomLogTextArea(TextArea):
 
     # region LOG
 
-    def append_line(self, text: str) -> bool:
+    def append_line(self, text: str, force_follow_output: bool = False) -> bool:
         """
         Function used to append a new line to the CustomLogTextArea.
 
@@ -279,30 +345,44 @@ class CustomLogTextArea(TextArea):
         # [EXECUTOR] Invoking 'move_turtle' with args: ...
         # [ROS] [INFO] Publishing message 1 to ...
         with self._lock:
-            # Append via document API to keep row tracking consistent
-            # Only add a newline before the new line if there is already content
-            insert_text = ("\n" if self.document.text else "") + plain
-            self.insert(insert_text, location=self.document.end)
+            # Terminal-like behavior:
+            # keep following output only if the user was already following output.
+            should_follow_output = force_follow_output or self.should_follow_output()
+            previous_scroll_x = self.scroll_offset.x
+            previous_scroll_y = self.scroll_offset.y
 
-            # Track styles for the new line (always at the end)
-            self._line_count += 1
+            with self._suspend_follow_output_tracking():
+                # Append via document API to keep row tracking consistent
+                # Only add a newline before the new line if there is already content
+                insert_text = ("\n" if self.document.text else "") + plain
+                self.insert(insert_text, location=self.document.end)
 
-            if self._line_count > self.MAX_LINES:
-                self._highlights.pop(self._line_count - self.MAX_LINES, None)
+                # Track styles for the new line (always at the end)
+                self._line_count += 1
 
-            # Store styles
-            # Each line may have multiple styles (spans)
-            current_line = []
-            for start, end, token in spans:
-                current_line.append((start, end, token))
+                if self._line_count > self.MAX_LINES:
+                    self._highlights.pop(self._line_count - self.MAX_LINES, None)
 
-            self._lines_styles.append(current_line)
+                # Store styles
+                # Each line may have multiple styles (spans)
+                current_line = []
+                for start, end, token in spans:
+                    current_line.append((start, end, token))
 
-            # Trim now
-            self._trim_highlights()
+                self._lines_styles.append(current_line)
 
-            # Scroll to end
-            self.scroll_end(animate=False)
+                # Trim now
+                self._trim_highlights()
+
+            # Scroll to end only when the user was already at the bottom.
+            if should_follow_output:
+                self._scroll_to_output_end()
+                # Ensure we stay anchored after any pending layout updates.
+                self.call_after_refresh(self._scroll_to_output_end)
+            else:
+                # Keep user viewport stable while new lines arrive in the background
+                self._restore_scroll_position(previous_scroll_x, previous_scroll_y)
+                self.call_after_refresh(self._restore_scroll_position, previous_scroll_x, previous_scroll_y)
 
             # Rebuild highlights and refresh
             self._rebuild_highlights()
@@ -320,26 +400,33 @@ class CustomLogTextArea(TextArea):
                 # No lines, does nothing.
                 return
 
+            should_follow_output = self.should_follow_output()
+
             last_row = self._line_count - 1
 
             if last_row > 0:
                 # Delete the newline before the last line + the line itself
-                self.replace(
-                    "",
-                    start=(last_row - 1, len(self.document.get_line(last_row - 1))),
-                    end=(last_row, len(self.document.get_line(last_row))),
-                )
+                with self._suspend_follow_output_tracking():
+                    self.replace(
+                        "",
+                        start=(last_row - 1, len(self.document.get_line(last_row - 1))),
+                        end=(last_row, len(self.document.get_line(last_row))),
+                    )
             else:
                 # Only one line
-                self.replace(
-                    "",
-                    start=(0, 0),
-                    end=(0, len(self.document.get_line(0))),
-                )
+                with self._suspend_follow_output_tracking():
+                    self.replace(
+                        "",
+                        start=(0, 0),
+                        end=(0, len(self.document.get_line(0))),
+                    )
 
             # Decrease line count and remove styles
             self._line_count -= 1
             self._lines_styles.pop()
+
+            if should_follow_output:
+                self._scroll_to_output_end()
 
             # Rebuild highlights and refresh
             self._rebuild_highlights()
@@ -359,10 +446,12 @@ class CustomLogTextArea(TextArea):
             # Clear the document
             self._line_count = 0
             self._lines_styles.clear()
+            self._follow_output = True
 
             # Refresh and clear the TextArea
             self.refresh()
-            self.clear()
+            with self._suspend_follow_output_tracking():
+                self.clear()
 
     def action_copy_selection(self) -> None:
         """
@@ -374,6 +463,12 @@ class CustomLogTextArea(TextArea):
             self.notify("No text selected to copy!")
             return
 
-        # Copy to clipboard, using pyperclip library
-        pyperclip.copy(self.selected_text)
-        self.notify("Selected area copied to clipboard!")
+        try:
+            # Copy to clipboard, using pyperclip library
+            pyperclip.copy(self.selected_text)
+            self.notify("Selected area copied to clipboard!")
+        except Exception as e:
+            error_color = VulcanAILogger.vulcanai_theme["error"]
+            self.append_line(f"<{error_color}>Clipboard error: {e}</{error_color}>")
+            self.notify(f"Clipboard error: {e}")
+            return

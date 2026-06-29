@@ -25,8 +25,11 @@ from vulcanai.core.plan_types import ArgValue, GlobalPlan, PlanBase, Step
 TYPE_CAST = {
     "float": float,
     "int": int,
+    "integer": int,
     "bool": lambda v: v if isinstance(v, bool) else str(v).strip().lower() in ("1", "true", "yes", "on"),
+    "boolean": lambda v: v if isinstance(v, bool) else str(v).strip().lower() in ("1", "true", "yes", "on"),
     "str": str,
+    "string": str,
 }
 
 
@@ -150,7 +153,8 @@ class PlanExecutor:
         # Bind args with blackboard placeholders
         tool = self.registry.tools.get(step.tool)
         input_schema = tool.input_schema if tool else []
-        args = self._bind_args(step.args, input_schema, bb)
+        input_defaults = getattr(tool, "input_defaults", {}) if tool else {}
+        args = self._bind_args(step.args, input_schema, bb, input_defaults)
 
         attempts = step.retry + 1 if step.retry else 1
         for i in range(attempts):
@@ -213,13 +217,36 @@ class PlanExecutor:
             self.logger.log_executor(f"Blackboard substitution failed: {expr} ({e})", error=True)
             return expr
 
-    def _bind_args(self, args: List[ArgValue], schema: List[Tuple[str, str]], bb: Blackboard) -> List[ArgValue]:
-        """Replace {{bb.key}} placeholders with actual values."""
-        bound = []
+    def _bind_args(
+        self,
+        args: List[ArgValue],
+        schema: List[Tuple[str, str]],
+        bb: Blackboard,
+        input_defaults: Optional[Dict[str, Any]] = None,
+    ) -> List[ArgValue]:
+        """Replace {{bb.key}} placeholders with actual values and fill omitted defaults in schema order"""
+
+        bound_by_key = {}
         for arg in args:
             bound_arg = self._make_bb_subs(arg.val, bb)
             arg.val = self._coerce_to_schema(schema, arg.key, bound_arg)
-            bound.append(arg)
+            bound_by_key[arg.key] = arg
+
+        bound = []
+        for key, _ in schema:
+            if key in bound_by_key:
+                bound.append(bound_by_key.pop(key))
+                continue
+            if not input_defaults or key not in input_defaults:
+                continue
+            default_value = input_defaults[key]
+            if isinstance(default_value, str):
+                default_value = self._make_bb_subs(default_value, bb)
+            bound.append(ArgValue(key=key, val=self._coerce_to_schema(schema, key, default_value)))
+
+        # Preserve any unexpected args after the schema-ordered ones
+        bound.extend(bound_by_key.values())
+
         return bound
 
     def _get_from_bb(self, path: str, bb: Blackboard) -> Any:
@@ -246,6 +273,8 @@ class PlanExecutor:
     def _coerce_to_schema(self, schema: List[Tuple[str, str]], key: str, arg: str) -> Any:
         spec = dict(schema)
         t = spec.get(key, "str")
+        if isinstance(t, str) and t.endswith("?"):
+            t = t[:-1]
         try:
             out = TYPE_CAST[t](arg)
         except Exception:
@@ -277,9 +306,9 @@ class PlanExecutor:
         msg += "'{"
         for key, value in arg_dict.items():
             if first:
-                msg += f"[validator]'{key}'[/validator]: " + f"[registry]'{value}'[/registry]"
+                msg += f"[tool]'{key}'[/tool]: " + f"[registry]'{value}'[/registry]"
             else:
-                msg += f", [validator]'{key}'[/validator]: " + f"[registry]'{value}'[/registry]"
+                msg += f", [tool]'{key}'[/tool]: " + f"[registry]'{value}'[/registry]"
             first = False
         msg += "}'"
         self.logger.log_executor(msg)
@@ -314,15 +343,6 @@ class PlanExecutor:
                 + f"in [registry]{elapsed:.1f} ms[/registry] "
                 + "with result:"
             )
-
-            if isinstance(result, dict):
-                for key, value in result.items():
-                    if key == "ros2":
-                        continue
-                    self.logger.log_msg(f"<bold>{key}</bold>")
-                    self.logger.log_msg(value)
-            else:
-                self.logger.log_msg(result)
 
             return True, result
         except concurrent.futures.TimeoutError:

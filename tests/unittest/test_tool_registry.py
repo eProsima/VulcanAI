@@ -108,6 +108,30 @@ class TestToolRegistry(unittest.TestCase):
             def run(self, **kwargs):
                 return {"spoken": True}
 
+        class DemoGroupListTool(self.AtomicTool):
+            name = "demo_group_list"
+            group_name = "demo_group"
+            description = "List entries from a grouped tool family"
+            tags = ["demo", "grouped"]
+            input_schema = []
+            output_schema = {"ok": "bool"}
+            version = "0.1"
+
+            def run(self, **kwargs):
+                return {"ok": True}
+
+        class DemoGroupInfoTool(self.AtomicTool):
+            name = "demo_group_info"
+            group_name = "demo_group"
+            description = "Show info from a grouped tool family"
+            tags = ["demo", "grouped"]
+            input_schema = []
+            output_schema = {"ok": "bool"}
+            version = "0.1"
+
+            def run(self, **kwargs):
+                return {"ok": True}
+
         class ComplexTool(self.CompositeTool):
             name = "complex_action"
             description = "A complex action using multiple tools"
@@ -135,11 +159,13 @@ class TestToolRegistry(unittest.TestCase):
         self.NavTool = NavTool
         self.DetectTool = DetectTool
         self.SpeakTool = SpeakTool
+        self.DemoGroupListTool = DemoGroupListTool
+        self.DemoGroupInfoTool = DemoGroupInfoTool
         self.ComplexTool = ComplexTool
         self.TestValidationTool = TestValidationTool
 
         # Build registry with dummy embedder and register tools
-        self.registry = self.ToolRegistry(embedder=self.Embedder())
+        self.registry = self.ToolRegistry(embedder=self.Embedder(), default_tools=False)
         self.registry.register_tool(self.NavTool())
         self.registry.register_tool(self.DetectTool())
         self.registry.register_tool(self.SpeakTool())
@@ -171,7 +197,7 @@ class TestToolRegistry(unittest.TestCase):
 
     def test_empty_registry(self):
         """Test that top_k on empty registry returns empty list."""
-        r = self.ToolRegistry(embedder=self.Embedder())
+        r = self.ToolRegistry(embedder=self.Embedder(), default_tools=False)
         res = r.top_k("anything", k=3)
         # When no tools are registered, only the help tool is present.
         # However, top_k will return an empty list because a tool registry with only the help tool
@@ -192,7 +218,7 @@ class TestToolRegistry(unittest.TestCase):
                 self.embed_call_count += 1
                 return super().embed(text)
 
-        r = self.ToolRegistry(embedder=MockEmbedder())
+        r = self.ToolRegistry(embedder=MockEmbedder(), default_tools=False)
         r.register_tool(self.NavTool())
         r.register_tool(self.DetectTool())
         r.register_tool(self.SpeakTool())
@@ -208,7 +234,7 @@ class TestToolRegistry(unittest.TestCase):
     # Test registers
     def test_register_tool(self):
         """Test that tools can be registered and are present in the registry."""
-        r = self.ToolRegistry(embedder=self.Embedder())
+        r = self.ToolRegistry(embedder=self.Embedder(), default_tools=False)
         self.assertEqual(len(r.tools), 0 + 1)  # +1 for help tool
         r.register_tool(self.NavTool())
         self.assertEqual(len(r.tools), 1 + 1)  # +1 for help tool
@@ -231,7 +257,7 @@ class TestToolRegistry(unittest.TestCase):
         self.assertEqual(len(self.registry._index), 7)  # (3 existing + 4 new)
 
     def test_register_tool_from_nonexistent_file(self):
-        r = self.ToolRegistry(embedder=self.Embedder())
+        r = self.ToolRegistry(embedder=self.Embedder(), default_tools=False)
         r.discover_tools_from_file("/path/does/not/exist.py")
         self.assertEqual(len(r.tools), 0 + 1)  # +1 for help tool
 
@@ -252,7 +278,7 @@ class TestToolRegistry(unittest.TestCase):
         buf = io.StringIO()
         sys.stdout = buf
         # Check that the composite tool has no resolved deps before registration
-        r = self.ToolRegistry(embedder=self.Embedder())
+        r = self.ToolRegistry(embedder=self.Embedder(), default_tools=False)
         self.assertEqual(len(r.tools), 0 + 1)  # +1 for help tool
         self.assertEqual(len(self.ComplexTool().dependencies), 3)
         self.assertEqual(len(self.ComplexTool().resolved_deps), 0)
@@ -271,7 +297,7 @@ class TestToolRegistry(unittest.TestCase):
 
     def test_register_composite_tool_solves_deps_from_file(self):
         """Test that registering a composite tool from file correctly resolves its dependencies."""
-        r = self.ToolRegistry(embedder=self.Embedder())
+        r = self.ToolRegistry(embedder=self.Embedder(), default_tools=False)
         buf = io.StringIO()
         sys.stdout = buf
         r.discover_tools_from_file(os.path.join(RESOURCES_DIR, "test_tools.py"))
@@ -289,7 +315,7 @@ class TestToolRegistry(unittest.TestCase):
         buf = io.StringIO()
         sys.stdout = buf
         # Register tool from test_composite_tool.py and expect errors for missing deps
-        r = self.ToolRegistry(embedder=self.Embedder())
+        r = self.ToolRegistry(embedder=self.Embedder(), default_tools=False)
         r.discover_tools_from_file(os.path.join(RESOURCES_DIR, "test_composite_tool.py"))
         sys.stdout = sys.__stdout__  # Reset stdout
         output = buf.getvalue()
@@ -301,13 +327,41 @@ class TestToolRegistry(unittest.TestCase):
 
     def test_register_validation_tool(self):
         """Test that validation tools can be registered and are present in the registry."""
-        r = self.ToolRegistry(embedder=self.Embedder())
+        r = self.ToolRegistry(embedder=self.Embedder(), default_tools=False)
         self.assertEqual(len(r.tools), 0 + 1)  # +1 for help tool
         self.assertEqual(len(r._index), 0)
         r.register_tool(self.TestValidationTool())
         self.assertEqual(len(r.tools), 1 + 1)  # +1 for help tool
         self.assertEqual(len(r._index), 1)
         self.assertIn("test_validation", r.validation_tools)
+
+    def test_group_tool_names_keeps_deactivated_grouped_tools_together(self):
+        """Test grouped tools still render as a group after all of them are deactivated."""
+        r = self.ToolRegistry(embedder=self.Embedder(), default_tools=False)
+        r.register_tool(self.DemoGroupListTool())
+        r.register_tool(self.DemoGroupInfoTool())
+
+        self.assertTrue(r.deactivate_tool("demo_group_list"))
+        self.assertTrue(r.deactivate_tool("demo_group_info"))
+
+        grouped = r.group_tool_names(["demo_group_info", "demo_group_list"])
+
+        self.assertEqual(grouped, [("demo_group", ["info", "list"])])
+
+    def test_group_tool_names_keeps_deactivated_groups_when_built_from_registry_state(self):
+        """Test grouped tools remain grouped when names come from active + deactivated registries."""
+        r = self.ToolRegistry(embedder=self.Embedder(), default_tools=False)
+        r.register_tool(self.DemoGroupListTool())
+        r.register_tool(self.DemoGroupInfoTool())
+
+        self.assertTrue(r.deactivate_tool("demo_group_list"))
+        self.assertTrue(r.deactivate_tool("demo_group_info"))
+
+        all_names = sorted(n for n in list(r.tools.keys()) + list(r.deactivated_tools.keys()) if n != "help")
+
+        grouped = r.group_tool_names(all_names)
+
+        self.assertEqual(grouped, [("demo_group", ["info", "list"])])
 
 
 if __name__ == "__main__":

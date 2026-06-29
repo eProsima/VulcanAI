@@ -14,7 +14,9 @@
 
 from textual import events
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
+from textual.content import Content
 from textual.screen import ModalScreen
 from textual.widgets import Button, Checkbox, Input, Label, RadioButton, RadioSet
 
@@ -144,6 +146,28 @@ class ReverseSearchModal(ModalScreen[str | None]):
 
 
 class CheckListModal(ModalScreen[list[str] | None]):
+    class NavigableCheckbox(Checkbox):
+        BINDINGS = [
+            Binding("enter", "submit_selection", "Submit", show=False),
+            Binding("space", "toggle_button", "Toggle", show=False),
+            Binding("down", "next_checkbox", "Next checkbox", show=False),
+            Binding("up", "previous_checkbox", "Previous checkbox", show=False),
+        ]
+
+        def action_submit_selection(self) -> None:
+            self.screen.dismiss_selected()
+
+        def action_next_checkbox(self) -> None:
+            self.screen.action_next_checkbox()
+
+        def action_previous_checkbox(self) -> None:
+            self.screen.action_previous_checkbox()
+
+    BINDINGS = [
+        Binding("down", "next_checkbox", "Next checkbox", show=False),
+        Binding("up", "previous_checkbox", "Previous checkbox", show=False),
+    ]
+
     CSS = """
     CheckListModal {
         align: center middle;
@@ -169,39 +193,163 @@ class CheckListModal(ModalScreen[list[str] | None]):
                               /* no max-height, no overflow-y here */
     }
 
+    .group-child {
+        margin-left: 4;
+        margin-right: 2;
+        padding-right: 2;
+    }
+
     .btns {
-        height: 3;            /* give buttons row a fixed height */
-        padding-top: 1;
+        height: auto;
+        width: 100%;
+        margin-top: 1;
+        padding: 0;
         content-align: right middle;
+        align-horizontal: right;
+    }
+
+    .btns Button {
+        padding: 0 2;
+        margin-left: 1;
     }
     """
 
-    def __init__(self, lines: list[str], active_tools_num: int = 0) -> None:
+    def __init__(self, grouped: list, active_tools: set, default_tools: set[str] | None = None) -> None:
         super().__init__()
-        self.lines = list(lines)
-        self.active_tools_num = active_tools_num
+        self.grouped = grouped  # [(prefix, [subtools]) | (name, None), ...]
+        self.active_tools = active_tools
+        self.default_tools = default_tools or set()
+        self._parent_to_children: dict[str, list[str]] = {}
+        self._child_to_parent: dict[str, str] = {}
+        self._id_to_tool: dict[str, str] = {}  # cb_id -> full tool name (children & standalone only)
 
     def compose(self) -> ComposeResult:
         with Vertical(classes="dialog"):
             yield Label("Pick tools you want to enable", classes="title")
 
-            # SCROLLABLE CHECKBOX LIST
             with VerticalScroll(classes="checkbox-list"):
-                for i, line in enumerate(self.lines, start=1):
-                    yield Checkbox(line, value=i <= self.active_tools_num, id=f"cb{i}")
+                idx = 0
+                for group_name, subtools in self.grouped:
+                    if subtools is None:
+                        # Standalone tool
+                        cb_id = f"cb{idx}"
+                        self._id_to_tool[cb_id] = group_name
+                        yield self.NavigableCheckbox(
+                            group_name,
+                            value=group_name in self.active_tools,
+                            id=cb_id,
+                        )
+                        idx += 1
+                    else:
+                        # Group parent
+                        parent_id = f"cb{idx}"
+                        idx += 1
+                        child_ids = []
+                        for subtool in subtools:
+                            child_id = f"cb{idx}"
+                            full_name = f"{group_name}_{subtool}"
+                            self._id_to_tool[child_id] = full_name
+                            child_ids.append(child_id)
+                            idx += 1
 
-            # Buttons
+                        self._parent_to_children[parent_id] = child_ids
+                        for cid in child_ids:
+                            self._child_to_parent[cid] = parent_id
+
+                        all_active = all(f"{group_name}_{s}" in self.active_tools for s in subtools)
+                        yield self.NavigableCheckbox(group_name, value=all_active, id=parent_id)
+
+                        for subtool, child_id in zip(subtools, child_ids):
+                            full_name = f"{group_name}_{subtool}"
+                            yield self.NavigableCheckbox(
+                                subtool,
+                                value=full_name in self.active_tools,
+                                id=child_id,
+                                classes="group-child",
+                            )
+
             with Horizontal(classes="btns"):
+                yield Button("Toggle Default Tools", variant="default", id="toggle-default")
+                yield Button("Toggle All Tools", variant="default", id="toggle-all")
                 yield Button("Cancel", variant="default", id="cancel")
                 yield Button("Submit", variant="primary", id="submit")
 
+    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        cb_id = event.checkbox.id
+
+        if cb_id in self._parent_to_children:
+            # Parent toggled -> set all children to same value
+            with self.prevent(Checkbox.Changed):
+                for child_id in self._parent_to_children[cb_id]:
+                    self.query_one(f"#{child_id}", Checkbox).value = event.value
+
+        elif cb_id in self._child_to_parent:
+            # Child toggled -> update parent (checked only when ALL children checked)
+            parent_id = self._child_to_parent[cb_id]
+            all_checked = all(self.query_one(f"#{cid}", Checkbox).value for cid in self._parent_to_children[parent_id])
+            with self.prevent(Checkbox.Changed):
+                self.query_one(f"#{parent_id}", Checkbox).value = all_checked
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "submit":
-            boxes = list(self.query(Checkbox))
-            selected = [self.lines[i] for i, cb in enumerate(boxes) if cb.value]
-            self.dismiss(selected)
+            self.dismiss_selected()
+        elif event.button.id == "toggle-all":
+            self._toggle_tool_subset(set(self._id_to_tool.values()))
+        elif event.button.id == "toggle-default":
+            self._toggle_tool_subset(self.default_tools)
         elif event.button.id == "cancel":
             self.dismiss(None)
+
+    def dismiss_selected(self) -> None:
+        selected = [
+            tool_name for cb_id, tool_name in self._id_to_tool.items() if self.query_one(f"#{cb_id}", Checkbox).value
+        ]
+        self.dismiss(selected)
+
+    def _set_tool_subset(self, tool_names: set[str], enabled: bool) -> None:
+        matched_tool_names = {tool_name for tool_name in tool_names if tool_name in self._id_to_tool.values()}
+        if not matched_tool_names:
+            return
+
+        with self.prevent(Checkbox.Changed):
+            for cb_id, tool_name in self._id_to_tool.items():
+                if tool_name in matched_tool_names:
+                    self.query_one(f"#{cb_id}", Checkbox).value = enabled
+
+            for parent_id, child_ids in self._parent_to_children.items():
+                all_checked = all(self.query_one(f"#{cid}", Checkbox).value for cid in child_ids)
+                self.query_one(f"#{parent_id}", Checkbox).value = all_checked
+
+    def _toggle_tool_subset(self, tool_names: set[str]) -> None:
+        matched_tool_names = {tool_name for tool_name in tool_names if tool_name in self._id_to_tool.values()}
+        if not matched_tool_names:
+            return
+
+        should_enable = not all(
+            self.query_one(f"#{cb_id}", Checkbox).value
+            for cb_id, tool_name in self._id_to_tool.items()
+            if tool_name in matched_tool_names
+        )
+        self._set_tool_subset(matched_tool_names, should_enable)
+
+    def _move_checkbox_focus(self, step: int) -> None:
+        checkboxes = list(self.query(Checkbox))
+        if not checkboxes:
+            return
+
+        if isinstance(self.focused, Checkbox) and self.focused in checkboxes:
+            current_index = checkboxes.index(self.focused)
+            target_index = max(0, min(len(checkboxes) - 1, current_index + step))
+        else:
+            target_index = 0 if step > 0 else len(checkboxes) - 1
+
+        self.set_focus(checkboxes[target_index])
+
+    def action_next_checkbox(self) -> None:
+        self._move_checkbox_focus(1)
+
+    def action_previous_checkbox(self) -> None:
+        self._move_checkbox_focus(-1)
 
     def on_mount(self) -> None:
         first_cb = self.query_one(Checkbox)
@@ -209,6 +357,29 @@ class CheckListModal(ModalScreen[list[str] | None]):
 
 
 class RadioListModal(ModalScreen[str | None]):
+    class SquareRadioButton(RadioButton):
+        # BUTTON_INNER = '●'
+        @property
+        def _button(self) -> Content:
+            button_style = self.get_visual_style("toggle--button")
+            symbol = "☒" if self.value else "☐"
+            return Content.assemble(
+                (" ", button_style),
+                (symbol, button_style),
+                (" ", button_style),
+            )
+
+    class SuggestionRadioSet(RadioSet):
+        BINDINGS = [
+            Binding("down,right", "next_button", "Next option", show=False),
+            Binding("enter", "submit_selection", "Submit", show=False),
+            Binding("space", "toggle_button", "Toggle", show=False),
+            Binding("up,left", "previous_button", "Previous option", show=False),
+        ]
+
+        def action_submit_selection(self) -> None:
+            self.screen.dismiss_selected()
+
     CSS = """
     RadioListModal {
         align: center middle;
@@ -218,7 +389,6 @@ class RadioListModal(ModalScreen[str | None]):
         width: 60%;
         max-width: 90%;
         height: 40%;
-        border: round $accent;
         padding: 1 2;
         background: $panel;
     }
@@ -233,26 +403,36 @@ class RadioListModal(ModalScreen[str | None]):
     }
 
     .btns {
-        height: 3;
-        padding-top: 1;
-        content-align: right middle;
+        height: auto;
+        width: 100%;
+        margin-top: 1;
+        padding: 0;
+        content-align: center middle;
+        align-horizontal: center;
+    }
+
+    .btns Button {
+        padding: 0 1;
     }
     """
 
-    def __init__(self, lines: list[str], default_index: int = 0) -> None:
+    def __init__(self, lines: list[str], category: str = "", input_string: str = "", default_index: int = 0) -> None:
         super().__init__()
         self.lines = lines
+        self.category = category
+        self.input_string = input_string
         self.default_index = default_index
 
     def compose(self) -> ComposeResult:
+        dialog_msg = f"{self.category} '{self.input_string}' does not exist. Choose a suggestion:"
         with Vertical(classes="dialog"):
-            yield Label("Pick one option", classes="title")
+            yield Label(dialog_msg, classes="title")
 
             # One-select radio list
             with VerticalScroll(classes="radio-list"):
-                with RadioSet(id="radio-set"):
+                with self.SuggestionRadioSet(id="radio-set"):
                     for i, line in enumerate(self.lines):
-                        yield RadioButton(line, id=f"rb{i}", value=(i == self.default_index))
+                        yield self.SquareRadioButton(line, id=f"rb{i}", value=(i == self.default_index))
 
             # Buttons
             with Horizontal(classes="btns"):
@@ -260,14 +440,23 @@ class RadioListModal(ModalScreen[str | None]):
                 yield Button("Submit", variant="primary", id="submit")
 
     def on_mount(self) -> None:
-        first_rb = self.query_one(RadioButton)
-        self.set_focus(first_rb)
+        radio_set = self.query_one("#radio-set", RadioSet)
+        self.set_focus(radio_set)
+
+    def dismiss_selected(self) -> None:
+        radioset = self.query_one("#radio-set", RadioSet)
+        selected = radioset.pressed_index
+        highlighted = getattr(radioset, "_selected", None)
+
+        # Arrow navigation changes the highlighted row before the radio value updates.
+        if highlighted is not None and highlighted != selected:
+            selected = highlighted
+
+        if selected >= 0:
+            self.dismiss(selected)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "submit":
-            radioset = self.query_one("#radio-set", RadioSet)
-            selected = radioset.pressed_index
-            if selected is not None:
-                self.dismiss(selected)
+            self.dismiss_selected()
         else:
             self.dismiss(None)

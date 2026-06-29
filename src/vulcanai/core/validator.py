@@ -19,6 +19,14 @@ from vulcanai.core.plan_types import GlobalPlan, PlanNode, Step
 TYPE_ALIAS = {"int": int, "integer": int, "float": float, "bool": bool, "boolean": bool, "str": str, "string": str}
 
 
+def _is_optional_schema_type(type_name: str) -> bool:
+    return isinstance(type_name, str) and type_name.endswith("?")
+
+
+def _base_schema_type(type_name: str) -> str:
+    return type_name[:-1] if _is_optional_schema_type(type_name) else type_name
+
+
 class PlanValidator:
     """Validates and optionally augments a plan before execution."""
 
@@ -37,28 +45,47 @@ class PlanValidator:
         """
         if not isinstance(plan, GlobalPlan):
             raise ValueError("Provided plan is not a GlobalPlan instance.")
+        if not plan.plan:
+            raise ValueError("GlobalPlan has no PlanNodes defined.")
         for node in plan.plan:
-            if isinstance(node, PlanNode):
-                if not node.steps:
-                    raise ValueError(f"PlanNode '{node.node_id}' has no steps defined.")
-                for step in node.steps:
-                    self._validate_step(step)
+            if not isinstance(node, PlanNode):
+                raise ValueError("Provided node is not a PlanNode instance.")
+            if not node.steps:
+                raise ValueError(f"PlanNode '{node.kind}' has no steps defined.")
+            for step in node.steps:
+                self._validate_step(step)
 
     def _validate_step(self, step: Step):
         """Validate a single step in the plan."""
         if not isinstance(step, Step):
             raise ValueError("Provided step is not a Step instance.")
+        if not getattr(step, "tool", None):
+            raise ValueError("Provided step has no tool defined.")
         # Check tool exists and is registered
         if step.tool not in self.registry.tools:
             raise ValueError(f"Tool '{step.tool}' not found in registry.")
         # Validate args against tool input schema
         tool = self.registry.tools.get(step.tool)
         if tool.input_schema:
-            if len(step.args) != len(tool.input_schema):
+            required_keys = {key for key, type_name in tool.input_schema if not _is_optional_schema_type(type_name)}
+            provided_keys = {arg.key for arg in step.args}
+            schema_len = len(tool.input_schema)
+            required_len = len(required_keys)
+
+            if len(step.args) < required_len or len(step.args) > schema_len:
+                if required_len == schema_len:
+                    raise ValueError(
+                        f"Tool '{tool.name}' expects {schema_len} arguments, but {len(step.args)} were provided."
+                    )
                 raise ValueError(
-                    f"Tool '{tool.name}' expects {len(tool.input_schema)} arguments,"
+                    f"Tool '{tool.name}' expects between {required_len} and {schema_len} arguments,"
                     f" but {len(step.args)} were provided."
                 )
+
+            missing_required = sorted(required_keys - provided_keys)
+            if missing_required:
+                raise ValueError(f"Tool '{tool.name}' is missing required arguments: {', '.join(missing_required)}.")
+
             for arg in step.args:
                 if arg.key not in {k for d in tool.input_schema for k in d}:
                     raise ValueError(f"Argument '{arg.key}' not defined in tool '{tool.name}' input schema.")
@@ -78,23 +105,20 @@ class PlanValidator:
                         # adhere to the schema
                         for schema in tool.input_schema:
                             if arg.key in schema:
-                                is_string_type = schema[1] in ["str", "string"]
+                                is_string_type = _base_schema_type(schema[1]) in ["str", "string"]
                                 if not is_string_type:
                                     raise ValueError(
                                         f"Argument '{arg.key}' of tool '{tool.name}' expects type"
-                                        f" '{TYPE_ALIAS.get(schema[1])}', but got '{type(arg.val).__name__}'."
+                                        f" '{TYPE_ALIAS.get(_base_schema_type(schema[1]))}',"
+                                        f" but got '{type(arg.val).__name__}'."
                                     )
                 # Check type if static value for non-string types
                 else:
                     expected_type = None
                     for schema in tool.input_schema:
                         if arg.key in schema:
-                            print(f"Schema for arg '{arg.key}' in tool '{tool.name}': {schema}")  # Debug print
                             # Use TYPE_ALIAS to map string type names to actual types
-                            expected_type = TYPE_ALIAS.get(schema[1])
-                            print(
-                                f"Expected type for arg '{arg.key}' in tool '{tool.name}': {expected_type}"
-                            )  # Debug print
+                            expected_type = TYPE_ALIAS.get(_base_schema_type(schema[1]))
                             break
                     if expected_type and not isinstance(arg.val, expected_type):
                         if expected_type is float and isinstance(arg.val, int):
