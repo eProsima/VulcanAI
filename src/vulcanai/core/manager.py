@@ -25,21 +25,6 @@ from vulcanai.tools.tool_registry import ToolRegistry
 class ToolManager:
     """Manages the LLM Agent and calls the executor with the LLM output."""
 
-    _literal_identifier_input_keys = {
-        "action_name",
-        "file_path",
-        "frame_id",
-        "interface_name",
-        "msg_type",
-        "node_name",
-        "package_name",
-        "param_name",
-        "service_name",
-        "topic_name",
-        "type_name",
-    }
-    _literal_identifier_input_suffixes = ("_name", "_path", "_type")
-
     def __init__(
         self,
         model: str,
@@ -146,30 +131,12 @@ class ToolManager:
             # Images should be a list of paths
             images = context["images"]
 
-        is_direct_ros2_cli_request = self._is_direct_ros2_cli_request(user_text)
-        history = [] if is_direct_ros2_cli_request else self.history
-
         # Query LLM
-        plan = self.llm.inference_plan(system_prompt, user_prompt, images, history)
-
-        if is_direct_ros2_cli_request and not self._is_single_step_plan(plan):
-            self.logger.log_manager(
-                "Planner returned multiple steps for a direct ROS 2 command. Requesting a single-step plan.",
-                error=True,
-            )
-            retry_prompt = (
-                user_prompt
-                + "\n\nImportant: the current user request is already an exact `ros2 ...` command."
-                + " Return exactly ONE PlanNode with exactly ONE Step using the single best matching tool."
-                + " Do not include alternatives, helper steps, previous commands, or multiple guesses."
-            )
-            plan = self.llm.inference_plan(system_prompt, retry_prompt, images, [])
-            if not self._is_single_step_plan(plan):
-                raise ValueError("Planner returned multiple steps for a direct ROS 2 command.")
+        plan = self.llm.inference_plan(system_prompt, user_prompt, images, self.history)
 
         self.logger.log_manager(f"Plan received:\n{plan}")
         # Save to history
-        if plan and not is_direct_ros2_cli_request:
+        if plan:
             self._add_to_history(user_prompt, plan.summary)
         return plan
 
@@ -209,14 +176,7 @@ class ToolManager:
         user_context = self._parse_user_context()
         user_prompt = "User request:\n" + user_text
 
-        return (
-            self._get_prompt_template().format(
-                tools_text=tools_text,
-                user_context=user_context,
-                identifier_rules=self._get_identifier_prompt_rules(),
-            ),
-            user_prompt,
-        )
+        return self._get_prompt_template().format(tools_text=tools_text, user_context=user_context), user_prompt
 
     def _add_to_history(self, user_text: str, plan_summary: str):
         """Add a new interaction to the history and trim if necessary."""
@@ -284,59 +244,15 @@ class ToolManager:
             return "none"
         return ", ".join(f"{key} ({type_name})" for key, type_name in tool.output_schema.items())
 
-    @staticmethod
-    def _is_direct_ros2_cli_request(user_text: str) -> bool:
-        return isinstance(user_text, str) and user_text.strip().startswith("ros2 ")
-
-    @staticmethod
-    def _is_single_step_plan(plan: GlobalPlan | None) -> bool:
-        if not isinstance(plan, GlobalPlan):
-            return False
-        return len(plan.plan) == 1 and len(plan.plan[0].steps) == 1
-
-    @classmethod
-    def _is_literal_identifier_input(cls, key: str) -> bool:
-        return key in cls._literal_identifier_input_keys or key.endswith(cls._literal_identifier_input_suffixes)
-
-    def _format_literal_input_guidance(self, tool) -> str:
-        literal_inputs = [key for key, _ in tool.input_schema if self._is_literal_identifier_input(key)]
-        if not literal_inputs:
-            return ""
-
-        input_list = ", ".join(literal_inputs)
-        return (
-            f"Literal inputs: {input_list}. Copy these values exactly from the user request. "
-            "Do not correct, expand, or autocomplete them; if they are partial or misspelled, "
-            "the tool may open an interactive suggestion modal."
-        )
-
-    @staticmethod
-    def _get_identifier_prompt_rules() -> str:
-        return (
-            "When the user provides identifier-like values such as topic, service, action, node, "
-            "parameter, package, or file names, copy them exactly as written into tool arguments.\n"
-            "Do not correct, expand, normalize, or autocomplete those values, even if they look partial or "
-            "misspelled.\n"
-            "If the user provides a partial or mistyped identifier such as `use_s`, keep it exactly as written "
-            "so the tool can open its suggestion modal.\n"
-            "If the user request is already an exact command such as a `ros2 ...` command, map it to exactly "
-            "ONE matching tool call.\n"
-            "For an exact command request, return exactly ONE PlanNode with exactly ONE Step and do not add "
-            "alternatives, helper steps, or previous command variants.\n"
-        )
-
     def render_tool_descriptions(self, tools) -> str:
         tool_descriptions = []
         for tool in tools:
-            tool_description = (
+            tool_descriptions.append(
                 f"- *{tool.name}*: {tool.description}\n"
                 f"  Inputs: {self._format_tool_inputs(tool)}\n"
                 f"  Outputs: {self._format_tool_outputs(tool)}\n"
             )
-            literal_guidance = self._format_literal_input_guidance(tool)
-            if literal_guidance:
-                tool_description += f"  {literal_guidance}\n"
-            tool_descriptions.append(tool_description)
+
         return "\n".join(tool_descriptions)
 
     def _get_prompt_template(self) -> str:
@@ -346,12 +262,11 @@ Your job is to take a user request and generate a valid execution plan, containi
 Be sure to understand the text received and select the best action command from the available options.
 Never return only a summary: always produce at least one PlanNode with at least one Step.
 Inputs whose type ends with `?` are optional and may be omitted when the tool default behavior is appropriate.
-If an input is marked optional and the user did not ask for a specific value, 
+If an input is marked optional and the user did not ask for a specific value,
 omit that argument instead of inventing one.
 Do not guess placeholder values such as `1`, `1.0`, `10`, or empty strings for optional inputs.
 If the user asks to repeat the same action N times and a tool exposes an internal count or limit argument
 (for example `max_lines`), prefer a single Step using that argument instead of duplicating the same tool call.
-{identifier_rules}
 {user_context}
 ## Available tools:
 {tools_text}

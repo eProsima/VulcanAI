@@ -228,7 +228,6 @@ class IterativeManager(ToolManager):
         system_prompt = system_prompt.format(
             tools_text=tools_text,
             user_context=user_context,
-            identifier_rules=self._get_identifier_prompt_rules(),
         )
         user_prompt = (
             "## User Request: " + user_text + "\nContext:\n" + self._get_iter_context().format(bb_snapshot=bb_snapshot)
@@ -350,8 +349,6 @@ Rules:
 For example, if tool 'detect_object' outputs {{"pose": [1.0, 2.0]}},
 you can pass it to navigate as:
 args=[ArgValue(key="target", val="{{{{bb.detect_object.pose}}}}")]
-
-{identifier_rules}
 {user_context}
 ## Available tools:
 {tools_text}
