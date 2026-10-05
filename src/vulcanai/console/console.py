@@ -323,7 +323,7 @@ class VulcanConsole(App):
 
         color_tmp = VulcanAILogger.vulcanai_theme["vulcanai"]
 
-        vulcanai_title_slant = f"""[{color_tmp}]
+        vulcanai_title_slant = rf"""[{color_tmp}]
  _    __      __                 ___    ____
 | |  / /_  __/ /________  ____  /   |  /  _/
 | | / / / / / / ___/ __ `/ __ \/ /| |  / /
