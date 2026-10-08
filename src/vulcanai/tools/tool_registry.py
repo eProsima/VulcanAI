@@ -235,7 +235,9 @@ class ToolRegistry:
                 module = importlib.import_module(ep.module)
                 self._loaded_modules.append(module)
             except Exception as e:
-                self.logger.log_registry(f"Failed importing EP {ep.name} ({ep.value}): {e!r}", error=True)
+                self.logger.log_registry(
+                    f"Failed importing EP {ep.name} ({ep.value}){self.logger.exception_location(e)}: {e!r}", error=True
+                )
         self.register()
         self.help_tool.available_tools = self.tools
 

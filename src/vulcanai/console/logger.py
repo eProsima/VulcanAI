@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import re
+import sysconfig
+import traceback
+from pathlib import Path
 from typing import Optional, Protocol
 
 
@@ -135,6 +139,33 @@ class VulcanAILogger:
         msg = f"{prefix}{msg}"
 
         return self.parse_rich_markup((self.parse_color(msg)))
+
+    @staticmethod
+    def exception_location(error: BaseException) -> str:
+        """
+        Return ' in <path>/<file> (line N)' with the place where 'error' was raised,
+        highlighting the file name and the line, or '' if it is unknown.
+
+        The deepest frame outside installed libraries and the standard library is used,
+        so a failing tool points to its own code instead of to VulcanAI or ROS 2 internals.
+        """
+        frames = traceback.extract_tb(getattr(error, "__traceback__", None))
+        if not frames:
+            return ""
+
+        stdlib = sysconfig.get_paths().get("stdlib", "")
+
+        def is_library(filename: str) -> bool:
+            return (
+                filename.startswith("<")
+                or "site-packages" in filename
+                or "dist-packages" in filename
+                or bool(stdlib and filename.startswith(stdlib + os.sep))
+            )
+
+        frame = next((f for f in reversed(frames) if not is_library(f.filename)), frames[-1])
+        path = Path(frame.filename)
+        return f" in {path.parent}/[error]{path.name}[/error] [error](line {frame.lineno})[/error]"
 
     # endregion
 

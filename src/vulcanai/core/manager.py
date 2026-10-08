@@ -106,7 +106,9 @@ class ToolManager:
             # Execute plan
             ret = self.execute_plan(plan)
         except Exception as e:
-            self.logger.log_manager(f"Error handling user request: {e}", error=True)
+            self.logger.log_manager(
+                f"Error handling user request{self.logger.exception_location(e)}: {e}", error=True
+            )
             ret = {"error": str(e)}
 
         return ret

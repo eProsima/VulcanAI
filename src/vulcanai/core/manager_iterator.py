@@ -88,7 +88,9 @@ class IterativeManager(ToolManager):
             self.goal = self._get_goal_from_user_request(user_text, context)
             self._timeline.append({"iteration": self.iter, "event": TimelineEvent.GOAL_SET.value})
         except Exception as e:
-            self.logger.log_manager(f"Error getting goal from user request: {e}", error=True)
+            self.logger.log_manager(
+                f"Error getting goal from user request{self.logger.exception_location(e)}: {e}", error=True
+            )
             return {"error": "Error getting goal from user request."}
 
         skip_verification_step = False
@@ -152,7 +154,9 @@ class IterativeManager(ToolManager):
                     self.logger.log_manager(f"Iteration {self.iter} failed.", error=True)
 
             except Exception as e:
-                self.logger.log_manager(f"Error handling user request: {e}", error=True)
+                self.logger.log_manager(
+                    f"Error handling user request{self.logger.exception_location(e)}: {e}", error=True
+                )
                 return {"error": str(e), "timeline": self._timeline}
 
         return {
@@ -500,7 +504,9 @@ validation = AIValidation(
                     self.logger.log_manager(f"Goal not achieved in perceptual mode. - {validation}")
                     return False
             except Exception as e:
-                self.logger.log_manager(f"Error during perceptual verification: {e}", error=True)
+                self.logger.log_manager(
+                    f"Error during perceptual verification{self.logger.exception_location(e)}: {e}", error=True
+                )
                 return False
 
     def _run_verification_tools(self):
@@ -533,7 +539,10 @@ validation = AIValidation(
                         error=True,
                     )
             except Exception as e:
-                self.logger.log_manager(f"Error running verification tool '{tool_name}': {e}", error=True)
+                self.logger.log_manager(
+                    f"Error running verification tool '{tool_name}'{self.logger.exception_location(e)}: {e}",
+                    error=True,
+                )
                 continue
 
     def _add_to_history(self, user_text: str, plan_summary: str):
