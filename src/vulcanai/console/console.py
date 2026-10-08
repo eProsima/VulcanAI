@@ -845,6 +845,8 @@ class VulcanConsole(App):
         history_widget.update("")
         # Clear the list of plans
         self.plans_list.clear()
+        # Clear the LLM history (requests and plan summaries sent to the model, shown by /show_history)
+        self.manager.history.clear()
 
         # Add feedback line
         self.logger.log_msg("History cleared.")
