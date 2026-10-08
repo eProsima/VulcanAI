@@ -19,7 +19,6 @@ It contains atomic tools used to call ROS2 CLI.
 """
 
 import importlib
-import json
 import threading
 import time
 from concurrent.futures import Future
@@ -36,8 +35,10 @@ from vulcanai.tools.utils import (
 # ROS2 imports
 try:
     import rclpy
+    import yaml
     from rclpy.node import Node
     from rclpy.task import Future
+    from rosidl_runtime_py.set_message import set_message_fields
 except ImportError:
     raise ImportError("Unable to load default tools because no ROS 2 installation was found.")
 
@@ -1829,7 +1830,10 @@ class Ros2PublishTool(AtomicTool):
         "Use when the user wants to write or publish a message in a ROS 2 topic. "
         "To publish N messages, call this tool once with `max_lines=N` instead of repeating the tool N times. "
         "If optional limits are omitted, it defaults to 60 seconds, 100 messages, "
-        "and `std_msgs/msg/String` with a 0.1 second period."
+        "and `std_msgs/msg/String` with a 0.1 second period. "
+        "`message_data` is the text for string types, a single value for types with a `data` field "
+        "(e.g. `5` for std_msgs/msg/Int32), or a YAML/JSON dict of fields for other types "
+        "(e.g. `{linear: {x: 1.0}, angular: {z: 0.5}}` for geometry_msgs/msg/Twist)."
     )
     tags = [
         "ros2",
@@ -1852,7 +1856,7 @@ class Ros2PublishTool(AtomicTool):
         # ros2 topic pub <topic> <type> <data>
         ("topic", "string"),  # e.g. "/chatter"
         ("msg_type", "string?"),  # (optional) e.g. "std_msgs/msg/String" or "my_pkg/msg/CustomMsg"
-        ("message_data", "string?"),  # (optional) payload - string for std_msgs/String or JSON for custom types
+        ("message_data", "string?"),  # (optional) payload - text for string types, else a YAML/JSON value or dict
         # Configuration of the publisher/execution
         ("max_lines", "int?"),  # (optional) number of messages to publish
         ("max_duration", "float?"),  # (optional) stop after this seconds
@@ -1871,24 +1875,45 @@ class Ros2PublishTool(AtomicTool):
         "output": "string",
     }
 
-    def msg_from_dict(self, msg, values: dict):
+    @staticmethod
+    def build_message(MsgType, message_data):
         """
-        Populate a ROS 2 message instance from a Python dictionary.
+        Create a ROS 2 message of type 'MsgType' from 'message_data', as `ros2 topic pub` does.
 
-        This function recursively assigns values from a dictionary to the
-        corresponding fields of a ROS 2 message instance.
+        - String types (e.g. std_msgs/msg/String): the text is used as it is.
+        - Other types: 'message_data' is parsed as YAML (JSON is valid YAML). A single value
+          is assigned to the 'data' field (e.g. "5" for std_msgs/msg/Int32), a dict sets the fields
+          by name (e.g. "{linear: {x: 1.0}}" for geometry_msgs/msg/Twist).
 
-        Supports:
-        - Primitive fields (int, float, bool, string)
-        - Nested ROS 2 messages
-
+        Values are converted to the type of each field, so the C conversion done
+        when publishing never receives a wrong type (that aborts the whole process).
+        Raises ValueError if 'message_data' does not match the message.
         """
-        for field, value in values.items():
-            attr = getattr(msg, field)
-            if hasattr(attr, "__slots__"):
-                self.msg_from_dict(attr, value)
-            else:
-                setattr(msg, field, value)
+        msg = MsgType()
+        fields = msg.get_fields_and_field_types()
+
+        if fields.get("data", "").startswith(("string", "wstring")):
+            msg.data = str(message_data)
+            return msg
+
+        try:
+            values = yaml.safe_load(message_data) if isinstance(message_data, str) else message_data
+        except yaml.YAMLError as e:
+            raise ValueError(f"'message_data' is not valid YAML/JSON: {e}")
+
+        if not isinstance(values, dict):
+            if "data" not in fields:
+                raise ValueError(
+                    f"'message_data' must be a dict with the fields of the message {dict(fields)}, "
+                    + f"got {message_data!r}"
+                )
+            values = {"data": values}
+
+        try:
+            set_message_fields(msg, values)
+        except (AttributeError, TypeError, ValueError) as e:
+            raise ValueError(f"'message_data' {message_data!r} does not match the fields {dict(fields)}: {e}")
+        return msg
 
     def run(self, **kwargs):
         # Ros2 node to create the Publisher and print the log information
@@ -1965,6 +1990,8 @@ class Ros2PublishTool(AtomicTool):
                 return result
 
             MsgType = import_msg_type(msg_type_str, node)
+            # Same message for every publish. Raises a ValueError if 'message_data' does not fit the type
+            msg = self.build_message(MsgType, message_data)
             publisher = node.create_publisher(MsgType, topic_name, qos_depth)
             cancel_token = Future()
             console.set_stream_task(cancel_token)
@@ -2004,25 +2031,6 @@ class Ros2PublishTool(AtomicTool):
                             tool_name=self.name,
                         )
                         break
-
-                msg = MsgType()
-
-                # Try to populate message based on message type
-                if hasattr(msg, "data"):
-                    # Standard message type with a 'data' field (e.g., std_msgs/msg/String)
-                    msg.data = message_data
-                else:
-                    # Custom message type - parse message_data as JSON
-                    try:
-                        payload = json.loads(message_data)
-                        self.msg_from_dict(msg, payload)
-                    except json.JSONDecodeError as e:
-                        console.call_from_thread(
-                            console.logger.log_msg,
-                            "<gray>[ROS] [ERROR] Failed to parse message_data as JSON for custom type"
-                            + f"'{msg_type_str}': {e}</gray>",
-                        )
-                        return result
 
                 if hasattr(msg, "data"):
                     publish_line = f"[ROS] [INFO] Publishing: '{msg.data}'"
