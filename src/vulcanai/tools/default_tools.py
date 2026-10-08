@@ -655,9 +655,7 @@ def _run_ros2_interface_command(console, tool_name: str, command: str, interface
         # Keep existing command behavior for compatibility.
         result["output"] = run_oneshot_cmd(["ros2", "interface", "show", interface_name])
     else:
-        raise ValueError(
-            f"Unknown command '{command}'. Expected one of: list, packages, package, show."
-        )
+        raise ValueError(f"Unknown command '{command}'. Expected one of: list, packages, package, show.")
 
     print_tool_output(console, result["output"], tool_name)
     return result

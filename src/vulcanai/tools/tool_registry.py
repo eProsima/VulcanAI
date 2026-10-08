@@ -33,7 +33,9 @@ from vulcanai.tools.tools import CompositeTool, ITool
 def vulcanai_tool(cls: Type[ITool]):
     """Class decorator to mark a class as a VulcanAI tool."""
     if not issubclass(cls, ITool):
-        raise TypeError(f"{cls.__name__} must inherit from ITool. Add 'AtomicTool' or 'CompositeTool' in the header of the class")
+        raise TypeError(
+            f"{cls.__name__} must inherit from ITool. Add 'AtomicTool' or 'CompositeTool' in the header of the class"
+        )
     setattr(cls, "__is_vulcanai_tool__", True)
     return cls
 
@@ -349,16 +351,14 @@ class ToolRegistry:
                 (
                     "input_schema",
                     None,
-                    "'input_schema' must be a list of (\"key\", \"type\") tuples, "
+                    '\'input_schema\' must be a list of ("key", "type") tuples, '
                     + f"got {type_name_of(input_schema)}",
                 )
             )
         else:
             for i, entry in enumerate(input_schema):
                 if not isinstance(entry, (list, tuple)) or len(entry) != 2:
-                    errors.append(
-                        ("input_schema", i, f"input {i} must be a (\"key\", \"type\") tuple, got {entry!r}")
-                    )
+                    errors.append(("input_schema", i, f'input {i} must be a ("key", "type") tuple, got {entry!r}'))
                     continue
                 key, schema_type = entry
                 if not isinstance(key, str) or not key:
@@ -395,7 +395,7 @@ class ToolRegistry:
                 (
                     "output_schema",
                     None,
-                    "'output_schema' must be a dict like {\"key\": \"type\"}, "
+                    '\'output_schema\' must be a dict like {"key": "type"}, '
                     + f"got {type_name_of(output_schema)} {output_schema!r}",
                 )
             )
@@ -409,7 +409,9 @@ class ToolRegistry:
         if issubclass(cls, CompositeTool):
             dependencies = getattr(cls, "dependencies", [])
             if not isinstance(dependencies, (list, tuple)) or not all(isinstance(d, str) for d in dependencies):
-                errors.append(("dependencies", None, f"'dependencies' must be a list of tool names, got {dependencies!r}"))
+                errors.append(
+                    ("dependencies", None, f"'dependencies' must be a list of tool names, got {dependencies!r}")
+                )
 
         missing = sorted(getattr(cls, "__abstractmethods__", ()))
         if missing:

@@ -53,9 +53,7 @@ class GeminiModel(IModel):
             self.model.models.get(model=self.model_name, config={"http_options": {"timeout": 5000}})
         except gerrors.ClientError as e:
             if e.code == 404:
-                self.logger.log_manager(
-                    f"Model '[error]{self.model_name}[/error]' not found in Gemini.", error=True
-                )
+                self.logger.log_manager(f"Model '[error]{self.model_name}[/error]' not found in Gemini.", error=True)
             elif e.code in (400, 401, 403):
                 self.logger.log_manager(f"Invalid Gemini API Key: {e}", error=True)
             else:
