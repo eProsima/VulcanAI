@@ -99,6 +99,8 @@ class ToolRegistry:
         self._index: list[Tuple[str, np.ndarray]] = []
         # List of modules where tools can be loaded from
         self._loaded_modules: list[ModuleType] = []
+        # Tool classes already processed by register(), which goes through every loaded module on each call
+        self._seen_tool_classes: set[type] = set()
         # Add help_tool to registry but not to index
         self.help_tool = HelpTool()
         self.tools[self.help_tool.name] = self.help_tool
@@ -181,17 +183,23 @@ class ToolRegistry:
                 tool = getattr(module, name, None)
                 if isinstance(tool, type) and issubclass(tool, ITool):
                     if getattr(tool, "__is_vulcanai_tool__", False):
+                        # Already handled in a previous call (or imported by another module)
+                        if tool in self._seen_tool_classes:
+                            continue
+                        self._seen_tool_classes.add(tool)
                         # Skip tools with wrong attributes, they would fail when executed
                         if not self.check_tool_class(tool):
                             continue
                         if issubclass(tool, CompositeTool):
                             composite_classes.append(tool)
-                        else:
+                        elif not self._is_duplicate_name(tool):
                             instance = self._instantiate_tool(tool)
                             if instance is not None:
                                 self.register_tool(instance, solve_deps=False, log=False)
         # Register composite tools after atomic ones to resolve dependencies
         for tool_cls in composite_classes:
+            if self._is_duplicate_name(tool_cls):
+                continue
             tool = self._instantiate_tool(tool_cls)
             if tool is not None:
                 self.register_tool(tool, solve_deps=True, log=False)
@@ -427,6 +435,25 @@ class ToolRegistry:
         if errors:
             self.logger.log_registry(f"Tool '{label}' not registered.", error=True)
             return False
+        return True
+
+    def _is_duplicate_name(self, cls) -> bool:
+        """Report and return True if another tool (active or deactivated) already uses the name of 'cls'."""
+        existing = self._get_tool_by_name(cls.name)
+        if existing is None:
+            return False
+
+        def where(tool_cls) -> str:
+            info = self._class_source_info(tool_cls)
+            if info is None:
+                return tool_cls.__name__
+            return f"{tool_cls.__name__} in {self._highlight_file(info[0])} [error](line {info[1]})[/error]"
+
+        self.logger.log_registry(
+            f"Duplicate tool name '{cls.name}': {where(cls)} uses the name of the already registered "
+            + f"{where(type(existing))}. Rename one of them. Tool not registered.",
+            error=True,
+        )
         return True
 
     def _instantiate_tool(self, cls):
