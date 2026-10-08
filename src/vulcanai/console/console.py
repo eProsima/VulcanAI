@@ -473,8 +473,9 @@ class VulcanConsole(App):
                     )
                     return
 
-                # Store the plan and blackboard state
-                self.plans_list.append(result.get("plan", None))
+                # Store the plan and blackboard state. Failed requests have no plan to rerun
+                if result.get("plan", None) is not None:
+                    self.plans_list.append(result["plan"])
                 self.last_bb = result.get("blackboard", None)
 
                 # Print the blackboard state
@@ -877,12 +878,17 @@ class VulcanConsole(App):
         if len(args) == 0:
             # No index specified. Last plan selected
             selected_plan = len(self.plans_list) - 1
-        elif len(args) != 1 or not args[0].isdigit():
+        elif len(args) != 1:
             self.logger.log_console("Usage: /rerun 'int'")
             return
         else:
-            selected_plan = int(args[0])
-            if selected_plan < -1:
+            # Not 'isdigit()': it accepts characters like '²' that int() cannot parse
+            try:
+                selected_plan = int(args[0])
+            except ValueError:
+                self.logger.log_console("Usage: /rerun 'int'")
+                return
+            if selected_plan < 0:
                 self.logger.log_console("Usage: /rerun 'int' [int > -1].")
                 return
 
@@ -893,10 +899,19 @@ class VulcanConsole(App):
             self.logger.log_console("Selected Plan index do not exists. selected_plan >= len(executed_plans).")
             return
 
+        plan = self.plans_list[selected_plan]
+        if plan is None:
+            self.logger.log_console(f"Plan {selected_plan} cannot be rerun: its request did not generate a plan.")
+            return
+
         self.logger.log_console(f"Rerunning {selected_plan}-th plan...")
 
-        # Execute the plan
-        result = self.manager.executor.run(self.plans_list[selected_plan], self.manager.bb)
+        # Execute the plan. An exception in this worker thread would close the app
+        try:
+            result = self.manager.executor.run(plan, self.manager.bb)
+        except Exception as e:
+            self.logger.log_msg(f"[error]Error rerunning plan{self.logger.exception_location(e)}:[/error] {e}")
+            return
 
         last_bb = result.get("blackboard", None)
         last_bb_parsed = str(last_bb).replace("<", "'").replace(">", "'")
