@@ -14,6 +14,7 @@
 
 import importlib
 import sys
+import traceback
 from importlib.metadata import entry_points
 from pathlib import Path
 from types import ModuleType
@@ -218,7 +219,33 @@ class ToolRegistry:
             spec.loader.exec_module(module)
             self._loaded_modules.append(module)
         except Exception as e:
-            self.logger.log_registry(f"Could not load tools from {path}: {e}", error=True)
+            # Highlight the file name and the failing line, not the whole path
+            location = self._error_location(e, path)
+            self.logger.log_registry(
+                f"Could not load tools from {self._highlight_file(path)}{location}: {e}", error=True
+            )
+
+    @staticmethod
+    def _error_location(error: Exception, path) -> str:
+        """Return ' (line N)' with the line of the tools file where 'error' was raised, or ''."""
+        lineno = None
+        # Syntax errors are raised by the compiler, so the line is not in the traceback
+        if isinstance(error, SyntaxError) and error.filename == str(path):
+            lineno = error.lineno
+        else:
+            # Last frame inside the tools file (errors can also come from modules it imports)
+            for frame in traceback.extract_tb(error.__traceback__):
+                if frame.filename == str(path):
+                    lineno = frame.lineno
+        return f" [error](line {lineno})[/error]" if lineno else ""
+
+    @staticmethod
+    def _highlight_file(path) -> str:
+        """Return the path with only the file name highlighted in red."""
+        if not path:
+            return "<unknown file>"
+        path = Path(path)
+        return f"{path.parent}/[error]{path.name}[/error]"
 
     def discover_tools_from_file(self, path: str):
         """Load tools from a Python file and register them."""
