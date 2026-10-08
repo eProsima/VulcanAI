@@ -642,8 +642,8 @@ def _run_ros2_interface_command(console, tool_name: str, command: str, interface
         suggested_package_name = suggest_string(console, tool_name, "Interface", package_name, package_name_list)
         if suggested_package_name is not None:
             package_name = suggested_package_name
-        if not interface_name:
-            raise ValueError("`command='{}'` requires `interface_name`.".format(command))
+        if not package_name:
+            raise ValueError("`command='{}'` requires a package name in `interface_name`.".format(command))
         # Keep existing command behavior for compatibility.
         result["output"] = run_oneshot_cmd(["ros2", "interface", "package", package_name])
     elif command == "show":
@@ -656,7 +656,7 @@ def _run_ros2_interface_command(console, tool_name: str, command: str, interface
         result["output"] = run_oneshot_cmd(["ros2", "interface", "show", interface_name])
     else:
         raise ValueError(
-            f"Unknown command '{command}'. Expected one of: list, info, echo, bw, delay, hz, find, pub, type."
+            f"Unknown command '{command}'. Expected one of: list, packages, package, show."
         )
 
     print_tool_output(console, result["output"], tool_name)
