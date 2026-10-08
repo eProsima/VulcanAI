@@ -36,6 +36,34 @@ class OllamaModel(IModel):
             self.model = ollama
         except Exception as e:
             self.logger.log_manager(f"ERROR. Missing a API Key: {e}", error=True)
+        self._check_model()
+
+    def _check_model(self):
+        """
+        Check at startup that the Ollama server is reachable and the model is pulled,
+        instead of failing on the first query. Only logs, never raises.
+        """
+        if self.logger is None:
+            return
+        client = ollama.Client(timeout=5)
+        try:
+            client.show(self.model_name)
+        except ollama.ResponseError as e:
+            if e.status_code != 404:
+                self.logger.log_manager(f"Could not check Ollama model '{self.model_name}': {e}", error=True)
+                return
+            try:
+                available = ", ".join(m.model for m in client.list().models) or "none"
+            except Exception:
+                available = "unknown"
+            self.logger.log_manager(
+                f"Model '[error]{self.model_name}[/error]' not found in Ollama. "
+                + f"Pull it with 'ollama pull {self.model_name}'. Available models: {available}",
+                error=True,
+            )
+        except Exception as e:
+            # Connection refused or timeout: the server is not running
+            self.logger.log_manager(f"Cannot check Ollama model '{self.model_name}': {e}", error=True)
 
     def _inference(
         self,
