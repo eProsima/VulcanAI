@@ -50,8 +50,34 @@ async def run_streaming_cmd_async(
         start_time = time.monotonic()
         line_count = 0
 
+        def stop_by_duration() -> None:
+            log_tool_in_stream_and_main(
+                console, f"[tool]Stopping:[/tool] Exceeded max_duration = {max_duration}s", tool_name=tool_name
+            )
+            console.set_stream_task(None)
+            process.terminate()
+
         # Subprocess main loop. Read line by line
-        async for raw_line in process.stdout:
+        while True:
+            if max_duration is None:
+                raw_line = await process.stdout.readline()
+            else:
+                # Wait for the next line only until 'max_duration' is reached,
+                # so the stream also stops when the process prints nothing
+                remaining = max_duration - (time.monotonic() - start_time)
+                if remaining <= 0:
+                    stop_by_duration()
+                    break
+                try:
+                    raw_line = await asyncio.wait_for(process.stdout.readline(), timeout=remaining)
+                except asyncio.TimeoutError:
+                    stop_by_duration()
+                    break
+
+            # End of output: the process finished
+            if not raw_line:
+                break
+
             line = raw_line.decode(errors="ignore").rstrip("\n")
             captured_line = line
             display_line = line
@@ -87,11 +113,7 @@ async def run_streaming_cmd_async(
 
             # Check duration
             if max_duration is not None and (time.monotonic() - start_time) >= max_duration:
-                log_tool_in_stream_and_main(
-                    console, f"[tool]Stopping:[/tool] Exceeded max_duration = {max_duration}s", tool_name=tool_name
-                )
-                console.set_stream_task(None)
-                process.terminate()
+                stop_by_duration()
                 break
 
     except asyncio.CancelledError:
@@ -116,8 +138,13 @@ async def run_streaming_cmd_async(
             process.terminate()
 
     finally:
+        drain_task = None
         try:
             if process is not None:
+                # Discard the output left in the pipe: while it is not read,
+                # process.wait() does not return even if the process has exited
+                if process.stdout is not None:
+                    drain_task = asyncio.ensure_future(_drain_stream(process.stdout))
                 await asyncio.wait_for(process.wait(), timeout=3.0)
         except asyncio.TimeoutError:
             log_tool_in_stream_and_main(
@@ -130,9 +157,20 @@ async def run_streaming_cmd_async(
                 process.kill()
                 await process.wait()
         finally:
+            if drain_task is not None:
+                drain_task.cancel()
             # Keep Ctrl+C target in sync with subprocess lifecycle.
             console.set_stream_task(None)
     return "\n".join(captured_lines)
+
+
+async def _drain_stream(stream: asyncio.StreamReader) -> None:
+    """Read and discard a stream until it is closed."""
+    try:
+        while await stream.read(65536):
+            pass
+    except Exception:
+        pass
 
 
 def execute_subprocess(console, tool_name, base_args, max_duration, max_lines, log_created: bool = True):
