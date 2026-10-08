@@ -33,7 +33,7 @@ from vulcanai.tools.tools import CompositeTool, ITool
 def vulcanai_tool(cls: Type[ITool]):
     """Class decorator to mark a class as a VulcanAI tool."""
     if not issubclass(cls, ITool):
-        raise TypeError(f"{cls.__name__} must inherit from ITool")
+        raise TypeError(f"{cls.__name__} must inherit from ITool. Add 'AtomicTool' or 'CompositeTool' in the header of the class")
     setattr(cls, "__is_vulcanai_tool__", True)
     return cls
 
