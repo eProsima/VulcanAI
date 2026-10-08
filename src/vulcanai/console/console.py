@@ -468,7 +468,9 @@ class VulcanConsole(App):
                     result = self.manager.handle_user_request(user_input, context={"images": images})
 
                 except Exception as e:
-                    self.logger.log_msg(f"[error]Error handling request:[/error] {e}")
+                    self.logger.log_msg(
+                        f"[error]Error handling request{self.logger.exception_location(e)}:[/error] {e}"
+                    )
                     return
 
                 # Store the plan and blackboard state
@@ -1239,7 +1241,7 @@ class VulcanConsole(App):
             try:
                 handler(args)
             except Exception as e:
-                self.logger.log_msg(f"[error]Error: {e!r}[/error]")
+                self.logger.log_msg(f"[error]Error{self.logger.exception_location(e)}: {e!r}[/error]")
 
     async def _paste_clipboard(self) -> None:
         """

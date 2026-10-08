@@ -143,6 +143,6 @@ class Agent:
                 self.model.hooks = hooks
                 self.logger.log_manager("LLM hooks set.")
             except Exception as e:
-                self.logger.log_manager(f"Failed to set LLM hooks: {e}", error=True)
+                self.logger.log_manager(f"Failed to set LLM hooks{self.logger.exception_location(e)}: {e}", error=True)
         else:
             self.logger.log_manager("LLM model not initialized, cannot set hooks.", error=True)

@@ -171,7 +171,7 @@ def execute_subprocess(console, tool_name, base_args, max_duration, max_lines, l
                     if not task.cancelled():
                         result["output"] = task.result() or ""
                 except Exception as e:
-                    console.logger.log_msg(f"Echo task error: {e!r}\n", error=True)
+                    console.logger.log_msg(f"Echo task error{console.logger.exception_location(e)}: {e!r}\n", error=True)
                 finally:
                     if route_enabled and hasattr(console, "change_route_logs"):
                         console.change_route_logs(False)
