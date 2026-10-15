@@ -167,7 +167,9 @@ class PlanExecutor:
                 return True
             else:
                 self.logger.log_executor(
-                    f"Step [executor]<italic>'{step.tool}'</italic>[/executor] " + f"attempt {i + 1}/{attempts} failed"
+                    f"Step [executor]<italic>'{step.tool}'</italic>[/executor] "
+                    + f"attempt {i + 1}/{attempts} failed",
+                    error=True,
                 )
 
         return False
@@ -355,6 +357,8 @@ class PlanExecutor:
         except Exception as e:
             self.logger.log_executor(
                 "Execution <bold>[error]failed[/error]</bold> for "
-                + f"<italic>[executor]'{tool_name}'[/executor]</italic>: {e}"
+                + f"<italic>[executor]'{tool_name}'[/executor]</italic>"
+                + f"{self.logger.exception_location(e)}: {e}",
+                error=True,
             )
             return False, None

@@ -16,6 +16,7 @@ import mimetypes
 import time
 from typing import Any, Dict, Iterable, Optional, Type, TypeVar
 
+import openai
 from openai import OpenAI
 
 from vulcanai.core.plan_types import AIValidation, GlobalPlan, GoalSpec
@@ -37,6 +38,27 @@ class OpenAIModel(IModel):
             self.model = OpenAI()
         except Exception as e:
             self.logger.log_manager(f"Missing OpenAI API Key: {e}", error=True)
+            self.model = None
+        self._check_model()
+
+    def _check_model(self):
+        """
+        Check at startup that the model exists and the API key is valid,
+        instead of failing on the first query. Only logs, never raises.
+        """
+        if self.model is None or self.logger is None:
+            return
+        try:
+            self.model.with_options(timeout=5, max_retries=0).models.retrieve(self.model_name)
+        except openai.NotFoundError:
+            self.logger.log_manager(
+                f"Model '[error]{self.model_name}[/error]' not found in OpenAI (or not available for this API key).",
+                error=True,
+            )
+        except openai.AuthenticationError as e:
+            self.logger.log_manager(f"Invalid OpenAI API Key: {e}", error=True)
+        except Exception as e:
+            self.logger.log_manager(f"Could not check OpenAI model '{self.model_name}': {e}", error=True)
 
     def _inference(
         self,

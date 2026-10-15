@@ -106,7 +106,7 @@ class ToolManager:
             # Execute plan
             ret = self.execute_plan(plan)
         except Exception as e:
-            self.logger.log_manager(f"Error handling user request: {e}", error=True)
+            self.logger.log_manager(f"Error handling user request{self.logger.exception_location(e)}: {e}", error=True)
             ret = {"error": str(e)}
 
         return ret
@@ -242,7 +242,19 @@ class ToolManager:
     def _format_tool_outputs(tool) -> str:
         if not tool.output_schema:
             return "none"
-        return ", ".join(f"{key} ({type_name})" for key, type_name in tool.output_schema.items())
+        schema = tool.output_schema
+        # Accept the canonical dict as well as legacy list forms used by external
+        # tools: [("key", "type"), ...] or [{"key": "type"}, ...].
+        if isinstance(schema, dict):
+            pairs = list(schema.items())
+        else:
+            pairs = []
+            for entry in schema:
+                if isinstance(entry, dict):
+                    pairs.extend(entry.items())
+                else:
+                    pairs.append(tuple(entry))
+        return ", ".join(f"{key} ({type_name})" for key, type_name in pairs)
 
     def render_tool_descriptions(self, tools) -> str:
         tool_descriptions = []

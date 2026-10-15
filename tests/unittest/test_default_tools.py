@@ -42,6 +42,7 @@ import threading
 import time
 import unittest
 import uuid
+from unittest.mock import patch
 
 os.environ["ROS_DOMAIN_ID"] = "71"
 
@@ -1480,21 +1481,19 @@ class TestRos2PublishTool(unittest.TestCase):
 
     # -- Message invalid --------------
     def test_publish_custom_message_invalid_json(self):
-        """Invalid JSON for custom message type should return default result."""
-        try:
-            result = self._run_publish(
-                topic="/dummy_topic",
-                msg_type="geometry_msgs/msg/Twist",
-                message_data="{invalid_json",
-                max_lines=1,
-            )
-        except ModuleNotFoundError:
-            self.skipTest("geometry_msgs package is not available")
-            return
-
-        self.assertEqual("False", result["published"])
-        self.assertEqual("0", result["count"])
-        self.assertEqual("/dummy_topic", result["topic"])
+        """Malformed YAML/JSON raises before a publisher or stream is created."""
+        tool = self.Ros2PublishTool()
+        tool.bb = {"console": self.console, "main_node": self.node}
+        with patch.object(self.node, "create_publisher") as create_publisher:
+            with self.assertRaisesRegex(ValueError, "not valid YAML/JSON"):
+                tool.run(
+                    topic="/dummy_topic",
+                    msg_type="geometry_msgs/msg/Twist",
+                    message_data="{invalid_json",
+                    max_lines=1,
+                )
+            create_publisher.assert_not_called()
+        self.assertIsNone(self.console._stream_task)
 
     # -- No main node -----------------
     def test_publish_missing_main_node_raises(self):

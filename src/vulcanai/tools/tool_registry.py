@@ -12,8 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import ast
 import importlib
+import inspect
 import sys
+import textwrap
+import traceback
 from importlib.metadata import entry_points
 from pathlib import Path
 from types import ModuleType
@@ -29,7 +33,9 @@ from vulcanai.tools.tools import CompositeTool, ITool
 def vulcanai_tool(cls: Type[ITool]):
     """Class decorator to mark a class as a VulcanAI tool."""
     if not issubclass(cls, ITool):
-        raise TypeError(f"{cls.__name__} must inherit from ITool")
+        raise TypeError(
+            f"{cls.__name__} must inherit from ITool. Add 'AtomicTool' or 'CompositeTool' in the header of the class"
+        )
     setattr(cls, "__is_vulcanai_tool__", True)
     return cls
 
@@ -95,6 +101,8 @@ class ToolRegistry:
         self._index: list[Tuple[str, np.ndarray]] = []
         # List of modules where tools can be loaded from
         self._loaded_modules: list[ModuleType] = []
+        # Tool classes already processed by register(), which goes through every loaded module on each call
+        self._seen_tool_classes: set[type] = set()
         # Add help_tool to registry but not to index
         self.help_tool = HelpTool()
         self.tools[self.help_tool.name] = self.help_tool
@@ -177,14 +185,26 @@ class ToolRegistry:
                 tool = getattr(module, name, None)
                 if isinstance(tool, type) and issubclass(tool, ITool):
                     if getattr(tool, "__is_vulcanai_tool__", False):
+                        # Already handled in a previous call (or imported by another module)
+                        if tool in self._seen_tool_classes:
+                            continue
+                        self._seen_tool_classes.add(tool)
+                        # Skip tools with wrong attributes, they would fail when executed
+                        if not self.check_tool_class(tool):
+                            continue
                         if issubclass(tool, CompositeTool):
                             composite_classes.append(tool)
-                        else:
-                            self.register_tool(tool(), solve_deps=False, log=False)
+                        elif not self._is_duplicate_name(tool):
+                            instance = self._instantiate_tool(tool)
+                            if instance is not None:
+                                self.register_tool(instance, solve_deps=False, log=False)
         # Register composite tools after atomic ones to resolve dependencies
         for tool_cls in composite_classes:
-            tool = tool_cls()
-            self.register_tool(tool, solve_deps=True, log=False)
+            if self._is_duplicate_name(tool_cls):
+                continue
+            tool = self._instantiate_tool(tool_cls)
+            if tool is not None:
+                self.register_tool(tool, solve_deps=True, log=False)
 
         newly_registered = [name for name in self.tools if name not in before]
         self._log_tools_grouped(newly_registered)
@@ -218,7 +238,238 @@ class ToolRegistry:
             spec.loader.exec_module(module)
             self._loaded_modules.append(module)
         except Exception as e:
-            self.logger.log_registry(f"Could not load tools from {path}: {e}", error=True)
+            # Highlight the file name and the failing line, not the whole path
+            location = self._error_location(e, path)
+            self.logger.log_registry(
+                f"Could not load tools from {self._highlight_file(path)}{location}: {e}", error=True
+            )
+
+    @staticmethod
+    def _error_location(error: Exception, path) -> str:
+        """Return ' (line N)' with the line of the tools file where 'error' was raised, or ''."""
+        lineno = None
+        # Syntax errors are raised by the compiler, so the line is not in the traceback
+        if isinstance(error, SyntaxError) and error.filename == str(path):
+            lineno = error.lineno
+        else:
+            # Last frame inside the tools file (errors can also come from modules it imports)
+            for frame in traceback.extract_tb(error.__traceback__):
+                if frame.filename == str(path):
+                    lineno = frame.lineno
+        return f" [error](line {lineno})[/error]" if lineno else ""
+
+    @staticmethod
+    def _highlight_file(path) -> str:
+        """Return the path with only the file name highlighted in red."""
+        if not path:
+            return "<unknown file>"
+        path = Path(path)
+        return f"{path.parent}/[error]{path.name}[/error]"
+
+    @staticmethod
+    def _class_source_info(cls):
+        """
+        Return (file, 'class' line, {attribute: ast node}, line offset) of a tool class,
+        used to point to the line of a wrong attribute. None if there is no source.
+        """
+        try:
+            file = inspect.getsourcefile(cls)
+            lines, start = inspect.getsourcelines(cls)
+            class_node = ast.parse(textwrap.dedent("".join(lines))).body[0]
+        except (OSError, TypeError, SyntaxError, IndexError):
+            return None
+
+        attrs = {}
+        for node in getattr(class_node, "body", []):
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        attrs[target.id] = node
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                attrs[node.target.id] = node
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                attrs[node.name] = node
+        # Node lines are relative to the class source, which starts at its decorators
+        offset = start - 1
+        return file, offset + class_node.lineno, attrs, offset
+
+    @staticmethod
+    def _attr_line(source_info, attr: str, index: int = None):
+        """Line of 'attr' in the class (or of its 'index'-th entry), else the class line."""
+        if source_info is None:
+            return None
+        _, class_line, attrs, offset = source_info
+        node = attrs.get(attr)
+        if node is None:
+            return class_line
+        line = node.lineno
+        value = getattr(node, "value", None)
+        if index is not None:
+            if isinstance(value, (ast.List, ast.Tuple)) and index < len(value.elts):
+                line = value.elts[index].lineno
+            elif isinstance(value, ast.Dict) and index < len(value.keys) and value.keys[index] is not None:
+                line = value.keys[index].lineno
+        return offset + line
+
+    def check_tool_class(self, cls) -> bool:
+        """
+        Check the attributes of a tool class before registering it, so a wrong
+        definition is reported with its line instead of failing at execution time.
+
+        Errors make the tool be skipped. Warnings are only reported.
+        Return True if the tool can be registered.
+        """
+        # Types the executor can cast plan arguments to
+        from vulcanai.core.executor import TYPE_CAST
+
+        errors = []  # (attribute, entry index, message)
+        warnings = []
+
+        def type_name_of(value) -> str:
+            return type(value).__name__
+
+        name = getattr(cls, "name", None)
+        if not isinstance(name, str) or not name.strip():
+            errors.append(("name", None, f"'name' must be a non-empty string, got {name!r}"))
+
+        description = getattr(cls, "description", None)
+        if not isinstance(description, str) or not description.strip():
+            errors.append(("description", None, f"'description' must be a non-empty string, got {description!r}"))
+
+        tags = getattr(cls, "tags", [])
+        if not isinstance(tags, (list, tuple)):
+            errors.append(("tags", None, f"'tags' must be a list of strings, got {type_name_of(tags)}"))
+        else:
+            for i, tag in enumerate(tags):
+                if not isinstance(tag, str):
+                    errors.append(("tags", i, f"tag {i} must be a string, got {tag!r}"))
+
+        input_keys = []
+        input_schema = getattr(cls, "input_schema", [])
+        if not isinstance(input_schema, (list, tuple)):
+            errors.append(
+                (
+                    "input_schema",
+                    None,
+                    '\'input_schema\' must be a list of ("key", "type") tuples, '
+                    + f"got {type_name_of(input_schema)}",
+                )
+            )
+        else:
+            for i, entry in enumerate(input_schema):
+                if not isinstance(entry, (list, tuple)) or len(entry) != 2:
+                    errors.append(("input_schema", i, f'input {i} must be a ("key", "type") tuple, got {entry!r}'))
+                    continue
+                key, schema_type = entry
+                if not isinstance(key, str) or not key:
+                    errors.append(("input_schema", i, f"input {i} key must be a non-empty string, got {key!r}"))
+                elif key in input_keys:
+                    errors.append(("input_schema", i, f"input '{key}' is defined more than once"))
+                else:
+                    input_keys.append(key)
+                if not isinstance(schema_type, str):
+                    errors.append(("input_schema", i, f"type of input '{key}' must be a string, got {schema_type!r}"))
+                elif schema_type.removesuffix("?") not in TYPE_CAST:
+                    warnings.append(
+                        (
+                            "input_schema",
+                            i,
+                            f"input '{key}' has unknown type '{schema_type}', its value is passed as a string. "
+                            + f"Known types: {', '.join(TYPE_CAST)} (add '?' for optional inputs)",
+                        )
+                    )
+
+        input_defaults = getattr(cls, "input_defaults", {})
+        if not isinstance(input_defaults, dict):
+            errors.append(
+                ("input_defaults", None, f"'input_defaults' must be a dict, got {type_name_of(input_defaults)}")
+            )
+        elif isinstance(input_schema, (list, tuple)):
+            for i, key in enumerate(input_defaults):
+                if key not in input_keys:
+                    errors.append(("input_defaults", i, f"default '{key}' is not an input of 'input_schema'"))
+
+        output_schema = getattr(cls, "output_schema", {})
+        if not isinstance(output_schema, dict):
+            errors.append(
+                (
+                    "output_schema",
+                    None,
+                    '\'output_schema\' must be a dict like {"key": "type"}, '
+                    + f"got {type_name_of(output_schema)} {output_schema!r}",
+                )
+            )
+        else:
+            for i, (key, schema_type) in enumerate(output_schema.items()):
+                if not isinstance(key, str) or not isinstance(schema_type, str):
+                    errors.append(
+                        ("output_schema", i, f"output {key!r}: {schema_type!r} must map a string key to a string type")
+                    )
+
+        if issubclass(cls, CompositeTool):
+            dependencies = getattr(cls, "dependencies", [])
+            if not isinstance(dependencies, (list, tuple)) or not all(isinstance(d, str) for d in dependencies):
+                errors.append(
+                    ("dependencies", None, f"'dependencies' must be a list of tool names, got {dependencies!r}")
+                )
+
+        missing = sorted(getattr(cls, "__abstractmethods__", ()))
+        if missing:
+            errors.append(("run", None, f"missing implementation of {', '.join(m + '()' for m in missing)}"))
+
+        if not errors and not warnings:
+            return True
+
+        source_info = self._class_source_info(cls)
+        file_str = self._highlight_file(source_info[0] if source_info else None)
+        label = name if isinstance(name, str) and name else cls.__name__
+
+        def location(attr, index) -> str:
+            line = self._attr_line(source_info, attr, index)
+            return f" [error](line {line})[/error]" if line else ""
+
+        for attr, index, msg in warnings:
+            self.logger.log_registry(
+                f"[warning]Warning[/warning] in tool '{label}' {file_str}{location(attr, index)}: {msg}"
+            )
+        for attr, index, msg in errors:
+            self.logger.log_registry(f"Invalid tool '{label}' {file_str}{location(attr, index)}: {msg}", error=True)
+        if errors:
+            self.logger.log_registry(f"Tool '{label}' not registered.", error=True)
+            return False
+        return True
+
+    def _is_duplicate_name(self, cls) -> bool:
+        """Report and return True if another tool (active or deactivated) already uses the name of 'cls'."""
+        existing = self._get_tool_by_name(cls.name)
+        if existing is None:
+            return False
+
+        def where(tool_cls) -> str:
+            info = self._class_source_info(tool_cls)
+            if info is None:
+                return tool_cls.__name__
+            return f"{tool_cls.__name__} in {self._highlight_file(info[0])} [error](line {info[1]})[/error]"
+
+        self.logger.log_registry(
+            f"Duplicate tool name '{cls.name}': {where(cls)} uses the name of the already registered "
+            + f"{where(type(existing))}. Rename one of them. Tool not registered.",
+            error=True,
+        )
+        return True
+
+    def _instantiate_tool(self, cls):
+        """Create the tool instance, reporting the failing line instead of stopping the registration."""
+        try:
+            return cls()
+        except Exception as e:
+            file = inspect.getsourcefile(cls) if inspect.isclass(cls) else None
+            self.logger.log_registry(
+                f"Could not create tool '{getattr(cls, 'name', cls.__name__)}' {self._highlight_file(file)}"
+                + f"{self._error_location(e, file)}: {e}",
+                error=True,
+            )
+            return None
 
     def discover_tools_from_file(self, path: str):
         """Load tools from a Python file and register them."""
@@ -235,7 +486,9 @@ class ToolRegistry:
                 module = importlib.import_module(ep.module)
                 self._loaded_modules.append(module)
             except Exception as e:
-                self.logger.log_registry(f"Failed importing EP {ep.name} ({ep.value}): {e!r}", error=True)
+                self.logger.log_registry(
+                    f"Failed importing EP {ep.name} ({ep.value}){self.logger.exception_location(e)}: {e!r}", error=True
+                )
         self.register()
         self.help_tool.available_tools = self.tools
 
