@@ -366,14 +366,14 @@ class ToolRegistry:
                 (
                     "input_schema",
                     None,
-                    "'input_schema' must be a list of (\"key\", \"type\") tuples, "
+                    '\'input_schema\' must be a list of ("key", "type") tuples, '
                     + f"got {type_name_of(input_schema)}",
                 )
             )
         else:
             for i, entry in enumerate(input_schema):
                 if not isinstance(entry, (list, tuple)) or len(entry) != 2:
-                    errors.append(("input_schema", i, f"input {i} must be a (\"key\", \"type\") tuple, got {entry!r}"))
+                    errors.append(("input_schema", i, f'input {i} must be a ("key", "type") tuple, got {entry!r}'))
                     continue
                 key, schema_type = entry
                 if not isinstance(key, str) or not key:
@@ -410,7 +410,7 @@ class ToolRegistry:
                 (
                     "output_schema",
                     None,
-                    "'output_schema' must be a dict like {\"key\": \"type\"}, "
+                    '\'output_schema\' must be a dict like {"key": "type"}, '
                     + f"got {type_name_of(output_schema)} {output_schema!r}",
                 )
             )
