@@ -800,17 +800,27 @@ class TestRos2ServiceTool(unittest.TestCase):
         self.assertNotEqual("", result["output"].strip())
 
     # -------------------------------------------------------------------------
-    # Tests — errors
+    # Tests — default request
     # -------------------------------------------------------------------------
-    def test_service_call_missing_args_raises(self):
-        """`call` without args should raise ValueError."""
+    def test_service_call_without_args_uses_empty_request(self):
+        """Omitted args should send the default request and return a response."""
         self._wait_for_service(self.get_parameters_service)
-        with self.assertRaises(ValueError):
-            self._run_service(
+        default_tools = importlib.import_module("vulcanai.tools.default_tools")
+        with patch.object(default_tools, "run_oneshot_cmd", wraps=default_tools.run_oneshot_cmd) as runner:
+            result = self._run_service(
                 command="call",
                 service_name=self.get_parameters_service,
                 service_type="rcl_interfaces/srv/GetParameters",
             )
+        runner.assert_called_with(
+            ["ros2", "service", "call", self.get_parameters_service, "rcl_interfaces/srv/GetParameters", "{}"]
+        )
+        self.assertIn("names=[]", result["output"])
+        self.assertIn("values=[]", result["output"])
+
+    # -------------------------------------------------------------------------
+    # Tests — errors
+    # -------------------------------------------------------------------------
 
     def test_service_info_missing_service_name_raises(self):
         """`info` without a service_name should raise."""
