@@ -120,3 +120,17 @@ Python package `ruff` can be installed directly with:
 ```bash
 python3 -m pip install ruff==0.14.13
 ```
+
+
+## Reloading custom tools
+
+After saving a Python file supplied through `register_from_file`, run
+`/reload_tools` in the VulcanAI console. Classes marked with `@vulcanai_tool`
+are reloaded, including implementations, metadata, search embeddings, and
+composite dependencies. Existing activation choices are preserved; newly
+added tools become active and removed tools disappear. If validation or
+loading fails, the previous registry remains available. Finish running
+requests and stop streaming before reloading.
+
+Reload reads the files inside the current process environment. It does not
+synchronize host edits into a Docker container or reload entry-point tools.
