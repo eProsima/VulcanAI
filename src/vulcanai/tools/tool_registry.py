@@ -366,14 +366,14 @@ class ToolRegistry:
                 (
                     "input_schema",
                     None,
-                    "'input_schema' must be a list of (\"key\", \"type\") tuples, "
+                    '\'input_schema\' must be a list of ("key", "type") tuples, '
                     + f"got {type_name_of(input_schema)}",
                 )
             )
         else:
             for i, entry in enumerate(input_schema):
                 if not isinstance(entry, (list, tuple)) or len(entry) != 2:
-                    errors.append(("input_schema", i, f"input {i} must be a (\"key\", \"type\") tuple, got {entry!r}"))
+                    errors.append(("input_schema", i, f'input {i} must be a ("key", "type") tuple, got {entry!r}'))
                     continue
                 key, schema_type = entry
                 if not isinstance(key, str) or not key:
@@ -410,7 +410,7 @@ class ToolRegistry:
                 (
                     "output_schema",
                     None,
-                    "'output_schema' must be a dict like {\"key\": \"type\"}, "
+                    '\'output_schema\' must be a dict like {"key": "type"}, '
                     + f"got {type_name_of(output_schema)} {output_schema!r}",
                 )
             )
@@ -494,8 +494,12 @@ class ToolRegistry:
         self.register()
         if module is not None:
             self._file_tools.setdefault(path, set()).update(
-                (name for name in (set(self.tools) | set(self.deactivated_tools)) - before
-                 if type(self._get_tool_by_name(name)).__module__ == module.__name__))
+                (
+                    name
+                    for name in (set(self.tools) | set(self.deactivated_tools)) - before
+                    if type(self._get_tool_by_name(name)).__module__ == module.__name__
+                )
+            )
             self._file_modules[path] = module
         self.help_tool.available_tools = self.tools
 
@@ -524,10 +528,14 @@ class ToolRegistry:
                     exec(compile(source.read(), path, "exec"), module.__dict__)
                 modules[path] = module
                 file_names[path] = set()
-                classes = {cls for cls in vars(module).values()
-                           if isinstance(cls, type) and issubclass(cls, ITool)
-                           and cls.__module__ == module_name
-                           and getattr(cls, "__is_vulcanai_tool__", False)}
+                classes = {
+                    cls
+                    for cls in vars(module).values()
+                    if isinstance(cls, type)
+                    and issubclass(cls, ITool)
+                    and cls.__module__ == module_name
+                    and getattr(cls, "__is_vulcanai_tool__", False)
+                }
                 for cls in sorted(classes, key=lambda cls: cls.__name__):
                     if not self.check_tool_class(cls):
                         raise ValueError(f"Invalid tool class {cls.__name__} in {path}")
@@ -548,9 +556,9 @@ class ToolRegistry:
                     missing = [name for name in tool.dependencies if name not in candidates]
                     if missing and (tool.name in staged or set(missing) & owned):
                         raise ValueError(f"Tool '{tool.name}' has missing dependencies: {', '.join(missing)}")
-                    bindings.append((
-                        tool, {name: candidates[name] for name in tool.dependencies if name in candidates}
-                    ))
+                    bindings.append(
+                        (tool, {name: candidates[name] for name in tool.dependencies if name in candidates})
+                    )
         except Exception:
             for name, previous in previous_modules.items():
                 if previous is None:
@@ -573,8 +581,7 @@ class ToolRegistry:
         old_modules = {self._file_modules[p] for p in paths if p in self._file_modules}
         self._loaded_modules = [module for module in self._loaded_modules if module not in old_modules]
         self._loaded_modules.extend(modules.values())
-        self._seen_tool_classes = {cls for cls in self._seen_tool_classes
-                                   if cls.__module__ not in previous_modules}
+        self._seen_tool_classes = {cls for cls in self._seen_tool_classes if cls.__module__ not in previous_modules}
         self._seen_tool_classes.update(type(tool) for tool in staged.values())
         self._file_tools.update(file_names)
         self._file_modules.update(modules)
