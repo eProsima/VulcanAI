@@ -32,6 +32,7 @@ from textual.widgets import Input, Static
 
 from vulcanai.console.logger import VulcanAILogger
 from vulcanai.console.modal_screens import CheckListModal, RadioListModal, ReverseSearchModal
+from vulcanai.console.ros2_completion import Ros2Completer
 from vulcanai.console.terminal_session import TerminalSession
 from vulcanai.console.utils import (
     SpinnerHook,
@@ -246,7 +247,11 @@ class VulcanConsole(App):
         self.logger.set_textualizer_console(TextualLogSink(self))
 
         # Tools to register from entry points
-        self.register_from_file = register_from_file
+        self.register_from_file = (
+            [register_from_file]
+            if isinstance(register_from_file, str) and register_from_file
+            else list(register_from_file or [])
+        )
         self.tools_from_entrypoints = tools_from_entrypoints
         self.user_context = user_context
         # ROS 2 main node
@@ -256,6 +261,8 @@ class VulcanConsole(App):
 
         # Commands available in the console
         self.commands = None
+        self.ros2_completer = Ros2Completer()
+
         # Tab completion state
         self.tab_matches = []
         # Current index in the tab matches
@@ -372,6 +379,7 @@ class VulcanConsole(App):
             "/help": self.cmd_help,
             "/tools": self.cmd_tools,
             "/edit_tools": self.cmd_edit_tools,
+            "/reload_tools": self.cmd_reload_tools,
             "/change_k": self.cmd_change_k,
             "/history": self.cmd_history_index,
             "/debug": self.cmd_debug,
@@ -689,6 +697,7 @@ class VulcanConsole(App):
                 "/<bold>help</bold>           - Show this help message\n"
                 "/<bold>tools</bold>          - List available tools\n"
                 "/<bold>edit_tools</bold>     - Edit the list of available tools\n"
+                "/<bold>reload_tools</bold>   - Reload @vulcanai_tool classes from registered files\n"
                 "/<bold>change_k 'int'</bold> - Change the 'k' value for the top_k algorithm selection"
                 " or show the current value if no 'int' is provided\n"
                 "/<bold>history 'int'</bold>  - Change the history depth or show the current value if no"
@@ -762,6 +771,33 @@ class VulcanConsole(App):
         if self._is_default_tool(tool_name):
             return f"{action} default tool '{tool_name}'"
         return f"{action} tool '{tool_name}'"
+
+    def cmd_reload_tools(self, args) -> None:
+        if args:
+            self.logger.log_console("Usage: /reload_tools")
+            return
+        if not self.register_from_file:
+            self.logger.log_console("No tool files were registered for this console.")
+            return
+        if self.query_one("#cmd", Input).disabled or self._is_stream_task_active():
+            self.logger.log_console("Finish the running request or stop streaming before reloading tools.")
+            return
+        self.set_input_enabled(False)
+        self._reload_registered_tools()
+
+    @work(group="reload-tools")
+    async def _reload_registered_tools(self) -> None:
+        try:
+            result = await asyncio.to_thread(self.manager.registry.reload_tools_from_files, self.register_from_file)
+            self.logger.log_console(
+                f"Reloaded {len(result['updated'])} tools from {result['files']} files.", color="console"
+            )
+            if result["removed"]:
+                self.logger.log_console("Removed tools: " + ", ".join(result["removed"]))
+        except Exception as error:
+            self.logger.log_msg(f"[error]Tool reload failed; registered tools kept: {error}[/error]")
+        finally:
+            self.set_input_enabled(True)
 
     def cmd_edit_tools(self, _) -> None:
         all_names = sorted(
@@ -1291,6 +1327,22 @@ class VulcanConsole(App):
         cmd_input.cursor_position = cursor + len(paste_text)
         cmd_input.focus()
 
+    @work(exclusive=True, group="ros2-completion")
+    async def _complete_ros2_input(self, raw: str, cursor: int) -> None:
+        completion = await asyncio.to_thread(self.ros2_completer.complete, raw, cursor)
+        cmd_input = self.query_one("#cmd", Input)
+        # A live graph query must not overwrite edits made while it ran.
+        if self.focused is not cmd_input or cmd_input.value != raw or cmd_input.cursor_position != cursor:
+            return
+        if completion.matches:
+            value, position = completion.apply(raw)
+            cmd_input.value = value
+            cmd_input.cursor_position = position
+            if len(completion.matches) > 1:
+                self.logger.log_user(raw)
+                self.logger.log_console("\n".join(completion.matches), color="console")
+        cmd_input.focus()
+
     async def on_key(self, event: events.Key) -> None:
         """
         Function used to handle key events in the terminal input box.
@@ -1306,6 +1358,15 @@ class VulcanConsole(App):
 
         # -- tab: Autocomplete ------------------------------------------------
         if key == "tab":
+            if self.focused is not cmd_input:
+                return
+            raw = cmd_input.value or ""
+            if raw.lstrip().startswith("ros"):
+                event.prevent_default()
+                event.stop()
+                cursor = cmd_input.cursor_position
+                self._complete_ros2_input(raw, cursor)
+                return
             # Current text
             # (don’t strip right-side spaces; keep user’s spacing)
             raw = cmd_input.value or ""
