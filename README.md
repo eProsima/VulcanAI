@@ -134,3 +134,24 @@ requests and stop streaming before reloading.
 
 Reload reads the files inside the current process environment. It does not
 synchronize host edits into a Docker container or reload entry-point tools.
+
+## ROS 2 Tab completion
+
+In the VulcanAI input, press Tab after `ros2 ` to list installed commands,
+then complete subcommands and live arguments. For example:
+
+```text
+ros2 service call /<Tab>
+ros2 topic hz /<Tab>
+ros2 param get /node_name <Tab>
+```
+
+Completion covers services, topics, actions, nodes, interface types, parameters,
+packages, executables and launch files. A unique match is inserted; multiple
+matches extend the common prefix and appear in purple below the original
+`[USER] >>> <input>`. Completion only reads ROS metadata; submitting the input
+still follows the normal planning and execution flow.
+
+Discovery uses the console's ROS environment and domain, runs off the UI thread,
+and has a three-second query timeout and a two-second cache. Results are ignored
+if the input, cursor or focus changes while a query is running.

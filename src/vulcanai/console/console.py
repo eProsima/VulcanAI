@@ -32,6 +32,7 @@ from textual.widgets import Input, Static
 
 from vulcanai.console.logger import VulcanAILogger
 from vulcanai.console.modal_screens import CheckListModal, RadioListModal, ReverseSearchModal
+from vulcanai.console.ros2_completion import Ros2Completer
 from vulcanai.console.terminal_session import TerminalSession
 from vulcanai.console.utils import (
     SpinnerHook,
@@ -257,6 +258,8 @@ class VulcanConsole(App):
 
         # Commands available in the console
         self.commands = None
+        self.ros2_completer = Ros2Completer()
+
         # Tab completion state
         self.tab_matches = []
         # Current index in the tab matches
@@ -1321,6 +1324,22 @@ class VulcanConsole(App):
         cmd_input.cursor_position = cursor + len(paste_text)
         cmd_input.focus()
 
+    @work(exclusive=True, group="ros2-completion")
+    async def _complete_ros2_input(self, raw: str, cursor: int) -> None:
+        completion = await asyncio.to_thread(self.ros2_completer.complete, raw, cursor)
+        cmd_input = self.query_one("#cmd", Input)
+        # A live graph query must not overwrite edits made while it ran.
+        if self.focused is not cmd_input or cmd_input.value != raw or cmd_input.cursor_position != cursor:
+            return
+        if completion.matches:
+            value, position = completion.apply(raw)
+            cmd_input.value = value
+            cmd_input.cursor_position = position
+            if len(completion.matches) > 1:
+                self.logger.log_user(raw)
+                self.logger.log_console("\n".join(completion.matches), color="console")
+        cmd_input.focus()
+
     async def on_key(self, event: events.Key) -> None:
         """
         Function used to handle key events in the terminal input box.
@@ -1336,6 +1355,15 @@ class VulcanConsole(App):
 
         # -- tab: Autocomplete ------------------------------------------------
         if key == "tab":
+            if self.focused is not cmd_input:
+                return
+            raw = cmd_input.value or ""
+            if raw.lstrip().startswith("ros"):
+                event.prevent_default()
+                event.stop()
+                cursor = cmd_input.cursor_position
+                self._complete_ros2_input(raw, cursor)
+                return
             # Current text
             # (don’t strip right-side spaces; keep user’s spacing)
             raw = cmd_input.value or ""
