@@ -425,7 +425,7 @@ def _run_ros2_service_command(
         result["output"] = run_oneshot_cmd(["ros2", "service", "find", service_type])
     elif command == "call":
         if call_args is None:
-            raise ValueError("`command='call'` requires `args`.")
+            call_args = "{}"
         if not service_type:
             service_type = run_oneshot_cmd(["ros2", "service", "type", service_name]).strip()
         result["output"] = run_oneshot_cmd(["ros2", "service", "call", service_name, service_type, call_args])
@@ -1181,7 +1181,9 @@ class Ros2ServiceCallTool(AtomicTool):
     description = (
         "Call a ROS 2 service. "
         "Equivalent to `ros2 service call [args]`."
-        "Use when the user wants to call a ROS 2 service ."
+        "Use when the user wants to call a ROS 2 service. "
+        "'args' is an optional YAML request mapping, defaulting to '{}'. "
+        "For std_srvs/srv/Empty, omit 'args' or use '{}'."
     )
     tags = [
         "ros2",
@@ -1194,8 +1196,9 @@ class Ros2ServiceCallTool(AtomicTool):
     input_schema = [
         ("service_name", "string"),  # service name
         ("service_type", "string"),  # service type
-        ("args", "string"),  # args
+        ("args", "string?"),  # YAML request; omitted uses default field values
     ]
+    input_defaults = {"args": "{}"}
     output_schema = {"output": "string"}
 
     def run(self, **kwargs):
