@@ -284,6 +284,8 @@ class VulcanConsole(App):
         self._gnome_profile_schema: str | None = None
         self._gnome_scrollbar_policy_backup: str | None = None
         self._main_node_spin_task: asyncio.Task | None = None
+        # True when the console created main_node itself, so it must destroy it on exit
+        self._owns_main_node = False
 
     async def on_mouse_down(self, event: MouseEvent) -> None:
         """
@@ -405,6 +407,7 @@ class VulcanConsole(App):
                 from vulcanai.tools.default_tools import ROS2DefaultToolNode
 
                 self.main_node = ROS2DefaultToolNode()
+                self._owns_main_node = True
             except ImportError:
                 self.logger.log_console("Unable to load ROS 2 default node for default tools.")
 
@@ -504,6 +507,10 @@ class VulcanConsole(App):
 
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, lambda: worker(user_input))
+
+        # The plan finished: flush the logs held back while the stream panel stayed open
+        # (last executor lines, plan output) instead of waiting for the user to close it
+        self.write_deferred_main_output()
 
         # Activate the terminal input
         self.set_input_enabled(True)
@@ -988,6 +995,12 @@ class VulcanConsole(App):
 
         if self.stream_pannel is None:
             return
+
+        # A new tool starts streaming: flush the logs held back from the previous one
+        # (e.g. executor lines) so the main log stays in order between tools. The panel is
+        # reopened below, so do not hold back the notice of this new stream either
+        self.write_deferred_main_output()
+        self._stream_panel_visible = False
 
         follow_main_output = False
         if self.main_pannel is not None:
@@ -1593,7 +1606,14 @@ class VulcanConsole(App):
 
         session = TerminalSession()
         with session:
-            self.run()
+            try:
+                self.run()
+            finally:
+                # Destroy the default node before the interpreter exits: otherwise its
+                # spin thread and DDS participant outlive Python and the process aborts
+                if self._owns_main_node and self.main_node is not None:
+                    self.main_node.destroy_node()
+                    self.main_node = None
 
     def init_manager(self) -> None:
         """
@@ -1631,7 +1651,7 @@ def main() -> None:
         "--model",
         type=str,
         default="gpt-5-nano",
-        help="LLM model to used in the agent (ej: gpt-5-nano, gemini-2.0-flash, etc.)",
+        help="LLM model to used in the agent (ej: gpt-5-nano, gemini-2.0-flash, claude-sonnet, etc.)",
     )
     parser.add_argument(
         "--register-from-file",
