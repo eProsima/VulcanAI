@@ -9,6 +9,7 @@ import json
 import os
 import signal
 import time
+from pathlib import Path
 
 from vulcanai.console.console import VulcanConsole
 
@@ -114,7 +115,7 @@ def main() -> None:
     parser.add_argument("log_file")
     parser.add_argument("--pid", type=int, required=True, help="PID of the MCP server")
     args = parser.parse_args()
-    ClaudeViewerConsole(args.log_file, args.pid).run_console()
+    ClaudeViewerConsole(str(Path(args.log_file).expanduser().resolve()), args.pid).run_console()
 
 
 if __name__ == "__main__":

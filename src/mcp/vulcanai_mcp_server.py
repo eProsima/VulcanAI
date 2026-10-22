@@ -4,6 +4,7 @@
 # VulcanAI only validates and executes it (no local LLM involved).
 import json
 import os
+import shlex
 import shutil
 import signal
 import subprocess
@@ -16,7 +17,9 @@ from typing import Literal
 # which the VulcanAI viewer console (vulcanai_mcp_viewer.py) follows live in its own terminal.
 # stdout stays reserved for the MCP protocol.
 # One file per server process, so several Claude sessions do not overwrite each other's log
-LOG_DIR = Path(__file__).resolve().parent / "logs"
+MCP_DIR = Path(__file__).resolve().parent
+WORKSPACE_DIR = MCP_DIR.parents[2]
+LOG_DIR = MCP_DIR / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 LOG_FILE = LOG_DIR / f"vulcanai_mcp_{os.getpid()}.log"
 # Remove the logs of servers that are no longer running
@@ -53,12 +56,21 @@ def _open_viewer() -> str:
         return "The VulcanAI console is already open."
     if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
         return "Cannot open the VulcanAI console: no graphical display available."
-    viewer = Path(__file__).resolve().parent / VIEWER_SCRIPT
+    viewer = MCP_DIR / VIEWER_SCRIPT
     # If the viewer crashes, keep the window open to show the error
     script = (
-        f"ROS_DOMAIN_ID='{os.environ.get('ROS_DOMAIN_ID', '0')}' "
-        f"'{sys.executable}' '{viewer}' '{LOG_FILE}' --pid {os.getpid()} "
-        "|| { echo; echo '[VulcanAI viewer failed. Press Enter to close]'; read; }"
+        shlex.join(
+            [
+                "env",
+                f"ROS_DOMAIN_ID={os.environ.get('ROS_DOMAIN_ID', '0')}",
+                sys.executable,
+                str(viewer),
+                str(LOG_FILE),
+                "--pid",
+                str(os.getpid()),
+            ]
+        )
+        + " || { echo; echo '[VulcanAI viewer failed. Press Enter to close]'; read; }"
     )
     if shutil.which("gnome-terminal"):
         cmd = ["gnome-terminal", "--title=VulcanAI (Claude)", "--", "bash", "-c", script]
@@ -91,7 +103,7 @@ if os.environ.get("VULCANAI_VIEWER", "0") == "1":
     _open_viewer()
 
 # The turtlesim demo is not colcon-built: import it straight from source.
-DEMO_DIR = Path(__file__).resolve().parents[1] / "vulcanexus/code/vulcanai_turtlesim/vulcanai_turtlesim_demo"
+DEMO_DIR = WORKSPACE_DIR / "vulcanexus/code/vulcanai_turtlesim/vulcanai_turtlesim_demo"
 sys.path.insert(0, str(DEMO_DIR))
 
 # These imports need DEMO_DIR in sys.path, so they cannot go at the top (E402)
@@ -129,7 +141,7 @@ rclpy.init()
 node = SharedNode("vulcanai_mcp_node")
 
 registry = ToolRegistry(logger=logger, default_tools=True)
-registry.discover_tools_from_file(str(Path(__file__).resolve().parents[1] / "turtlesim_tools.py"))
+registry.discover_tools_from_file(str(DEMO_DIR / "vulcanai_turtlesim_demo/turtlesim_tools.py"))
 validator = PlanValidator(registry)
 executor = PlanExecutor(registry, logger=logger)
 # Persists across calls, so a plan can reference outputs of earlier plans ({{bb.tool.key}})
