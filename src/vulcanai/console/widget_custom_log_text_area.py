@@ -76,6 +76,9 @@ class CustomLogTextArea(TextArea):
         self._follow_output = True
         # Suppress follow-state updates while we are applying programmatic scrolls
         self._suspend_follow_tracking = 0
+        # Optional callback called with the plain text (without style tags) of every appended line
+        # Used by the console to store the terminal output in a log file ('/log-terminal')
+        self.line_listener = None
 
     # region UTILS
 
@@ -388,7 +391,13 @@ class CustomLogTextArea(TextArea):
             self._rebuild_highlights()
             self.refresh()
 
-            return True
+        if self.line_listener is not None:
+            try:
+                self.line_listener(plain)
+            except Exception:
+                pass
+
+        return True
 
     def delete_last_row(self) -> None:
         """

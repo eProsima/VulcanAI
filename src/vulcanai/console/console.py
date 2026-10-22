@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import datetime
 import os
 import sys
 import threading
@@ -281,6 +282,10 @@ class VulcanConsole(App):
         self._gnome_scrollbar_policy_backup: str | None = None
         self._main_node_spin_task: asyncio.Task | None = None
 
+        # Terminal log file ('/log-terminal'): every line shown in the console is also written there
+        self._terminal_log_file = None
+        self._terminal_log_lock = threading.Lock()
+
     async def on_mouse_down(self, event: MouseEvent) -> None:
         """
         Function used to paste the string for the user clipboard
@@ -381,6 +386,7 @@ class VulcanConsole(App):
             "/rerun": self.cmd_rerun,
             "/bb": self.cmd_blackboard_state,
             "/clear": self.cmd_clear,
+            "/log-terminal": self.cmd_log_terminal,
             "/exit": self.cmd_quit,
         }
 
@@ -698,6 +704,8 @@ class VulcanConsole(App):
                 "/<bold>rerun 'int'</bold>    - Rerun the last plan or the specified plan by index\n"
                 "/<bold>bb</bold>             - Show the last blackboard state\n"
                 "/<bold>clear</bold>          - Clears the console screen\n"
+                "/<bold>log-terminal 'file'</bold> - Store everything shown in the console in a log file"
+                " (default name: vulcanai_terminal_[date].log). Run it again without a file to stop\n"
                 "/<bold>exit</bold>           - Exit the console\n"
                 "<bold>Query any other text</bold> to process it with the LLM and execute the plan generated.\n\n"
                 "Add --image='path' to include images in the query. It can be used multiple times to add"
@@ -922,7 +930,65 @@ class VulcanConsole(App):
             self.stream_pannel.clear_console()
         self.main_pannel.clear_console()
 
+    def cmd_log_terminal(self, args) -> None:
+        """
+        Store everything shown in the console (main log and stream panel) in a log file.
+        '/log-terminal file' starts logging to 'file' (appending to it), '/log-terminal' starts logging
+        to a new file with a default name, or stops logging if it is already active.
+        """
+        if not args and self._terminal_log_file is not None:
+            path = self._terminal_log_file.name
+            self._stop_terminal_log()
+            self.logger.log_console(f"Terminal log stopped. Saved in <bold>{path}</bold>")
+            return
+
+        if args:
+            path = os.path.abspath(os.path.expanduser(" ".join(args).strip("\"'")))
+        else:
+            path = os.path.abspath(f"vulcanai_terminal_{datetime.datetime.now():%Y%m%d_%H%M%S}.log")
+
+        try:
+            log_file = open(path, "a", encoding="utf-8", buffering=1)
+        except OSError as e:
+            self.logger.log_msg(f"[error]Cannot open the terminal log file:[/error] {e}")
+            return
+
+        self._stop_terminal_log()
+        now = datetime.datetime.now()
+        log_file.write(f"===== VulcanAI terminal log started {now:%Y-%m-%d %H:%M:%S} (model: {self.model}) =====\n")
+        # Start with what is already on screen, so the file has the whole session
+        if self.main_pannel is not None and self.main_pannel.text:
+            log_file.write("----- Previous console output -----\n")
+            log_file.write(self.main_pannel.text + "\n")
+            log_file.write("----- Live output -----\n")
+
+        with self._terminal_log_lock:
+            self._terminal_log_file = log_file
+        if self.main_pannel is not None:
+            self.main_pannel.line_listener = lambda line: self._write_terminal_log(line)
+        if self.stream_pannel is not None:
+            self.stream_pannel.line_listener = lambda line: self._write_terminal_log(line, "[STREAM] ")
+        self.logger.log_console(f"Terminal log started: <bold>{path}</bold>")
+
+    def _write_terminal_log(self, line: str, prefix: str = "") -> None:
+        with self._terminal_log_lock:
+            if self._terminal_log_file is not None:
+                self._terminal_log_file.write(f"[{datetime.datetime.now():%H:%M:%S}] {prefix}{line}\n")
+
+    def _stop_terminal_log(self) -> None:
+        for panel in (self.main_pannel, self.stream_pannel):
+            if panel is not None:
+                panel.line_listener = None
+        with self._terminal_log_lock:
+            if self._terminal_log_file is not None:
+                self._terminal_log_file.write(
+                    f"===== VulcanAI terminal log stopped {datetime.datetime.now():%Y-%m-%d %H:%M:%S} =====\n"
+                )
+                self._terminal_log_file.close()
+                self._terminal_log_file = None
+
     def cmd_quit(self, _) -> None:
+        self._stop_terminal_log()
         self.exit()
 
     # endregion
@@ -1541,7 +1607,11 @@ class VulcanConsole(App):
 
         session = TerminalSession()
         with session:
-            self.run()
+            try:
+                self.run()
+            finally:
+                # Close the terminal log also when exiting with Ctrl+Q
+                self._stop_terminal_log()
 
     def init_manager(self) -> None:
         """
