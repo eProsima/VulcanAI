@@ -32,10 +32,7 @@ class OllamaModel(IModel):
         self.logger = logger
         self.model_name = model_name
         self.hooks = hooks
-        try:
-            self.model = ollama
-        except Exception as e:
-            self.logger.log_manager(f"ERROR. Missing a API Key: {e}", error=True)
+        self.model = ollama
         self._check_model()
 
     def _check_model(self):
@@ -45,8 +42,8 @@ class OllamaModel(IModel):
         """
         if self.logger is None:
             return
-        client = ollama.Client(timeout=5)
         try:
+            client = ollama.Client(timeout=5)
             client.show(self.model_name)
         except ollama.ResponseError as e:
             if e.status_code != 404:

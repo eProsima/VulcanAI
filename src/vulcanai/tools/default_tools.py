@@ -23,6 +23,8 @@ import threading
 import time
 from concurrent.futures import Future
 
+import yaml
+
 from vulcanai import AtomicTool, vulcanai_tool
 from vulcanai.tools.utils import (
     execute_subprocess,
@@ -35,7 +37,6 @@ from vulcanai.tools.utils import (
 # ROS2 imports
 try:
     import rclpy
-    import yaml
     from rclpy.node import Node
     from rclpy.task import Future
     from rosidl_runtime_py.set_message import set_message_fields
@@ -1909,7 +1910,7 @@ class Ros2PublishTool(AtomicTool):
 
         try:
             set_message_fields(msg, values)
-        except (AttributeError, TypeError, ValueError) as e:
+        except (AttributeError, TypeError, ValueError, AssertionError) as e:
             raise ValueError(f"'message_data' {message_data!r} does not match the fields {dict(fields)}: {e}")
         return msg
 

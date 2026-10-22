@@ -35,11 +35,6 @@ class GeminiModel(IModel):
         self.logger = logger
         self.model_name = model_name
         self.hooks = hooks
-        try:
-            self.model = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
-        except Exception as e:
-            self.logger.log_manager(f"ERROR. Missing Gemini API Key: {e}", error=True)
-            self.model = None
         self._check_model()
 
     def _check_model(self):
@@ -47,7 +42,14 @@ class GeminiModel(IModel):
         Check at startup that the model exists and the API key is valid,
         instead of failing on the first query. Only logs, never raises.
         """
-        if self.model is None or self.logger is None:
+        try:
+            self.model = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+        except Exception as e:
+            if self.logger is not None:
+                self.logger.log_manager(f"ERROR. Missing Gemini API Key: {e}", error=True)
+            self.model = None
+            return
+        if self.logger is None:
             return
         try:
             self.model.models.get(model=self.model_name, config={"http_options": {"timeout": 5000}})

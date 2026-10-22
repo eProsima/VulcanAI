@@ -26,6 +26,7 @@ from typing import Dict, List, Tuple, Type
 import numpy as np
 
 from vulcanai.console.logger import VulcanAILogger
+from vulcanai.core.executor import TYPE_CAST
 from vulcanai.tools.embedder import SBERTEmbedder
 from vulcanai.tools.tools import CompositeTool, ITool
 
@@ -262,7 +263,7 @@ class ToolRegistry:
     def _highlight_file(path) -> str:
         """Return the path with only the file name highlighted in red."""
         if not path:
-            return "<unknown file>"
+            return "(unknown file)"
         path = Path(path)
         return f"{path.parent}/[error]{path.name}[/error]"
 
@@ -293,24 +294,6 @@ class ToolRegistry:
         offset = start - 1
         return file, offset + class_node.lineno, attrs, offset
 
-    @staticmethod
-    def _attr_line(source_info, attr: str, index: int = None):
-        """Line of 'attr' in the class (or of its 'index'-th entry), else the class line."""
-        if source_info is None:
-            return None
-        _, class_line, attrs, offset = source_info
-        node = attrs.get(attr)
-        if node is None:
-            return class_line
-        line = node.lineno
-        value = getattr(node, "value", None)
-        if index is not None:
-            if isinstance(value, (ast.List, ast.Tuple)) and index < len(value.elts):
-                line = value.elts[index].lineno
-            elif isinstance(value, ast.Dict) and index < len(value.keys) and value.keys[index] is not None:
-                line = value.keys[index].lineno
-        return offset + line
-
     def check_tool_class(self, cls) -> bool:
         """
         Check the attributes of a tool class before registering it, so a wrong
@@ -319,8 +302,6 @@ class ToolRegistry:
         Errors make the tool be skipped. Warnings are only reported.
         Return True if the tool can be registered.
         """
-        # Types the executor can cast plan arguments to
-        from vulcanai.core.executor import TYPE_CAST
 
         errors = []  # (attribute, entry index, message)
         warnings = []
@@ -425,16 +406,30 @@ class ToolRegistry:
         label = name if isinstance(name, str) and name else cls.__name__
 
         def location(attr, index) -> str:
-            line = self._attr_line(source_info, attr, index)
+            if source_info is None:
+                return ""
+            _, line, attrs, offset = source_info
+            node = attrs.get(attr)
+            if node is not None:
+                line = node.lineno
+                value = getattr(node, "value", None)
+                if index is not None:
+                    if isinstance(value, (ast.List, ast.Tuple)) and index < len(value.elts):
+                        line = value.elts[index].lineno
+                    elif isinstance(value, ast.Dict) and index < len(value.keys) and value.keys[index] is not None:
+                        line = value.keys[index].lineno
+                line += offset
             return f" [error](line {line})[/error]" if line else ""
 
         for attr, index, msg in warnings:
             self.logger.log_registry(
                 f"[warning]Warning[/warning] in tool '{label}' {file_str}{location(attr, index)}: {msg}"
             )
-        for attr, index, msg in errors:
-            self.logger.log_registry(f"Invalid tool '{label}' {file_str}{location(attr, index)}: {msg}", error=True)
         if errors:
+            for attr, index, msg in errors:
+                self.logger.log_registry(
+                    f"Invalid tool '{label}' {file_str}{location(attr, index)}: {msg}", error=True
+                )
             self.logger.log_registry(f"Tool '{label}' not registered.", error=True)
             return False
         return True
@@ -487,7 +482,7 @@ class ToolRegistry:
                 self._loaded_modules.append(module)
             except Exception as e:
                 self.logger.log_registry(
-                    f"Failed importing EP {ep.name} ({ep.value}){self.logger.exception_location(e)}: {e!r}", error=True
+                    f"Failed importing EP {ep.name} ({ep.value}) {self.logger.exception_location(e)}", error=True
                 )
         self.register()
         self.help_tool.available_tools = self.tools
