@@ -29,6 +29,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# VulcanAI MCP server (vulcanai_mcp_server.py)
+mcp = [
+    "mcp==2.3.0",
+]
 test = [
     "pytest==8.4.2",
 ]
