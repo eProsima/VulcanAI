@@ -18,6 +18,7 @@ _EXPORTS = {
     "Agent": ".agent:Agent",
     "ArgValue": ".plan_types:ArgValue",
     "Blackboard": ".executor:Blackboard",
+    "ClaudeAgentManager": ".manager_claude_agent:ClaudeAgentManager",
     "GlobalPlan": ".plan_types:GlobalPlan",
     "IterativeManager": ".manager_iterator:IterativeManager",
     "PlanExecutor": ".executor:PlanExecutor",
