@@ -29,9 +29,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Claude models (claude-*) and vulcanai-claude-login
+# Claude models (claude-*, claude-agent-*) and vulcanai-claude-login.
+# The Bash sandbox of the agent mode also needs the system packages bubblewrap and socat (Linux),
+# and on Ubuntu 23.10+ the AppArmor profile resources/apparmor/bwrap.
 claude = [
     "claude-agent-sdk==0.2.168",
+    "pillow==13.0.0",
 ]
 test = [
     "pytest==8.4.2",
