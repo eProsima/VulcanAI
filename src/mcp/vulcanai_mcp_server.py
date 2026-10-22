@@ -66,8 +66,9 @@ def _open_viewer() -> str:
         cmd = ["x-terminal-emulator", "-e", "bash", "-c", script]
     else:
         return "Cannot open the VulcanAI console: no terminal emulator found."
-    subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                     start_new_session=True)
+    subprocess.Popen(
+        cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
+    )
     return "VulcanAI console opened."
 
 
@@ -93,17 +94,17 @@ if os.environ.get("VULCANAI_VIEWER", "0") == "1":
 DEMO_DIR = Path(__file__).resolve().parents[1] / "vulcanexus/code/vulcanai_turtlesim/vulcanai_turtlesim_demo"
 sys.path.insert(0, str(DEMO_DIR))
 
-import anyio
-import rclpy
-from mcp.server.mcpserver import MCPServer
+# These imports need DEMO_DIR in sys.path, so they cannot go at the top (E402)
+import anyio  # noqa: E402
+import rclpy  # noqa: E402
+from mcp.server.mcpserver import MCPServer  # noqa: E402
+from vulcanai_turtlesim_demo.ros2_node import SharedNode  # noqa: E402
 
-from vulcanai.console.logger import VulcanAILogger
-from vulcanai.core.executor import Blackboard, PlanExecutor
-from vulcanai.core.plan_types import GlobalPlan
-from vulcanai.core.validator import PlanValidator
-from vulcanai.tools.tool_registry import ToolRegistry
-from vulcanai_turtlesim_demo.ros2_node import SharedNode
-
+from vulcanai.console.logger import VulcanAILogger  # noqa: E402
+from vulcanai.core.executor import Blackboard, PlanExecutor  # noqa: E402
+from vulcanai.core.plan_types import GlobalPlan  # noqa: E402
+from vulcanai.core.validator import PlanValidator  # noqa: E402
+from vulcanai.tools.tool_registry import ToolRegistry  # noqa: E402
 
 EVENT_MARKER = "\x1eVULCANAI "  # must match vulcanai_mcp_viewer.py
 
@@ -136,7 +137,8 @@ bb = Blackboard()
 bb["main_node"] = node
 _lock = threading.Lock()
 logger.log_msg(
-    f"VulcanAI MCP server ready (ROS_DOMAIN_ID={os.environ.get('ROS_DOMAIN_ID', '0')}). Waiting for plans from Claude...",
+    f"VulcanAI MCP server ready (ROS_DOMAIN_ID={os.environ.get('ROS_DOMAIN_ID', '0')}). "
+    "Waiting for plans from Claude...",
     color="console",
 )
 
@@ -172,15 +174,17 @@ def list_vulcanai_tools() -> str:
     for t in registry.tools.values():
         if t.name == "help":
             continue
-        tools.append({
-            "name": t.name,
-            "description": t.description,
-            "inputs": [
-                {"key": k, "type": ty.rstrip("?"), "required": not ty.endswith("?")} for k, ty in t.input_schema
-            ],
-            "defaults": getattr(t, "input_defaults", {}) or {},
-            "outputs": t.output_schema,
-        })
+        tools.append(
+            {
+                "name": t.name,
+                "description": t.description,
+                "inputs": [
+                    {"key": k, "type": ty.rstrip("?"), "required": not ty.endswith("?")} for k, ty in t.input_schema
+                ],
+                "defaults": getattr(t, "input_defaults", {}) or {},
+                "outputs": t.output_schema,
+            }
+        )
     return json.dumps(tools, indent=1)
 
 
