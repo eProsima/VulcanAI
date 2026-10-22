@@ -115,7 +115,7 @@ class GlobalPlan(BaseModel):
                     + f"<{color_value}>{node.timeout_ms} ms</{color_value}>"
                 )
             if node.success_criteria:
-                #     Succes Criteria: <node.success_criteria>
+                #     Success Criteria: <node.success_criteria>
                 lines.append(
                     f"\t<{color_tool}>Success Criteria</{color_tool}>: "
                     + f"<{color_value}>{node.success_criteria}</{color_value}>"
