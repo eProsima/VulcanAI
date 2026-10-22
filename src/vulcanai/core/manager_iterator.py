@@ -89,7 +89,7 @@ class IterativeManager(ToolManager):
             self._timeline.append({"iteration": self.iter, "event": TimelineEvent.GOAL_SET.value})
         except Exception as e:
             self.logger.log_manager(
-                f"Error getting goal from user request{self.logger.exception_location(e)}: {e}", error=True
+                f"Error getting goal from user request {self.logger.exception_location(e)}", error=True
             )
             return {"error": "Error getting goal from user request."}
 
@@ -154,9 +154,7 @@ class IterativeManager(ToolManager):
                     self.logger.log_manager(f"Iteration {self.iter} failed.", error=True)
 
             except Exception as e:
-                self.logger.log_manager(
-                    f"Error handling user request{self.logger.exception_location(e)}: {e}", error=True
-                )
+                self.logger.log_manager(f"Error handling user request {self.logger.exception_location(e)}", error=True)
                 return {"error": str(e), "timeline": self._timeline}
 
         return {
@@ -505,7 +503,7 @@ validation = AIValidation(
                     return False
             except Exception as e:
                 self.logger.log_manager(
-                    f"Error during perceptual verification{self.logger.exception_location(e)}: {e}", error=True
+                    f"Error during perceptual verification {self.logger.exception_location(e)}", error=True
                 )
                 return False
 
@@ -540,7 +538,7 @@ validation = AIValidation(
                     )
             except Exception as e:
                 self.logger.log_manager(
-                    f"Error running verification tool '{tool_name}'{self.logger.exception_location(e)}: {e}",
+                    f"Error running verification tool '{tool_name}' {self.logger.exception_location(e)}",
                     error=True,
                 )
                 continue

@@ -143,15 +143,15 @@ class VulcanAILogger:
     @staticmethod
     def exception_location(error: BaseException) -> str:
         """
-        Return ' in <path>/<file> (line N)' with the place where 'error' was raised,
-        highlighting the file name and the line, or '' if it is unknown.
+        Return 'in <path>/<file> (line N): {error}', highlighting the file name
+        and line, or just the error text if its location is unknown. No leading space.
 
         The deepest frame outside installed libraries and the standard library is used,
         so a failing tool points to its own code instead of to VulcanAI or ROS 2 internals.
         """
         frames = traceback.extract_tb(getattr(error, "__traceback__", None))
         if not frames:
-            return ""
+            return str(error)
 
         stdlib = sysconfig.get_paths().get("stdlib", "")
 
@@ -165,7 +165,7 @@ class VulcanAILogger:
 
         frame = next((f for f in reversed(frames) if not is_library(f.filename)), frames[-1])
         path = Path(frame.filename)
-        return f" in {path.parent}/[error]{path.name}[/error] [error](line {frame.lineno})[/error]"
+        return f"in {path.parent}/[error]{path.name}[/error] [error](line {frame.lineno})[/error]: {error}"
 
     # endregion
 

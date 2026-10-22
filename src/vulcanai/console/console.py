@@ -468,14 +468,11 @@ class VulcanConsole(App):
                     result = self.manager.handle_user_request(user_input, context={"images": images})
 
                 except Exception as e:
-                    self.logger.log_msg(
-                        f"[error]Error handling request{self.logger.exception_location(e)}:[/error] {e}"
-                    )
+                    self.logger.log_msg(f"[error]Error handling request {self.logger.exception_location(e)}[/error]")
                     return
 
-                # Store the plan and blackboard state. Failed requests have no plan to rerun
-                if result.get("plan", None) is not None:
-                    self.plans_list.append(result["plan"])
+                # Keep a history entry even when the request did not generate a plan.
+                self.plans_list.append(result.get("plan"))
                 self.last_bb = result.get("blackboard", None)
 
                 # Print the blackboard state
@@ -912,7 +909,7 @@ class VulcanConsole(App):
         try:
             result = self.manager.executor.run(plan, self.manager.bb)
         except Exception as e:
-            self.logger.log_msg(f"[error]Error rerunning plan{self.logger.exception_location(e)}:[/error] {e}")
+            self.logger.log_msg(f"[error]Error rerunning plan {self.logger.exception_location(e)}[/error]")
             return
 
         last_bb = result.get("blackboard", None)
@@ -1258,7 +1255,7 @@ class VulcanConsole(App):
             try:
                 handler(args)
             except Exception as e:
-                self.logger.log_msg(f"[error]Error{self.logger.exception_location(e)}: {e!r}[/error]")
+                self.logger.log_msg(f"[error]Error {self.logger.exception_location(e)}[/error]")
 
     async def _paste_clipboard(self) -> None:
         """

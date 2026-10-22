@@ -358,7 +358,7 @@ class PlanExecutor:
             self.logger.log_executor(
                 "Execution <bold>[error]failed[/error]</bold> for "
                 + f"<italic>[executor]'{tool_name}'[/executor]</italic>"
-                + f"{self.logger.exception_location(e)}: {e}",
+                + f" {self.logger.exception_location(e)}",
                 error=True,
             )
             return False, None
