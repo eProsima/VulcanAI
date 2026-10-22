@@ -246,8 +246,11 @@ class VulcanConsole(App):
         self.logger.set_textualizer_console(TextualLogSink(self))
 
         # Tools to register from entry points
-        self.register_from_file = ([register_from_file] if isinstance(register_from_file, str)
-                                   and register_from_file else list(register_from_file or []))
+        self.register_from_file = (
+            [register_from_file]
+            if isinstance(register_from_file, str) and register_from_file
+            else list(register_from_file or [])
+        )
         self.tools_from_entrypoints = tools_from_entrypoints
         self.user_context = user_context
         # ROS 2 main node
@@ -779,10 +782,10 @@ class VulcanConsole(App):
     @work(group="reload-tools")
     async def _reload_registered_tools(self) -> None:
         try:
-            result = await asyncio.to_thread(
-                self.manager.registry.reload_tools_from_files, self.register_from_file)
+            result = await asyncio.to_thread(self.manager.registry.reload_tools_from_files, self.register_from_file)
             self.logger.log_console(
-                f"Reloaded {len(result['updated'])} tools from {result['files']} files.", color="console")
+                f"Reloaded {len(result['updated'])} tools from {result['files']} files.", color="console"
+            )
             if result["removed"]:
                 self.logger.log_console("Removed tools: " + ", ".join(result["removed"]))
         except Exception as error:
