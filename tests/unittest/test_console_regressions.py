@@ -78,6 +78,17 @@ class TestConsoleRegressions(unittest.IsolatedAsyncioTestCase):
         self.logger_mod.VulcanAILogger._default_instance = self._default_logger_instance
         self.logger_mod.VulcanAILogger._rich_markup = self._rich_markup_enabled
 
+    def test_entrypoint_groups_are_normalized_to_a_list(self):
+        for value, expected in (
+            (None, []),
+            ("", []),
+            ("turtle_tools", ["turtle_tools"]),
+            (["turtle_tools", "other_tools"], ["turtle_tools", "other_tools"]),
+        ):
+            with self.subTest(value=value):
+                console = self.console_mod.VulcanConsole(tools_from_entrypoints=value, default_tools=False)
+                self.assertEqual(console.tools_from_entrypoints, expected)
+
     def test_tools_command_escapes_tool_summaries(self):
         """`/tools` should escape tool descriptions that contain markup-like tokens."""
         console = self.console_mod.VulcanConsole(default_tools=False)

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import ast
+import hashlib
 import importlib
 import inspect
 import sys
@@ -102,6 +103,10 @@ class ToolRegistry:
         self._index: list[Tuple[str, np.ndarray]] = []
         # List of modules where tools can be loaded from
         self._loaded_modules: list[ModuleType] = []
+        # Tool names registered from each file path, used to identify tools during reload
+        self._file_tools: dict[str, set[str]] = {}
+        # Loaded module for each file path, used to replace modules during reload
+        self._file_modules: dict[str, ModuleType] = {}
         # Tool classes already processed by register(), which goes through every loaded module on each call
         self._seen_tool_classes: set[type] = set()
         # Add help_tool to registry but not to index
@@ -227,18 +232,30 @@ class ToolRegistry:
 
     def _load_tools_from_file(self, path: str):
         """Dynamically load a Python file with @vulcanai_tool classes."""
+        module_name = None
+        overriden = None
         try:
-            path = Path(path)
-            module_name = path.stem
+            path = Path(path).expanduser().resolve()
+            module_name = "vulcanai_file_" + hashlib.sha256(str(path).encode()).hexdigest()[:16]
 
             spec = importlib.util.spec_from_file_location(module_name, str(path))
             if spec is None:
                 raise ImportError(f"Cannot import {path}")
             module = importlib.util.module_from_spec(spec)
+            overriden = sys.modules.get(module_name)
             sys.modules[module_name] = module
-            spec.loader.exec_module(module)
+            # Read source directly so rapid edits cannot reuse stale bytecode.
+            code = compile(path.read_bytes(), str(path), "exec")
+            exec(code, module.__dict__)
             self._loaded_modules.append(module)
+            return module
         except Exception as e:
+            if module_name is not None:
+                # Clean the imports map or restore the overriden
+                if overriden is None:
+                    sys.modules.pop(module_name, None)
+                else:
+                    sys.modules[module_name] = overriden
             # Highlight the file name and the failing line, not the whole path
             location = self._error_location(e, path)
             self.logger.log_registry(
@@ -467,10 +484,116 @@ class ToolRegistry:
             return None
 
     def discover_tools_from_file(self, path: str):
-        """Load tools from a Python file and register them."""
-        self._load_tools_from_file(path)
+        """Load tools from a Python file and track its registered instances."""
+        path = str(Path(path).expanduser().resolve())
+        before = set(self.tools) | set(self.deactivated_tools)
+        module = self._load_tools_from_file(path)
         self.register()
+        if module is not None:
+            self._file_tools.setdefault(path, set()).update(
+                (
+                    name
+                    for name in (set(self.tools) | set(self.deactivated_tools)) - before
+                    if type(self._get_tool_by_name(name)).__module__ == module.__name__
+                )
+            )
+            self._file_modules[path] = module
         self.help_tool.available_tools = self.tools
+
+    def reload_tools_from_files(self, paths=None):
+        """Replace file-defined tools atomically, preserving activation choices.
+
+        Stage source imports, validation, instances and embeddings first. If any
+        file is invalid, leave the registered tools and search index unchanged.
+        Missing files are logged and raise FileNotFoundError; restore the file
+        before retrying the reload.
+        """
+        paths = list(self._file_tools) if paths is None else paths
+        if isinstance(paths, str):
+            paths = [paths]
+        paths = list(dict.fromkeys(str(Path(p).expanduser().resolve()) for p in paths))
+        owned = set().union(*(self._file_tools.get(p, set()) for p in paths))
+        all_tools = {**self.deactivated_tools, **self.tools}
+        staged, modules, file_names, embeddings = {}, {}, {}, []
+        previous_modules = {}
+        try:
+            for path in paths:
+                module_name = "vulcanai_file_" + hashlib.sha256(path.encode()).hexdigest()[:16]
+                previous_modules[module_name] = sys.modules.get(module_name)
+                spec = importlib.util.spec_from_file_location(module_name, path)
+                module = importlib.util.module_from_spec(spec)
+                sys.modules[module_name] = module
+                code = compile(Path(path).read_bytes(), path, "exec")
+                exec(code, module.__dict__)
+                modules[path] = module
+                file_names[path] = set()
+                classes = {
+                    cls
+                    for cls in vars(module).values()
+                    if isinstance(cls, type)
+                    and issubclass(cls, ITool)
+                    and cls.__module__ == module_name
+                    and getattr(cls, "__is_vulcanai_tool__", False)
+                }
+                for cls in sorted(classes, key=lambda cls: cls.__name__):
+                    if not self.check_tool_class(cls):
+                        raise ValueError(f"Invalid tool class {cls.__name__} in {path}")
+                    if cls.name in staged or (cls.name in all_tools and cls.name not in owned):
+                        raise ValueError(f"Duplicate tool name '{cls.name}' in {path}")
+                    instance = self._instantiate_tool(cls)
+                    if instance is None:
+                        raise ValueError(f"Could not instantiate '{cls.name}' in {path}")
+                    staged[cls.name] = instance
+                    file_names[path].add(cls.name)
+                    embeddings.append((cls.name, self.embedder.embed(self._doc(instance))))
+            candidates = {name: tool for name, tool in all_tools.items() if name not in owned}
+            candidates.update(staged)
+            # Rebind every composite, including tools in files not reloaded.
+            bindings = []
+            for tool in candidates.values():
+                if isinstance(tool, CompositeTool):
+                    missing = [name for name in tool.dependencies if name not in candidates]
+                    for name in missing:
+                        self.logger.log_registry(
+                            f"ERROR. Dependency '{name}' for tool '{tool.name}' not found.", error=True
+                        )
+                    bindings.append(
+                        (tool, {name: candidates[name] for name in tool.dependencies if name in candidates})
+                    )
+        except Exception as error:
+            for name, previous in previous_modules.items():
+                if previous is None:
+                    sys.modules.pop(name, None)
+                else:
+                    sys.modules[name] = previous
+            if isinstance(error, FileNotFoundError):
+                self.logger.log_registry(
+                    f"Tool reload failed; registered tools kept. File not found: {error.filename}. "
+                    + "Restore the file before retrying the reload.",
+                    error=True,
+                )
+            raise
+
+        inactive = set(self.deactivated_tools)
+        active_tools = {name: tool for name, tool in candidates.items() if name not in inactive}
+        inactive_tools = {name: tool for name, tool in candidates.items() if name in inactive}
+        self.tools.clear()
+        self.tools.update(active_tools)
+        self.deactivated_tools.clear()
+        self.deactivated_tools.update(inactive_tools)
+        self._index = [(name, vector) for name, vector in self._index if name not in owned] + embeddings
+        self.validation_tools = [name for name, tool in candidates.items() if tool.is_validation_tool]
+        for tool, dependencies in bindings:
+            tool.resolved_deps = dependencies
+        old_modules = {self._file_modules[p] for p in paths if p in self._file_modules}
+        self._loaded_modules = [module for module in self._loaded_modules if module not in old_modules]
+        self._loaded_modules.extend(modules.values())
+        self._seen_tool_classes = {cls for cls in self._seen_tool_classes if cls.__module__ not in previous_modules}
+        self._seen_tool_classes.update(type(tool) for tool in staged.values())
+        self._file_tools.update(file_names)
+        self._file_modules.update(modules)
+        self.help_tool.available_tools = self.tools
+        return {"files": len(paths), "updated": sorted(staged), "removed": sorted(owned - set(staged))}
 
     def discover_tools_from_entry_points(self, group: str = "custom_tools"):
         """Load tools from Python entry points."""

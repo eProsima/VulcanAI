@@ -201,8 +201,8 @@ class VulcanConsole(App):
         model: str = "gpt-5-nano",
         k: int = 7,
         iterative: bool = False,
-        register_from_file: str = "",
-        tools_from_entrypoints: str = "",
+        register_from_file: str | list[str] | None = None,
+        tools_from_entrypoints: str | list[str] | None = None,
         user_context: str = "",
         main_node=None,
         default_tools: bool = True,
@@ -246,8 +246,16 @@ class VulcanConsole(App):
         self.logger.set_textualizer_console(TextualLogSink(self))
 
         # Tools to register from entry points
-        self.register_from_file = register_from_file
-        self.tools_from_entrypoints = tools_from_entrypoints
+        self.register_from_file = (
+            [register_from_file]
+            if isinstance(register_from_file, str) and register_from_file
+            else list(register_from_file or [])
+        )
+        self.tools_from_entrypoints = (
+            [tools_from_entrypoints]
+            if isinstance(tools_from_entrypoints, str) and tools_from_entrypoints
+            else list(tools_from_entrypoints or [])
+        )
         self.user_context = user_context
         # ROS 2 main node
         self.main_node = main_node
@@ -372,6 +380,7 @@ class VulcanConsole(App):
             "/help": self.cmd_help,
             "/tools": self.cmd_tools,
             "/edit_tools": self.cmd_edit_tools,
+            "/reload_tools": self.cmd_reload_tools,
             "/change_k": self.cmd_change_k,
             "/history": self.cmd_history_index,
             "/debug": self.cmd_debug,
@@ -686,6 +695,7 @@ class VulcanConsole(App):
                 "/<bold>help</bold>           - Show this help message\n"
                 "/<bold>tools</bold>          - List available tools\n"
                 "/<bold>edit_tools</bold>     - Edit the list of available tools\n"
+                "/<bold>reload_tools</bold>   - Reload @vulcanai_tool classes from registered files\n"
                 "/<bold>change_k 'int'</bold> - Change the 'k' value for the top_k algorithm selection"
                 " or show the current value if no 'int' is provided\n"
                 "/<bold>history 'int'</bold>  - Change the history depth or show the current value if no"
@@ -759,6 +769,33 @@ class VulcanConsole(App):
         if self._is_default_tool(tool_name):
             return f"{action} default tool '{tool_name}'"
         return f"{action} tool '{tool_name}'"
+
+    def cmd_reload_tools(self, args) -> None:
+        if args:
+            self.logger.log_console("Usage: /reload_tools")
+            return
+        if not self.register_from_file:
+            self.logger.log_console("No tool files were registered for this console.")
+            return
+        if self.query_one("#cmd", Input).disabled or self._is_stream_task_active():
+            self.logger.log_console("Finish the running request or stop streaming before reloading tools.")
+            return
+        self.set_input_enabled(False)
+        self._reload_registered_tools()
+
+    @work(group="reload-tools")
+    async def _reload_registered_tools(self) -> None:
+        try:
+            result = await asyncio.to_thread(self.manager.registry.reload_tools_from_files, self.register_from_file)
+            self.logger.log_console(
+                f"Reloaded {len(result['updated'])} tools from {result['files']} files.", color="console"
+            )
+            if result["removed"]:
+                self.logger.log_console("Removed tools: " + ", ".join(result["removed"]))
+        except Exception as error:
+            self.logger.log_msg(f"[error]Tool reload failed; registered tools kept: {error}[/error]")
+        finally:
+            self.set_input_enabled(True)
 
     def cmd_edit_tools(self, _) -> None:
         all_names = sorted(
