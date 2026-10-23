@@ -33,11 +33,11 @@ class OpenAIModel(IModel):
         self.logger = logger
         self.model_name = model_name
         self.hooks = hooks
-        self._check_model()
+        self._load_model()
 
-    def _check_model(self):
+    def _load_model(self):
         """
-        Check at startup that the model exists and the API key is valid,
+        Load the model and check at startup that it exists and the API key is valid,
         instead of failing on the first query. Only logs, never raises.
         """
         try:

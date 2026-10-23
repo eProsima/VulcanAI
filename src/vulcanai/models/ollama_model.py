@@ -32,14 +32,15 @@ class OllamaModel(IModel):
         self.logger = logger
         self.model_name = model_name
         self.hooks = hooks
-        self.model = ollama
-        self._check_model()
+        self._load_model()
 
-    def _check_model(self):
+    def _load_model(self):
         """
-        Check at startup that the Ollama server is reachable and the model is pulled,
-        instead of failing on the first query. Only logs, never raises.
+        Initialize the model backend and check at startup that the Ollama server
+        is reachable and the model is pulled, instead of failing on the first query.
+        Only logs, never raises.
         """
+        self.model = ollama
         if self.logger is None:
             return
         try:
