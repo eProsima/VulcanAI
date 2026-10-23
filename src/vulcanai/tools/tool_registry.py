@@ -18,7 +18,6 @@ import importlib
 import inspect
 import sys
 import textwrap
-import tokenize
 import traceback
 from importlib.metadata import entry_points
 from pathlib import Path
@@ -246,8 +245,8 @@ class ToolRegistry:
             overriden = sys.modules.get(module_name)
             sys.modules[module_name] = module
             # Read source directly so rapid edits cannot reuse stale bytecode.
-            with tokenize.open(path) as source:
-                exec(compile(source.read(), str(path), "exec"), module.__dict__)
+            code = compile(path.read_bytes(), str(path), "exec")
+            exec(code, module.__dict__)
             self._loaded_modules.append(module)
             return module
         except Exception as e:
@@ -524,8 +523,8 @@ class ToolRegistry:
                 spec = importlib.util.spec_from_file_location(module_name, path)
                 module = importlib.util.module_from_spec(spec)
                 sys.modules[module_name] = module
-                with tokenize.open(path) as source:
-                    exec(compile(source.read(), path, "exec"), module.__dict__)
+                code = compile(Path(path).read_bytes(), path, "exec")
+                exec(code, module.__dict__)
                 modules[path] = module
                 file_names[path] = set()
                 classes = {
