@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import re
 import sys
 import threading
 
@@ -468,8 +469,7 @@ class VulcanConsole(App):
                 images = []
 
                 # Add the images
-                if "--image=" in user_input:
-                    images = self.get_images(user_input)
+                images = self.get_images(user_input)
 
                 # Handle user request
                 try:
@@ -873,6 +873,9 @@ class VulcanConsole(App):
             self.logger.log_msg(f"<bold>Plan summary:</bold> {plan_summary}\n")
 
     def cmd_clear_history(self, _) -> None:
+        # Agent mode: also forget the Claude conversation
+        if hasattr(self.manager, "reset_session"):
+            self.manager.reset_session()
         # Reset history
         self.history.clear()
         self.history_index = None
@@ -1616,7 +1619,10 @@ class VulcanConsole(App):
         """
         Function used to initialize VulcanAI Manager.
         """
-        if self.iterative:
+        if self.model.lower().startswith("claude-agent"):
+            # Agent mode: Claude runs the loop and calls the tools itself
+            from vulcanai.core.manager_claude_agent import ClaudeAgentManager as ConsoleManager
+        elif self.iterative:
             from vulcanai.core.manager_iterator import IterativeManager as ConsoleManager
         else:
             from vulcanai.core.manager_plan import PlanManager as ConsoleManager
@@ -1629,16 +1635,24 @@ class VulcanConsole(App):
         # Update right panel info
         self._update_variables_panel()
 
-    def get_images(self, user_input: str) -> None:
+    # Accepts "--image=path", "--image path" and "-- image=path", with optional quotes for paths with spaces
+    IMAGE_ARG_PATTERN = re.compile(r"--\s*image\s*[=\s]\s*(\"[^\"]+\"|'[^']+'|\S+)")
+
+    def get_images(self, user_input: str) -> list[str]:
         """
         Function used to get the images added by the user in the LLM query.
+        Images that do not exist are reported and skipped.
         """
-        parts = user_input.split()
         images = []
-
-        for part in parts:
-            if part.startswith("--image="):
-                images.append(part[len("--image=") :])
+        for match in self.IMAGE_ARG_PATTERN.finditer(user_input):
+            path = os.path.expanduser(match.group(1).strip("\"'"))
+            if not os.path.isfile(path):
+                # Unquoted paths may catch the punctuation of the sentence ("--image=logo.png, draw it")
+                path = path.rstrip(",.;:!?)]}")
+            if path.startswith(("http://", "https://")) or os.path.isfile(path):
+                images.append(path)
+            else:
+                self.logger.log_msg(f"[error]Image not found, it will not be sent:[/error] {path}")
         return images
 
 
@@ -1648,7 +1662,8 @@ def main() -> None:
         "--model",
         type=str,
         default="gpt-5-nano",
-        help="LLM model to used in the agent (ej: gpt-5-nano, gemini-2.0-flash, claude-sonnet, etc.)",
+        help="LLM model to used in the agent (ej: gpt-5-nano, gemini-2.0-flash, claude-sonnet, etc.)."
+        " Use claude-agent, claude-agent-opus, claude-agent-sonnet... for the Claude agent mode",
     )
     parser.add_argument(
         "--register-from-file",
