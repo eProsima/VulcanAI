@@ -175,7 +175,8 @@ class CheckListModal(ModalScreen[list[str] | None]):
 
     .dialog {
         width: 60%;
-        max-width: 90%;
+        min-width: 60;        /* small terminals: keep room for the buttons */
+        max-width: 95%;
         height: 80%;          /* fixed portion of terminal */
         border: round $accent;
         padding: 1 2;
@@ -199,18 +200,25 @@ class CheckListModal(ModalScreen[list[str] | None]):
         padding-right: 2;
     }
 
+    /* Two rows of buttons sharing the dialog width, so all of them fit */
     .btns {
         height: auto;
         width: 100%;
-        margin-top: 1;
         padding: 0;
-        content-align: right middle;
-        align-horizontal: right;
+    }
+
+    .btns-toggle {
+        margin-top: 1;
     }
 
     .btns Button {
-        padding: 0 2;
-        margin-left: 1;
+        width: 1fr;
+        min-width: 0;
+        padding: 0 1;
+    }
+
+    .btns Button:first-of-type {
+        margin-right: 1;
     }
     """
 
@@ -268,10 +276,11 @@ class CheckListModal(ModalScreen[list[str] | None]):
                                 classes="group-child",
                             )
 
-            with Horizontal(classes="btns"):
+            with Horizontal(classes="btns btns-toggle"):
                 yield Button("Toggle Default Tools", variant="default", id="toggle-default")
                 yield Button("Toggle All Tools", variant="default", id="toggle-all")
-                yield Button("Cancel", variant="default", id="cancel")
+            with Horizontal(classes="btns"):
+                yield Button("Cancel", variant="error", id="cancel")
                 yield Button("Submit", variant="primary", id="submit")
 
     def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
@@ -436,7 +445,7 @@ class RadioListModal(ModalScreen[str | None]):
 
             # Buttons
             with Horizontal(classes="btns"):
-                yield Button("Cancel", variant="default", id="cancel")
+                yield Button("Cancel", variant="error", id="cancel")
                 yield Button("Submit", variant="primary", id="submit")
 
     def on_mount(self) -> None:

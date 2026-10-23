@@ -18,6 +18,7 @@ import time
 from typing import Iterable, Optional, Type, TypeVar
 
 from google import genai
+from google.genai import errors as gerrors
 from google.genai import types as gtypes
 
 from vulcanai.core.plan_types import AIValidation, GlobalPlan, GoalSpec
@@ -34,10 +35,33 @@ class GeminiModel(IModel):
         self.logger = logger
         self.model_name = model_name
         self.hooks = hooks
+        self._load_model()
+
+    def _load_model(self):
+        """
+        Load the model and check at startup that it exists and the API key is valid,
+        instead of failing on the first query. Only logs, never raises.
+        """
         try:
             self.model = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
         except Exception as e:
-            self.logger.log_manager(f"ERROR. Missing Gemini API Key: {e}", error=True)
+            if self.logger is not None:
+                self.logger.log_manager(f"ERROR. Missing Gemini API Key: {e}", error=True)
+            self.model = None
+            return
+        if self.logger is None:
+            return
+        try:
+            self.model.models.get(model=self.model_name, config={"http_options": {"timeout": 5000}})
+        except gerrors.ClientError as e:
+            if e.code == 404:
+                self.logger.log_manager(f"Model '[error]{self.model_name}[/error]' not found in Gemini.", error=True)
+            elif e.code in (400, 401, 403):
+                self.logger.log_manager(f"Invalid Gemini API Key: {e}", error=True)
+            else:
+                self.logger.log_manager(f"Could not check Gemini model '{self.model_name}': {e}", error=True)
+        except Exception as e:
+            self.logger.log_manager(f"Could not check Gemini model '{self.model_name}': {e}", error=True)
 
     def _inference(
         self,

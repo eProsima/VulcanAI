@@ -16,7 +16,7 @@ import mimetypes
 import time
 from typing import Any, Dict, Iterable, Optional, Type, TypeVar
 
-from openai import OpenAI
+from openai import AuthenticationError, NotFoundError, OpenAI
 
 from vulcanai.core.plan_types import AIValidation, GlobalPlan, GoalSpec
 from vulcanai.models.model import IModel, IModelHooks
@@ -33,10 +33,33 @@ class OpenAIModel(IModel):
         self.logger = logger
         self.model_name = model_name
         self.hooks = hooks
+        self._load_model()
+
+    def _load_model(self):
+        """
+        Load the model and check at startup that it exists and the API key is valid,
+        instead of failing on the first query. Only logs, never raises.
+        """
         try:
             self.model = OpenAI()
         except Exception as e:
-            self.logger.log_manager(f"Missing OpenAI API Key: {e}", error=True)
+            if self.logger is not None:
+                self.logger.log_manager(f"Missing OpenAI API Key: {e}", error=True)
+            self.model = None
+            return
+        if self.logger is None:
+            return
+        try:
+            self.model.with_options(timeout=5, max_retries=0).models.retrieve(self.model_name)
+        except NotFoundError:
+            self.logger.log_manager(
+                f"Model '[error]{self.model_name}[/error]' not found in OpenAI (or not available for this API key).",
+                error=True,
+            )
+        except AuthenticationError as e:
+            self.logger.log_manager(f"Invalid OpenAI API Key: {e}", error=True)
+        except Exception as e:
+            self.logger.log_manager(f"Could not check OpenAI model '{self.model_name}': {e}", error=True)
 
     def _inference(
         self,

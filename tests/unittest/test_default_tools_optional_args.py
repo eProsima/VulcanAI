@@ -17,6 +17,7 @@ import os
 import sys
 import types
 import unittest
+from contextlib import contextmanager
 from unittest.mock import Mock, patch
 
 
@@ -34,7 +35,7 @@ class _DummySentenceTransformer:
 sys.modules.setdefault("sentence_transformers", types.SimpleNamespace(SentenceTransformer=_DummySentenceTransformer))
 
 
-def _install_rclpy_stubs():
+def _ros_module_stubs():
     rclpy_mod = types.ModuleType("rclpy")
     rclpy_mod.ok = lambda: True
     rclpy_mod.init = lambda: None
@@ -63,17 +64,48 @@ def _install_rclpy_stubs():
 
     task_mod.Future = Future
 
-    sys.modules["rclpy"] = rclpy_mod
-    sys.modules["rclpy.node"] = node_mod
-    sys.modules["rclpy.task"] = task_mod
+    runtime_mod = types.ModuleType("rosidl_runtime_py")
+    set_message_mod = types.ModuleType("rosidl_runtime_py.set_message")
+
+    def set_message_fields(message, values):
+        for name, value in values.items():
+            if name not in message.get_fields_and_field_types():
+                raise AttributeError(name)
+            setattr(message, name, value)
+
+    set_message_mod.set_message_fields = set_message_fields
+    runtime_mod.set_message = set_message_mod
+    return {
+        "rclpy": rclpy_mod,
+        "rclpy.node": node_mod,
+        "rclpy.task": task_mod,
+        "rosidl_runtime_py": runtime_mod,
+        "rosidl_runtime_py.set_message": set_message_mod,
+    }
+
+
+@contextmanager
+def _scoped_ros_stubs(name, module):
+    replacements = {**_ros_module_stubs(), name: module}
+    missing = object()
+    previous = {key: sys.modules.get(key, missing) for key in replacements}
+    sys.modules.update(replacements)
+    try:
+        yield
+    finally:
+        # Restore only substituted entries. Removing all modules imported in
+        # this scope would unload shared dependencies such as NumPy.
+        for key, value in previous.items():
+            if value is missing:
+                sys.modules.pop(key, None)
+            else:
+                sys.modules[key] = value
 
 
 CURRENT_DIR = os.path.dirname(__file__)
 SRC_DIR = os.path.abspath(os.path.join(CURRENT_DIR, os.path.pardir, os.path.pardir, "src"))
 if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
-
-_install_rclpy_stubs()
 
 
 class _MockLogger:
@@ -165,11 +197,19 @@ class _NeverCancelledFuture:
 
 
 class _StringMessage:
+    @classmethod
+    def get_fields_and_field_types(cls):
+        return {"data": "string"}
+
     def __init__(self):
         self.data = ""
 
 
 class _CustomMessage:
+    @classmethod
+    def get_fields_and_field_types(cls):
+        return {"value": "int32"}
+
     def __init__(self):
         self.value = None
 
@@ -177,7 +217,15 @@ class _CustomMessage:
 class _DefaultToolsOptionalArgsBase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.default_tools = importlib.import_module("vulcanai.tools.default_tools")
+        # Load a private copy with scoped stubs. Do not replace the real module
+        # or leak fake ROS modules into other tests in the same process.
+        name = "vulcanai.tools._optional_args_test_tools"
+        path = os.path.join(SRC_DIR, "vulcanai", "tools", "default_tools.py")
+        spec = importlib.util.spec_from_file_location(name, path)
+        module = importlib.util.module_from_spec(spec)
+        with _scoped_ros_stubs(name, module):
+            spec.loader.exec_module(module)
+        cls.default_tools = module
 
     def setUp(self):
         self.console = _MockConsole()
@@ -188,6 +236,15 @@ class _DefaultToolsOptionalArgsBase(unittest.TestCase):
         tool = tool_cls()
         tool.bb = {"console": self.console, "main_node": self.node}
         return tool
+
+
+class TestROSStubIsolation(unittest.TestCase):
+    def test_private_import_restores_existing_ros_modules(self):
+        names = [*_ros_module_stubs(), "vulcanai.tools.default_tools"]
+        before = {name: sys.modules.get(name) for name in names}
+        _DefaultToolsOptionalArgsBase.setUpClass()
+        for name in names:
+            self.assertIs(sys.modules.get(name), before[name], name)
 
 
 # region TOPIC
