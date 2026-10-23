@@ -22,6 +22,7 @@ class Brand(str, Enum):
     gemini = "gemini"
     gpt = "gpt"
     ollama = "ollama"
+    claude = "claude"
 
 
 class Agent:
@@ -105,6 +106,14 @@ class Agent:
         :return: Tuple of (Brand enum, stripped model name).
         """
         m = model_name.lower()
+        if m.startswith("claude"):
+            # "claude" uses the account default model, "claude-opus" / "claude-sonnet" / "claude-haiku"
+            # the latest model of that family, and full ids (e.g. "claude-sonnet-5-5") are used as given
+            if m == "claude":
+                return Brand.claude, None
+            if m in ("claude-opus", "claude-sonnet", "claude-haiku"):
+                return Brand.claude, m[len("claude-") :]
+            return Brand.claude, model_name
         if m.startswith("ollama-"):
             return Brand.ollama, model_name[len("ollama-") :]
         if m.startswith(("gpt-", "o")):
@@ -132,6 +141,14 @@ class Agent:
 
             self.logger.log_manager("Using Ollama API with model: " + f"[manager]{model_name}[/manager]")
             self.model = OllamaModel(model_name, self.logger)
+
+        elif self.brand == Brand.claude:
+            from vulcanai.models.claude import ClaudeModel
+
+            self.logger.log_manager(
+                "Using Claude Agent SDK with model: " + f"[manager]{model_name or 'account default'}[/manager]"
+            )
+            self.model = ClaudeModel(model_name, self.logger)
 
         else:
             raise NotImplementedError(f"LLM brand {self.brand} not supported.")

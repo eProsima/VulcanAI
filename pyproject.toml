@@ -30,6 +30,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Claude models (claude-*) and vulcanai-claude-login
+claude = [
+    "claude-agent-sdk==0.2.168",
+]
 test = [
     "pytest==8.4.2",
 ]
@@ -45,6 +49,7 @@ vulcanai = ["py.typed", "*.pyi", "**/*.pyi"]
 
 [project.scripts]
 vulcanai-console = "vulcanai.console.console:main"
+vulcanai-claude-login = "vulcanai.models.claude:login"
 
 # Linter options
 [tool.ruff]
