@@ -79,6 +79,22 @@ class ReloadTests(unittest.TestCase):
         self.assertIs(self.registry.tools["draw"].resolved_deps["move"], self.registry.tools["move"])
         self.assertEqual(len([n for n, _ in self.registry._index if n == "move"]), 1)
 
+    def test_discovery_and_reload_respect_source_encodings(self):
+        for encoding, prefix in (
+            ("utf-8", ""),
+            ("latin-1", "# coding: latin-1\n"),
+            ("utf-8-sig", ""),
+        ):
+            with self.subTest(encoding=encoding):
+                path = Path(self.tmp.name) / f"{encoding}.py"
+                name = f"move_{encoding}"
+                path.write_bytes((prefix + HEADER + atomic(name, "café")).encode(encoding))
+                self.registry.discover_tools_from_file(str(path))
+                self.assertEqual(self.registry.tools[name].run(), {"value": "café"})
+                path.write_bytes((prefix + HEADER + atomic(name, "olé")).encode(encoding))
+                self.registry.reload_tools_from_files([str(path)])
+                self.assertEqual(self.registry.tools[name].run(), {"value": "olé"})
+
     def test_inactive_choices_preserved_and_new_tools_activated(self):
         self.registry.deactivate_tool("move")
         self.path.write_text(
