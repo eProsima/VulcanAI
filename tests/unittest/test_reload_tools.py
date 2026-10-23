@@ -98,6 +98,25 @@ class ReloadTests(unittest.TestCase):
         self.assertEqual([n for n, _ in self.registry._index], ["renamed"])
         self.assertIs(self.registry.help_tool.available_tools, self.registry.tools)
 
+    def test_missing_file_is_logged_and_preserves_registry_until_restored(self):
+        previous = dict(self.registry.tools)
+        previous_index = list(self.registry._index)
+        module = self.registry._file_modules[str(self.path)]
+        self.path.unlink()
+        with self.assertRaises(FileNotFoundError):
+            self.reload()
+        self.assertEqual(self.registry.tools, previous)
+        self.assertEqual(self.registry._index, previous_index)
+        self.assertIs(sys.modules[module.__name__], module)
+        self.registry.logger.log_registry.assert_any_call(
+            f"Tool reload failed; registered tools kept. File not found: {self.path}. "
+            + "Restore the file before retrying the reload.",
+            error=True,
+        )
+        self.path.write_text(HEADER + atomic(result="restored") + COMPOSITE)
+        self.reload()
+        self.assertEqual(self.registry.tools["draw"].run(), {"value": "restored"})
+
     def test_syntax_error_preserves_registry(self):
         previous = dict(self.registry.tools)
         self.path.write_text("def invalid(:")
@@ -106,12 +125,27 @@ class ReloadTests(unittest.TestCase):
         self.assertEqual(self.registry.tools, previous)
         self.assertEqual(self.registry.tools["draw"].run(), {"value": "old"})
 
-    def test_missing_dependency_preserves_registry(self):
-        previous = dict(self.registry.tools)
-        self.path.write_text(HEADER + COMPOSITE)
-        with self.assertRaisesRegex(ValueError, "missing dependencies"):
-            self.reload()
-        self.assertEqual(self.registry.tools, previous)
+    def test_missing_dependency_is_logged_and_other_tools_are_reloaded(self):
+        self.path.write_text(HEADER + atomic(result="new") + COMPOSITE.replace('["move"]', '["move", "missing"]'))
+        self.reload()
+        self.assertEqual(self.registry.tools["move"].run(), {"value": "new"})
+        self.assertEqual(self.registry.tools["draw"].resolved_deps, {"move": self.registry.tools["move"]})
+        self.registry.logger.log_registry.assert_any_call(
+            "ERROR. Dependency 'missing' for tool 'draw' not found.", error=True
+        )
+
+    def test_removed_dependency_is_unbound_from_composite_in_another_file(self):
+        other = Path(self.tmp.name) / "other.py"
+        other.write_text(HEADER + COMPOSITE.replace('name="draw"', 'name="other_draw"'))
+        self.registry.discover_tools_from_file(str(other))
+        self.path.write_text(HEADER + atomic("replacement"))
+        self.registry.reload_tools_from_files([str(self.path)])
+        self.assertNotIn("move", self.registry.tools)
+        self.assertIn("replacement", self.registry.tools)
+        self.assertEqual(self.registry.tools["other_draw"].resolved_deps, {})
+        self.registry.logger.log_registry.assert_any_call(
+            "ERROR. Dependency 'move' for tool 'other_draw' not found.", error=True
+        )
 
     def test_same_stem_files_and_cross_file_dependency(self):
         self.path.write_text(HEADER + atomic())

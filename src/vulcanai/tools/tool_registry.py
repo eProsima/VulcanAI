@@ -104,7 +104,9 @@ class ToolRegistry:
         self._index: list[Tuple[str, np.ndarray]] = []
         # List of modules where tools can be loaded from
         self._loaded_modules: list[ModuleType] = []
+        # Tool names registered from each file path, used to identify tools during reload
         self._file_tools: dict[str, set[str]] = {}
+        # Loaded module for each file path, used to replace modules during reload
         self._file_modules: dict[str, ModuleType] = {}
         # Tool classes already processed by register(), which goes through every loaded module on each call
         self._seen_tool_classes: set[type] = set()
@@ -232,7 +234,7 @@ class ToolRegistry:
     def _load_tools_from_file(self, path: str):
         """Dynamically load a Python file with @vulcanai_tool classes."""
         module_name = None
-        previous = None
+        overriden = None
         try:
             path = Path(path).expanduser().resolve()
             module_name = "vulcanai_file_" + hashlib.sha256(str(path).encode()).hexdigest()[:16]
@@ -241,7 +243,7 @@ class ToolRegistry:
             if spec is None:
                 raise ImportError(f"Cannot import {path}")
             module = importlib.util.module_from_spec(spec)
-            previous = sys.modules.get(module_name)
+            overriden = sys.modules.get(module_name)
             sys.modules[module_name] = module
             # Read source directly so rapid edits cannot reuse stale bytecode.
             with tokenize.open(path) as source:
@@ -250,10 +252,11 @@ class ToolRegistry:
             return module
         except Exception as e:
             if module_name is not None:
-                if previous is None:
+                # Clean the imports map or restore the overriden
+                if overriden is None:
                     sys.modules.pop(module_name, None)
                 else:
-                    sys.modules[module_name] = previous
+                    sys.modules[module_name] = overriden
             # Highlight the file name and the failing line, not the whole path
             location = self._error_location(e, path)
             self.logger.log_registry(
@@ -503,6 +506,8 @@ class ToolRegistry:
 
         Stage source imports, validation, instances and embeddings first. If any
         file is invalid, leave the registered tools and search index unchanged.
+        Missing files are logged and raise FileNotFoundError; restore the file
+        before retrying the reload.
         """
         paths = list(self._file_tools) if paths is None else paths
         if isinstance(paths, str):
@@ -549,17 +554,25 @@ class ToolRegistry:
             for tool in candidates.values():
                 if isinstance(tool, CompositeTool):
                     missing = [name for name in tool.dependencies if name not in candidates]
-                    if missing and (tool.name in staged or set(missing) & owned):
-                        raise ValueError(f"Tool '{tool.name}' has missing dependencies: {', '.join(missing)}")
+                    for name in missing:
+                        self.logger.log_registry(
+                            f"ERROR. Dependency '{name}' for tool '{tool.name}' not found.", error=True
+                        )
                     bindings.append(
                         (tool, {name: candidates[name] for name in tool.dependencies if name in candidates})
                     )
-        except Exception:
+        except Exception as error:
             for name, previous in previous_modules.items():
                 if previous is None:
                     sys.modules.pop(name, None)
                 else:
                     sys.modules[name] = previous
+            if isinstance(error, FileNotFoundError):
+                self.logger.log_registry(
+                    f"Tool reload failed; registered tools kept. File not found: {error.filename}. "
+                    + "Restore the file before retrying the reload.",
+                    error=True,
+                )
             raise
 
         inactive = set(self.deactivated_tools)
