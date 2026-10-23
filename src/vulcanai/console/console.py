@@ -1,4 +1,4 @@
-# Copyright 2026 Proyectos y Sistemas de Mantenimiento SL (eProsima).
+# Copyright 2025 Proyectos y Sistemas de Mantenimiento SL (eProsima).
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -201,8 +201,8 @@ class VulcanConsole(App):
         model: str = "gpt-5-nano",
         k: int = 7,
         iterative: bool = False,
-        register_from_file: str = "",
-        tools_from_entrypoints: str = "",
+        register_from_file: str | list[str] | None = None,
+        tools_from_entrypoints: str | list[str] | None = None,
         user_context: str = "",
         main_node=None,
         default_tools: bool = True,
@@ -251,7 +251,11 @@ class VulcanConsole(App):
             if isinstance(register_from_file, str) and register_from_file
             else list(register_from_file or [])
         )
-        self.tools_from_entrypoints = tools_from_entrypoints
+        self.tools_from_entrypoints = (
+            [tools_from_entrypoints]
+            if isinstance(tools_from_entrypoints, str) and tools_from_entrypoints
+            else list(tools_from_entrypoints or [])
+        )
         self.user_context = user_context
         # ROS 2 main node
         self.main_node = main_node
