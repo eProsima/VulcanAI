@@ -469,6 +469,8 @@ class CustomLogTextArea(TextArea):
             self.notify("Selected area copied to clipboard!")
         except Exception as e:
             error_color = VulcanAILogger.vulcanai_theme["error"]
-            self.append_line(f"<{error_color}>Clipboard error: {e}</{error_color}>")
+            # append_line() rejects text with line breaks, and pyperclip's error on Linux has them
+            for line in f"Clipboard error: {e}".splitlines():
+                self.append_line(f"<{error_color}>{line}</{error_color}>")
             self.notify(f"Clipboard error: {e}")
             return
