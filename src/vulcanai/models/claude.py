@@ -182,6 +182,8 @@ class ClaudeModel(IModel):
             tools=[],
             setting_sources=[],
             strict_mcp_config=True,
+            # Capture stderr so CLI cleanup cannot re-enable the terminal's native cursor.
+            stderr=lambda line: None,
             # Structured output needs one extra turn to return the result
             max_turns=3,
             # Do not save each query as a session transcript in ~/.claude/projects

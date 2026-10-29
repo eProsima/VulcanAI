@@ -78,6 +78,19 @@ class TestConsoleRegressions(unittest.IsolatedAsyncioTestCase):
         self.logger_mod.VulcanAILogger._default_instance = self._default_logger_instance
         self.logger_mod.VulcanAILogger._rich_markup = self._rich_markup_enabled
 
+    async def test_manager_initialization_failure_is_reported(self):
+        console = self.console_mod.VulcanConsole(default_tools=False)
+        console.logger = Mock()
+        console.logger.exception_location.return_value = "No module named 'claude_agent_sdk'"
+        console.init_manager = Mock(side_effect=ModuleNotFoundError("No module named 'claude_agent_sdk'"))
+
+        await console.bootstrap()
+
+        console.logger.log_manager.assert_called_once_with(
+            "Manager initialization failed No module named 'claude_agent_sdk'", error=True
+        )
+        self.assertFalse(getattr(console, "is_ready", False))
+
     def test_entrypoint_groups_are_normalized_to_a_list(self):
         for value, expected in (
             (None, []),

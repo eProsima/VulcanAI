@@ -375,7 +375,11 @@ class VulcanConsole(App):
         """
 
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, self.init_manager)
+        try:
+            await loop.run_in_executor(None, self.init_manager)
+        except Exception as e:
+            self.logger.log_manager(f"Manager initialization failed {self.logger.exception_location(e)}", error=True)
+            return
 
         # -- Add the commands (non-blocking, runs in event loop) --
         self.commands = {
