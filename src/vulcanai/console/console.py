@@ -1652,7 +1652,8 @@ def main() -> None:
         "--model",
         type=str,
         default="gpt-5-nano",
-        help="LLM model to used in the agent (ej: gpt-5-nano, gemini-2.0-flash, claude-sonnet, etc.)",
+        help="LLM model to be used in the agent (ej: gpt-5-nano, gemini-2.0-flash, claude-sonnet, etc.)."
+        " Use claude-agent, claude-agent-opus, claude-agent-sonnet... for the Claude agent mode",
     )
     parser.add_argument(
         "--register-from-file",

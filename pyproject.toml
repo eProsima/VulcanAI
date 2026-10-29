@@ -14,10 +14,12 @@ keywords = ["Robotics", "LLM", "VLM", "VLA", "Vulcanexus", "ROS2"]
 requires-python = ">=3.10, <4"
 
 dependencies = [
+    "claude-agent-sdk==0.2.168",
     "google-genai==1.39.0",
     "numpy==2.2.6",
     "ollama==0.6.0",
     "openai==1.108.0",
+    "pillow==13.0.0",
     "prompt_toolkit==3.0.52",
     "rich==14.2.0",
     "sentence-transformers==5.1.0",
@@ -30,10 +32,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Claude models (claude-*) and vulcanai-claude-login
-claude = [
-    "claude-agent-sdk==0.2.168",
-]
 test = [
     "pytest==8.4.2",
 ]

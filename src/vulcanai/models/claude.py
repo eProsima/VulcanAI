@@ -1,4 +1,4 @@
-# Copyright 2025 Proyectos y Sistemas de Mantenimiento SL (eProsima).
+# Copyright 2026 Proyectos y Sistemas de Mantenimiento SL (eProsima).
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,10 +17,13 @@ import concurrent.futures
 import mimetypes
 import os
 import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict, Iterable, Optional, Type, TypeVar
+
+import claude_agent_sdk
 
 from vulcanai.core.plan_types import AIValidation, GlobalPlan, GoalSpec
 from vulcanai.models.model import IModel, IModelHooks
@@ -45,12 +48,35 @@ class ClaudeModel(IModel):
         # None uses the default model of the logged-in account
         self.model_name = model_name
         self.hooks = hooks
-        try:
-            import claude_agent_sdk
+        self._load_model()
 
-            self.model = claude_agent_sdk
-        except ImportError as e:
-            self.logger.log_manager(f"Missing Claude Agent SDK (pip install claude-agent-sdk): {e}", error=True)
+    def _load_model(self):
+        """
+        Initialize the SDK and check at startup that the CLI and authentication are available.
+        Model access and credential validity are checked on the first query. Only logs, never raises.
+        """
+        self.model = claude_agent_sdk
+        if self.logger is None:
+            return
+        try:
+            cli = _claude_cli()
+            if cli is None:
+                self.logger.log_manager(
+                    "Claude Code CLI not found. Install VulcanAI: python3 -m pip install .", error=True
+                )
+                self.model = None
+                return
+            status = subprocess.run([cli, "auth", "status"], capture_output=True, text=True, timeout=5)
+            if status.returncode == 1:
+                self.logger.log_manager(
+                    "Claude is not logged in. Run [manager]vulcanai-claude-login[/manager] in a terminal,"
+                    " or set the ANTHROPIC_API_KEY environment variable.",
+                    error=True,
+                )
+            elif status.returncode != 0:
+                self.logger.log_manager("Could not check Claude authentication status.", error=True)
+        except Exception as e:
+            self.logger.log_manager(f"Could not check Claude model '{self.model_name}': {e}", error=True)
 
     def _inference(
         self,
@@ -77,8 +103,11 @@ class ClaudeModel(IModel):
 
         start = time.time()
 
-        # Build user content (history + text + optional images)
-        user_content = self._build_user_content(user_prompt, images, history)
+        # Build user content (text + optional images)
+        user_content = self._build_user_content(user_prompt, images)
+
+        # Build messages (optional history + current user)
+        messages = self._build_messages(user_content, history)
 
         # Notify hooks of request start
         try:
@@ -88,9 +117,13 @@ class ClaudeModel(IModel):
 
         # Call Claude with the output format bound to the desired schema/class
         try:
-            result = self._run_sync(self._query(system_prompt, user_content, response_cls))
+            result = self._run_sync(self._query(system_prompt, messages, response_cls))
         except Exception as e:
             self.logger.log_manager(f"Claude Agent SDK: {e}", error=True)
+            if isinstance(e, claude_agent_sdk.ResultError):
+                self.logger.log_manager(
+                    f"Claude result error ({e.subtype}): result={e.result}, errors={e.errors}", error=True
+                )
             if "not logged in" in str(e).lower():
                 self.logger.log_manager(
                     "Log in to your Claude account by running [manager]vulcanai-claude-login[/manager] in a terminal,"
@@ -108,6 +141,8 @@ class ClaudeModel(IModel):
         if result is None or result.is_error or result.structured_output is None:
             reason = getattr(result, "subtype", "no result received")
             self.logger.log_manager(f"Claude did not return a {response_cls.__name__}: {reason}", error=True)
+            if result is not None:
+                self.logger.log_manager(f"Claude result: {result.result}, errors={result.errors}", error=True)
             return None
 
         # Extract parsed object safely
@@ -135,7 +170,7 @@ class ClaudeModel(IModel):
 
         return parsed
 
-    async def _query(self, system_prompt: str, user_content: list[Dict[str, Any]], response_cls: Type[T]):
+    async def _query(self, system_prompt: str, messages: list[Dict[str, Any]], response_cls: Type[T]):
         """Run a single stateless query and return its ResultMessage."""
         sdk = self.model
         options = sdk.ClaudeAgentOptions(
@@ -149,15 +184,18 @@ class ClaudeModel(IModel):
             strict_mcp_config=True,
             # Structured output needs one extra turn to return the result
             max_turns=3,
+            # Do not save each query as a session transcript in ~/.claude/projects
+            extra_args={"no-session-persistence": None},
         )
 
         async def prompt() -> AsyncIterator[Dict[str, Any]]:
-            yield {
-                "type": "user",
-                "message": {"role": "user", "content": user_content},
-                "parent_tool_use_id": None,
-                "session_id": "",
-            }
+            for message in messages:
+                yield {
+                    "type": "user",
+                    "message": message,
+                    "parent_tool_use_id": None,
+                    "session_id": "",
+                }
 
         result = None
         async for message in sdk.query(prompt=prompt(), options=options):
@@ -175,20 +213,9 @@ class ClaudeModel(IModel):
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             return pool.submit(asyncio.run, coro).result()
 
-    def _build_user_content(
-        self,
-        user_text: str,
-        images: Optional[Iterable[str]],
-        history: Optional[list[tuple[str, str]]],
-    ) -> list[Dict[str, Any]]:
-        """Compose user content blocks: previous interactions, the request and optional images."""
-        text = user_text
-        # Each query is stateless, so replay the short history as context in the prompt
-        if history:
-            previous = "\n".join(f"- {request}\n  Action plan: {summary}" for request, summary in history)
-            text = f"Previous interactions:\n{previous}\n\n{user_text}"
-
-        content: list[Dict[str, Any]] = [{"type": "text", "text": text}]
+    def _build_user_content(self, user_text: str, images: Optional[Iterable[str]]) -> list[Dict[str, Any]]:
+        """Compose user content blocks with text first and optional images."""
+        content: list[Dict[str, Any]] = [{"type": "text", "text": user_text}]
         if images:
             for image_path in images:
                 if isinstance(image_path, str) and image_path.startswith("http"):
@@ -207,17 +234,25 @@ class ClaudeModel(IModel):
                         )
         return content
 
+    def _build_messages(
+        self,
+        user_content: list[Dict[str, Any]],
+        history: Optional[list[tuple[str, str]]],
+    ) -> list[Dict[str, Any]]:
+        """Construct a single user message containing optional history and current user content."""
+        # Each query is stateless, so replay the short history as context in the prompt
+        if history:
+            previous = "\n".join(f"- {request}\n  Action plan: {summary}" for request, summary in history)
+            text = f"Previous interactions:\n{previous}\n\n{user_content[0]['text']}"
+            user_content = [{"type": "text", "text": text}, *user_content[1:]]
+        return [{"role": "user", "content": user_content}]
+
 
 def _claude_cli() -> Optional[str]:
     """Path to the Claude Code CLI: the one bundled with the Agent SDK, or an installed `claude`."""
-    try:
-        import claude_agent_sdk
-
-        bundled = Path(claude_agent_sdk.__file__).parent / "_bundled" / "claude"
-        if bundled.exists():
-            return str(bundled)
-    except ImportError:
-        pass
+    bundled = Path(claude_agent_sdk.__file__).parent / "_bundled" / "claude"
+    if bundled.exists():
+        return str(bundled)
     return shutil.which("claude")
 
 
@@ -230,7 +265,7 @@ def login() -> None:
     """
     cli = _claude_cli()
     if cli is None:
-        sys.exit("Claude Code CLI not found. Install the Claude Agent SDK: pip install claude-agent-sdk")
+        sys.exit("Claude Code CLI not found. Install VulcanAI: python3 -m pip install .")
     action = sys.argv[1] if len(sys.argv) > 1 else "login"
     if action not in ("login", "status", "logout"):
         sys.exit("Usage: vulcanai-claude-login [login|status|logout]")
