@@ -19,7 +19,6 @@ dependencies = [
     "numpy==2.2.6",
     "ollama==0.6.0",
     "openai==1.108.0",
-    "pillow==13.0.0",
     "prompt_toolkit==3.0.52",
     "rich==14.2.0",
     "sentence-transformers==5.1.0",
