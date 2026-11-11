@@ -1,0 +1,28 @@
+# AppArmor profile that lets bubblewrap (bwrap) create user namespaces.
+#
+# The Claude agent mode of VulcanAI (claude-agent-* models) runs Claude's Bash commands
+# inside a bubblewrap sandbox. Ubuntu 23.10+ restricts unprivileged user namespaces
+# (kernel.apparmor_restrict_unprivileged_userns=1), which makes bubblewrap fail with
+# "bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted" when VulcanAI is not
+# started from an application that has its own profile allowing them.
+#
+# This profile only exempts /usr/bin/bwrap; the restriction stays for every other program.
+#
+# Install:
+#   sudo cp resources/apparmor/bwrap /etc/apparmor.d/bwrap
+#   sudo apparmor_parser -r /etc/apparmor.d/bwrap
+#
+# Check:
+#   bwrap --unshare-net --ro-bind / / true && echo SANDBOX-OK
+#
+# Uninstall:
+#   sudo apparmor_parser -R /etc/apparmor.d/bwrap && sudo rm /etc/apparmor.d/bwrap
+
+abi <abi/4.0>,
+include <tunables/global>
+
+profile bwrap /usr/bin/bwrap flags=(unconfined) {
+  userns,
+
+  include if exists <local/bwrap>
+}

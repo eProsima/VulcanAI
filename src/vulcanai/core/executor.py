@@ -64,6 +64,8 @@ class PlanExecutor:
     def __init__(self, registry, logger=None):
         self.registry = registry
         self.logger = logger or VulcanAILogger.default()
+        # Reason of the last failed tool call (None if the last call succeeded)
+        self.last_error: Optional[str] = None
 
     def run(self, plan: GlobalPlan, bb: Blackboard) -> Dict[str, Any]:
         """
@@ -293,8 +295,10 @@ class PlanExecutor:
     ) -> Tuple[bool, Any]:
         """Invoke a registered tool."""
 
+        self.last_error = None
         tool = self.registry.tools.get(tool_name)
         if not tool:
+            self.last_error = f"Tool '{tool_name}' not found"
             self.logger.log_executor(f"Tool <italic>'{tool_name}'</italic> not found", error=True)
             return False, None
 
@@ -348,6 +352,7 @@ class PlanExecutor:
 
             return True, result
         except concurrent.futures.TimeoutError:
+            self.last_error = f"Timed out after {timeout_ms} ms"
             self.logger.log_executor(
                 f"Execution of <italic>[executor]'{tool_name}'[/executor]</italic> "
                 + "[error]timed out[/error] "
@@ -355,6 +360,7 @@ class PlanExecutor:
             )
             return False, None
         except Exception as e:
+            self.last_error = str(e) or type(e).__name__
             self.logger.log_executor(
                 "Execution <bold>[error]failed[/error]</bold> for "
                 + f"<italic>[executor]'{tool_name}'[/executor]</italic>"
